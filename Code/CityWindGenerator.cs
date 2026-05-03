@@ -30,7 +30,7 @@ public sealed class CityWindGenerator : Component
 	public float EdgeStrength { get; set; } = 500f;
 
 	[Property, Group( "Density" ), Range( 0f, 1f )]
-	public float AlleyDensity { get; set; } = 0.75f;
+	public float AlleyDensity { get; set; } = 1f;
 
 	[Property, Group( "Density" )]
 	public bool GenerateEdgeZones { get; set; } = true;
