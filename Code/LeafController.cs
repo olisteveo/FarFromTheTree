@@ -59,7 +59,12 @@ public sealed class LeafController : Component
 	{
 		if ( Body is null ) return;
 
-		ApplyTilt();
+		// Tilt control disabled for first-flight gravity test.
+		// Forcing WorldRotation each tick fights Source 2's Rigidbody simulation —
+		// causes the body to freeze in place and the camera to jitter.
+		// Re-enable via physics-friendly torque-based control once gravity works.
+		// ApplyTilt();
+
 		ApplyAerodynamics();
 		ApplyTumble();
 		ApplyAccumulatedWind();
