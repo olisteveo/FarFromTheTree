@@ -69,6 +69,7 @@ public sealed class LeafCamera : Component
 		{
 			_inGameplayMode = true;
 			_transitionElapsed = 0f;
+			Log.Info( $"[Cam] entering GAMEPLAY mode. leafPos=({leafPos.x:F0},{leafPos.y:F0},{leafPos.z:F0}) gameplayDir=({GameplayDirection.x:F1},{GameplayDirection.y:F1},{GameplayDirection.z:F1})" );
 		}
 
 		if ( _inGameplayMode )

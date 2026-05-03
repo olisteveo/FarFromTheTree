@@ -82,12 +82,18 @@ public sealed class LeafController : Component
 	/// <summary>Seconds remaining until the first gust kicks in (0 once skipped or elapsed).</summary>
 	public float SettleTimeRemaining => MathF.Max( 0f, SettleDuration - _settleElapsed );
 
+	[Property, Group( "Debug" )]
+	public bool DebugLogging { get; set; } = true;
+
 	private Vector3 _pendulumAxis;
 	private float _pendulumTime;
 	private Vector3 _windAccum;
 	private bool _isGrounded;
 	private bool _hasLanded;
 	private float _settleElapsed;
+	private bool _logSettleStart;
+	private bool _logSettleEnd;
+	private float _logHeartbeat;
 
 	/// <summary>
 	/// Called by WindZone components each tick. The wind vector here is the
@@ -111,6 +117,11 @@ public sealed class LeafController : Component
 		var effective = EdgeOnWindCatch + (1f - EdgeOnWindCatch) * catchFactor;
 
 		_windAccum += windVector * effective;
+
+		if ( DebugLogging )
+		{
+			Log.Info( $"[Leaf] Wind hit: dir=({windDir.x:F2},{windDir.y:F2},{windDir.z:F2}) mag={mag:F0} catch={catchFactor:F2} effective={effective:F2}" );
+		}
 	}
 
 	protected override void OnAwake()
@@ -128,15 +139,33 @@ public sealed class LeafController : Component
 
 	protected override void OnUpdate()
 	{
+		// Heartbeat — 1Hz position dump while in flight (not grounded)
+		if ( DebugLogging && !_isGrounded && Body is not null )
+		{
+			_logHeartbeat += Time.Delta;
+			if ( _logHeartbeat >= 1f )
+			{
+				_logHeartbeat = 0f;
+				var v = Body.Velocity;
+				Log.Info( $"[Leaf] HB pos=({WorldPosition.x:F0},{WorldPosition.y:F0},{WorldPosition.z:F0}) vel=({v.x:F0},{v.y:F0},{v.z:F0}) speed={v.Length:F0}" );
+			}
+		}
+
 		// Tick the settle timer once leaf has landed. Player can press any input to skip.
 		if ( _hasLanded && _settleElapsed < SettleDuration )
 		{
+			var wasFinished = _settleElapsed >= SettleDuration;
 			_settleElapsed += Time.Delta;
 
 			var anyInput = Input.AnalogMove.LengthSquared > 0.01f || Input.Pressed( "Jump" );
 			if ( anyInput )
 			{
 				_settleElapsed = SettleDuration;
+				if ( DebugLogging ) Log.Info( $"[Leaf] settle SKIPPED by input — wind activates" );
+			}
+			else if ( !wasFinished && _settleElapsed >= SettleDuration && DebugLogging )
+			{
+				Log.Info( $"[Leaf] settle complete — wind activates" );
 			}
 		}
 	}
@@ -180,8 +209,21 @@ public sealed class LeafController : Component
 			.IgnoreGameObjectHierarchy( GameObject )
 			.Run();
 
+		var wasGrounded = _isGrounded;
 		_isGrounded = result.Hit;
-		if ( _isGrounded ) _hasLanded = true;
+
+		if ( !_hasLanded && _isGrounded )
+		{
+			_hasLanded = true;
+			if ( DebugLogging )
+			{
+				Log.Info( $"[Leaf] LANDED at pos=({WorldPosition.x:F0},{WorldPosition.y:F0},{WorldPosition.z:F0}) — settle phase begins ({SettleDuration}s)" );
+			}
+		}
+		else if ( _isGrounded != wasGrounded && DebugLogging )
+		{
+			Log.Info( $"[Leaf] grounded={_isGrounded} pos=({WorldPosition.x:F0},{WorldPosition.y:F0},{WorldPosition.z:F0})" );
+		}
 	}
 
 	private void ApplyDrag()
