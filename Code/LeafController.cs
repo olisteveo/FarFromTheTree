@@ -66,6 +66,14 @@ public sealed class LeafController : Component
 	public float GroundCheckDistance { get; set; } = 8f;
 
 	/// <summary>
+	/// Continuous upward force applied while leaf is grounded mid-flight (after settle).
+	/// Stops the leaf from sticking to the floor — the air is always trying to lift it.
+	/// 0 disables. Higher values = leaf bounces off ground quickly.
+	/// </summary>
+	[Property, Group( "Ground" ), Range( 0f, 2000f )]
+	public float GroundRecoveryForce { get; set; } = 350f;
+
+	/// <summary>
 	/// How long the leaf sits still on the ground after first landing before the
 	/// first gust kicks in. Tutorial UI shows during this window. Player can press
 	/// any input to skip to instant pickup.
@@ -200,6 +208,7 @@ public sealed class LeafController : Component
 		}
 
 		CheckGrounded();
+		ApplyGroundRecovery();
 		ApplyDrag();
 		ApplyTilt();           // player input rotates the leaf (always available)
 		ApplyAccumulatedWind();
@@ -214,6 +223,18 @@ public sealed class LeafController : Component
 		}
 
 		ClampVelocities();
+	}
+
+	private void ApplyGroundRecovery()
+	{
+		// Lift the leaf back up if it's stuck on the floor mid-flight.
+		// Disabled during the initial fall + settle so it doesn't interfere with the cinematic landing.
+		if ( !_isGrounded ) return;
+		if ( !_hasLanded ) return; // still falling for the first time
+		if ( IsInTutorialSettle ) return; // tutorial pause is sacred
+		if ( GroundRecoveryForce <= 0f ) return;
+
+		Body.ApplyForce( Vector3.Up * GroundRecoveryForce );
 	}
 
 	private void CheckGrounded()

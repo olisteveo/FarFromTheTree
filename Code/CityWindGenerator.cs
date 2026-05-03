@@ -57,6 +57,13 @@ public sealed class CityWindGenerator : Component
 	[Property, Group( "Vertical Layer" ), Range( 50f, 3000f )]
 	public float StreetLayerHeight { get; set; } = 1500f;
 
+	/// <summary>
+	/// Z-component added to every wind direction so all city wind has a gentle upward bias.
+	/// Helps lift the leaf off the floor and keeps it airborne. 0.1-0.3 is subtle, 0.5+ pulls strongly up.
+	/// </summary>
+	[Property, Group( "Vertical Layer" ), Range( 0f, 1f )]
+	public float UpwardBias { get; set; } = 0.2f;
+
 	[Property, Group( "Visualizer" )]
 	public bool AddVisualizers { get; set; } = true;
 
@@ -227,8 +234,11 @@ public sealed class CityWindGenerator : Component
 		box.IsTrigger = true;
 		box.Scale = size;
 
+		var biasedDir = direction;
+		if ( !name.Contains( "Edge" ) ) biasedDir = biasedDir + Vector3.Up * UpwardBias;
+
 		var wind = go.Components.Create<WindZone>();
-		wind.Direction = direction;
+		wind.Direction = biasedDir;
 		wind.Strength = strength;
 		wind.RequireFirstLanding = true;
 		wind.Oscillates = oscillates;
