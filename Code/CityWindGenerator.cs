@@ -173,7 +173,16 @@ public sealed class CityWindGenerator : Component
 	{
 		var go = new GameObject( true, name );
 		go.SetParent( GameObject );
-		go.LocalPosition = localPos;
+
+		// Compensate for any parent scale so wind zones operate in world units
+		// regardless of how the parent GameObject is scaled.
+		var ps = GameObject.WorldScale;
+		go.LocalScale = new Vector3(
+			ps.x != 0 ? 1f / ps.x : 1f,
+			ps.y != 0 ? 1f / ps.y : 1f,
+			ps.z != 0 ? 1f / ps.z : 1f
+		);
+		go.WorldPosition = GameObject.WorldPosition + localPos;
 
 		var box = go.Components.Create<BoxCollider>();
 		box.IsTrigger = true;
