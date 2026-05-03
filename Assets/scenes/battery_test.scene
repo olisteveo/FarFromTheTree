@@ -4193,7 +4193,7 @@
           "Gravity": true,
           "GravityScale": 0.3,
           "ImpactDamage": 0,
-          "LinearDamping": 0,
+          "LinearDamping": 0.4,
           "Locking": {
             "X": false,
             "Y": false,
@@ -4203,7 +4203,7 @@
             "Roll": false
           },
           "MassCenterOverride": "0,0,0",
-          "MassOverride": 0,
+          "MassOverride": 0.5,
           "MinImpactDamageSpeed": 500,
           "MotionEnabled": true,
           "OnComponentDestroy": null,
@@ -4228,18 +4228,19 @@
           "GroundCheckDistance": 8,
           "MaxAngularSpeed": 360,
           "MaxLinearSpeed": 800,
+          "MaxWindForcePerTick": 1500,
           "OnComponentDestroy": null,
           "OnComponentDisabled": null,
           "OnComponentEnabled": null,
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
           "OnComponentUpdate": null,
-          "SettleDuration": 3,
+          "SettleDuration": 20,
           "SwayFrequency": 0.8,
-          "SwayStrength": 80,
-          "TiltDamping": 4,
-          "TiltTorqueStrength": 8,
-          "TumbleStrength": 3
+          "SwayStrength": 95.679016,
+          "TiltDamping": 1.5,
+          "TiltTorqueStrength": 60,
+          "TumbleStrength": 5
         }
       ],
       "Children": []
@@ -4300,7 +4301,7 @@
           "OnComponentStart": null,
           "OnComponentUpdate": null,
           "RequireFirstLanding": true,
-          "Strength": 1500
+          "Strength": 600
         }
       ],
       "Children": []
@@ -4361,7 +4362,7 @@
           "OnComponentStart": null,
           "OnComponentUpdate": null,
           "RequireFirstLanding": false,
-          "Strength": 2500
+          "Strength": 400
         }
       ],
       "Children": []
@@ -4422,7 +4423,7 @@
           "OnComponentStart": null,
           "OnComponentUpdate": null,
           "RequireFirstLanding": false,
-          "Strength": 2000
+          "Strength": 500
         }
       ],
       "Children": []
@@ -4483,7 +4484,62 @@
           "OnComponentStart": null,
           "OnComponentUpdate": null,
           "RequireFirstLanding": false,
-          "Strength": 3500
+          "Strength": 800
+        }
+      ],
+      "Children": []
+    },
+    {
+      "__guid": "287b4ec7-2baf-4469-8e76-a8b02c7f9bfc",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "Hud",
+      "Position": "-1209.90991,580.885193,977.553772",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Sandbox.UI.TutorialHud",
+          "__guid": "558d0138-39bf-4c87-a705-540d153d1bd4",
+          "__enabled": true,
+          "Flags": 0,
+          "Leaf": {
+            "_type": "component",
+            "component_id": "9198b354-6a75-4926-b77e-9cc421c30636",
+            "go": "73324117-c78d-4769-9a10-9325675206a0",
+            "component_type": "LeafController"
+          },
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        },
+        {
+          "__type": "Sandbox.ScreenPanel",
+          "__guid": "2e7f54b9-cdf9-44b8-a30e-11f2ff624675",
+          "__enabled": true,
+          "Flags": 0,
+          "AutoScreenScale": true,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Opacity": 1,
+          "Scale": 1,
+          "ScaleStrategy": "ConsistentHeight",
+          "TargetCamera": null,
+          "ZIndex": 100
         }
       ],
       "Children": []
