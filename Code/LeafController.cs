@@ -1,16 +1,14 @@
 /// <summary>
-/// The leaf — minimum-viable falling physics.
+/// The leaf — passive object in active wind.
 ///
-/// Deliberately simple, no aerodynamic ambition:
-///   * Rigidbody handles gravity + collision
-///   * Quadratic drag — slows the fall
-///   * Periodic random horizontal sway force — natural side-to-side drift
-///   * Random tumble torque — visible rotation
-///   * Hard velocity cap — leaf cannot fly off
-///   * Wind zones add their own force
+/// LOAD-BEARING DESIGN RULE: the leaf has no engine, no thrust, no propulsion.
+/// All motion comes from gravity, drag, or wind zones. Player input ONLY rotates
+/// the leaf via torque — it never moves it directly.
 ///
-/// Once this version is verified to fall and drift sensibly,
-/// we layer player tilt control + proper aerodynamics on top.
+/// Tilt determines how the leaf catches wind:
+///   * Flat into wind  → maximum push     (catches the full force)
+///   * Edge into wind  → minimum push     (slices through)
+///   * Angled to wind  → redirected force (surf mechanic, the heart of the game)
 /// </summary>
 public sealed class LeafController : Component
 {
@@ -28,41 +26,65 @@ public sealed class LeafController : Component
 	[Property, Group( "Sway" ), Range( 0f, 20f )]
 	public float TumbleStrength { get; set; } = 1.5f;
 
+	/// <summary>
+	/// How much wind force the leaf catches when its surface is edge-on to the wind.
+	/// 0 = pure surface area model (no push at all when edge-on, full push when flat).
+	/// 1 = wind pushes the leaf the same regardless of orientation (no surf mechanic).
+	/// Lower values = more rewarding surf gameplay.
+	/// </summary>
+	[Property, Group( "Wind Interaction" ), Range( 0f, 1f )]
+	public float EdgeOnWindCatch { get; set; } = 0.2f;
+
+	[Property, Group( "Tilt Control" ), Range( 0f, 50f )]
+	public float TiltTorqueStrength { get; set; } = 8f;
+
+	[Property, Group( "Tilt Control" ), Range( 0f, 50f )]
+	public float TiltDamping { get; set; } = 4f;
+
 	[Property, Group( "Safety" ), Range( 0f, 5000f )]
-	public float MaxLinearSpeed { get; set; } = 300f;
+	public float MaxLinearSpeed { get; set; } = 600f;
 
 	[Property, Group( "Safety" ), Range( 0f, 1000f )]
-	public float MaxAngularSpeed { get; set; } = 180f;
+	public float MaxAngularSpeed { get; set; } = 360f;
 
 	[Property, Group( "Ground" ), Range( 1f, 50f )]
 	public float GroundCheckDistance { get; set; } = 8f;
 
-	/// <summary>
-	/// World-space direction of the first gust. Should match LeafCamera.GameplayDirection.
-	/// </summary>
-	[Property, Group( "First Gust" )]
-	public Vector3 GustDirection { get; set; } = Vector3.Forward;
+	/// <summary>True when leaf is currently in contact with (or just above) the ground.</summary>
+	public bool IsGrounded => _isGrounded;
 
-	[Property, Group( "First Gust" ), Range( 0f, 5000f )]
-	public float GustImpulse { get; set; } = 800f;
-
-	/// <summary>
-	/// True once the leaf has touched the ground after detaching from the tree.
-	/// </summary>
+	/// <summary>True after the leaf has touched the ground at least once this run (cinematic landing moment).</summary>
 	public bool HasLanded => _hasLanded;
-
-	/// <summary>
-	/// True once the first gust has fired — leaf is in active flight.
-	/// </summary>
-	public bool GustFired => _gustFired;
 
 	private Vector3 _pendulumAxis;
 	private float _pendulumTime;
 	private Vector3 _windAccum;
+	private bool _isGrounded;
 	private bool _hasLanded;
-	private bool _gustFired;
 
-	public void AddWindForce( Vector3 force ) => _windAccum += force;
+	/// <summary>
+	/// Called by WindZone components each tick. The wind vector here is the
+	/// raw force the zone wants to apply — but this leaf adjusts that force
+	/// based on its own orientation (the surf mechanic).
+	/// </summary>
+	public void AddWindForce( Vector3 windVector )
+	{
+		var mag = windVector.Length;
+		if ( mag < 0.01f ) return;
+
+		var windDir = windVector / mag;
+		var leafSurface = WorldRotation.Up;
+
+		// How face-on is the leaf to the wind?
+		// 1.0 = perpendicular surface (catches full force, "flat into wind")
+		// 0.0 = parallel surface (slices through, edge-on)
+		var catchFactor = MathF.Abs( Vector3.Dot( leafSurface, windDir ) );
+
+		// Blend between "edge catches some" and "flat catches all" using EdgeOnWindCatch as floor.
+		var effective = EdgeOnWindCatch + (1f - EdgeOnWindCatch) * catchFactor;
+
+		_windAccum += windVector * effective;
+	}
 
 	protected override void OnAwake()
 	{
@@ -72,85 +94,42 @@ public sealed class LeafController : Component
 
 	private void PickPendulumAxis()
 	{
-		// Pick a random horizontal direction. Leaf will swing back and forth
-		// along this axis as it falls — natural pendulum feel.
 		var angle = Game.Random.Float( 0f, MathF.PI * 2f );
 		_pendulumAxis = new Vector3( MathF.Cos( angle ), MathF.Sin( angle ), 0f );
 		_pendulumTime = 0f;
-	}
-
-	protected override void OnUpdate()
-	{
-		// Listen for the gust trigger when leaf is landed and gust hasn't fired yet.
-		// Any movement input or Jump fires the gust.
-		if ( !_hasLanded || _gustFired ) return;
-
-		var pressed =
-			Input.AnalogMove.LengthSquared > 0.01f ||
-			Input.Pressed( "Jump" );
-
-		if ( pressed )
-		{
-			FireGust();
-		}
-	}
-
-	private void FireGust()
-	{
-		if ( Body is null ) return;
-
-		_gustFired = true;
-
-		// Wake the body up in case it was sleeping after landing
-		var dir = GustDirection.LengthSquared > 0.01f ? GustDirection.Normal : Vector3.Forward;
-		Body.ApplyImpulse( dir * GustImpulse );
 	}
 
 	protected override void OnFixedUpdate()
 	{
 		if ( Body is null ) return;
 
-		// In active flight (post-gust): drag + wind only. No pendulum sway —
-		// player should feel airborne and in control, not pulled around by sway.
-		if ( _gustFired )
-		{
-			ApplyDrag();
-			ApplyAccumulatedWind();
-			ClampVelocities();
-			return;
-		}
-
 		CheckGrounded();
+		ApplyDrag();
+		ApplyTilt();           // player input rotates the leaf (always available)
+		ApplyAccumulatedWind();
 
-		if ( _hasLanded )
+		// Passive natural-leaf flutter only when free-falling without significant wind.
+		// Once wind starts pushing, the player is in control.
+		var hasWind = _windAccum.LengthSquared > 1f; // checked below before reset
+		if ( !_isGrounded && !hasWind )
 		{
-			// Settled, awaiting gust trigger.
-			ApplyAccumulatedWind();
-			return;
+			ApplySway();
+			ApplyTumble();
 		}
 
-		// Initial fall from tree
-		ApplyDrag();
-		ApplySway();
-		ApplyTumble();
-		ApplyAccumulatedWind();
 		ClampVelocities();
 	}
 
 	private void CheckGrounded()
 	{
-		if ( _hasLanded ) return;
-
 		var rayStart = WorldPosition;
 		var rayEnd = WorldPosition + Vector3.Down * GroundCheckDistance;
 		var result = Scene.Trace.Ray( rayStart, rayEnd )
 			.IgnoreGameObjectHierarchy( GameObject )
 			.Run();
 
-		if ( result.Hit )
-		{
-			_hasLanded = true;
-		}
+		_isGrounded = result.Hit;
+		if ( _isGrounded ) _hasLanded = true;
 	}
 
 	private void ApplyDrag()
@@ -163,10 +142,30 @@ public sealed class LeafController : Component
 		Body.ApplyForce( dragForce );
 	}
 
+	private void ApplyTilt()
+	{
+		// Player input rotates the leaf via torque — physics-friendly, doesn't fight Rigidbody.
+		// Forward (W / stick up) = pitch nose down (negative pitch in our convention).
+		// Right (D / stick right) = roll right.
+		// NEVER applies forward thrust — leaf cannot move on its own.
+		var input = Input.AnalogMove;
+
+		if ( input.LengthSquared > 0.01f )
+		{
+			// Apply torque about leaf's local axes for pitch and roll
+			var pitchTorque = WorldRotation.Right * (-input.y * TiltTorqueStrength);
+			var rollTorque = WorldRotation.Forward * (input.x * TiltTorqueStrength);
+			Body.ApplyTorque( pitchTorque + rollTorque );
+		}
+		else if ( !_isGrounded )
+		{
+			// No input — gently dampen angular velocity so leaf settles, doesn't spin
+			Body.AngularVelocity = Body.AngularVelocity * (1f - TiltDamping * Time.Delta).Clamp( 0f, 1f );
+		}
+	}
+
 	private void ApplySway()
 	{
-		// Smooth sinusoidal force along a fixed horizontal axis — pendulum motion.
-		// The leaf swings to one side, decelerates, swings back, repeats.
 		_pendulumTime += Time.Delta;
 		var swingForce = MathF.Sin( _pendulumTime * SwayFrequency * MathF.PI * 2f ) * SwayStrength;
 		Body.ApplyForce( _pendulumAxis * swingForce );
@@ -179,7 +178,6 @@ public sealed class LeafController : Component
 			Game.Random.Float( -1f, 1f ),
 			Game.Random.Float( -1f, 1f )
 		) * TumbleStrength;
-
 		Body.ApplyTorque( torque );
 	}
 
