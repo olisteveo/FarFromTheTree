@@ -1,0 +1,32 @@
+@using Sandbox;
+@using Sandbox.UI;
+@inherits PanelComponent
+
+@if ( Leaf is not null && Leaf.IsInTutorialSettle )
+{
+	<root>
+		<div class="hud">
+			<div class="title">THE LEAF HAS LANDED</div>
+			<div class="subtitle">First gust in @Leaf.SettleTimeRemaining.ToString("F1")s</div>
+
+			<div class="controls">
+				<div class="row"><span class="key">W A S D</span><span class="action">Tilt the leaf — angle into the wind to surf</span></div>
+				<div class="row"><span class="key">SPACE</span><span class="action">Skip and start now</span></div>
+			</div>
+
+			<div class="progress-bar">
+				<div class="fill" style="width: @((Leaf.SettleProgress * 100).ToString("F0"))%"></div>
+			</div>
+		</div>
+	</root>
+}
+
+@code
+{
+	[Property] public LeafController Leaf { get; set; }
+
+	protected override int BuildHash() => System.HashCode.Combine(
+		Leaf?.IsInTutorialSettle,
+		(int)(Leaf?.SettleTimeRemaining * 10 ?? 0)
+	);
+}

@@ -79,6 +79,9 @@ public sealed class LeafController : Component
 	/// <summary>True if leaf has landed but settle is still in progress (tutorial period).</summary>
 	public bool IsInTutorialSettle => _hasLanded && _settleElapsed < SettleDuration;
 
+	/// <summary>Seconds remaining until the first gust kicks in (0 once skipped or elapsed).</summary>
+	public float SettleTimeRemaining => MathF.Max( 0f, SettleDuration - _settleElapsed );
+
 	private Vector3 _pendulumAxis;
 	private float _pendulumTime;
 	private Vector3 _windAccum;
