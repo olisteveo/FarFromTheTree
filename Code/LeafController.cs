@@ -96,10 +96,20 @@ public sealed class LeafController : Component
 		var velocity = Body.Velocity;
 		if ( velocity.LengthSquared < 1f ) return;
 
-		var wobbleAxis = Vector3.Cross( velocity.Normal, Vector3.Up );
-		if ( wobbleAxis.LengthSquared < 0.01f ) return; // velocity near vertical → no defined axis
+		Vector3 wobbleAxis;
+		var cross = Vector3.Cross( velocity.Normal, Vector3.Up );
+		if ( cross.LengthSquared > 0.01f )
+		{
+			wobbleAxis = cross.Normal;
+		}
+		else
+		{
+			// Velocity is straight up/down — pick a horizontal axis that itself rotates
+			// over time so the leaf doesn't just rock on a single plane forever.
+			float angle = _wobbleTime * 0.5f;
+			wobbleAxis = new Vector3( MathF.Cos( angle ), MathF.Sin( angle ), 0 );
+		}
 
-		wobbleAxis = wobbleAxis.Normal;
 		var wobble = MathF.Sin( _wobbleTime * WobbleFrequency ) * WobbleStrength;
 		Body.ApplyTorque( wobbleAxis * wobble );
 	}
