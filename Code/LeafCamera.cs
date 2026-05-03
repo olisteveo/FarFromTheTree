@@ -65,11 +65,24 @@ public sealed class LeafCamera : Component
 	[Property, Group( "FOV" ), Range( 1f, 100f )]
 	public float SpeedAtMaxFov { get; set; } = 30f;
 
+	[Property, Group( "Constraints" ), Range( 0f, 500f )]
+	public float MinCameraHeight { get; set; } = 30f;
+
+	[Property, Group( "Collision Avoidance" )]
+	public bool AvoidObstacles { get; set; } = true;
+
+	[Property, Group( "Collision Avoidance" ), Range( 5f, 100f )]
+	public float ObstaclePadding { get; set; } = 20f;
+
+	[Property, Group( "Collision Avoidance" ), Range( 10f, 300f )]
+	public float MinCollisionDistance { get; set; } = 50f;
+
 	private Rotation _trackedYaw = Rotation.Identity;
 	private bool _inGameplayMode;
 	private float _transitionElapsed;
 	private float _mouseYaw;
 	private float _mousePitch;
+	private float _currentDistance;
 
 	protected override void OnAwake()
 	{
@@ -142,13 +155,10 @@ public sealed class LeafCamera : Component
 			_trackedYaw = Rotation.Lerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
 		}
 
-		// Apply mouse orbit on top of the auto-tracked direction
 		var combined = _trackedYaw * OrbitRotation;
-		var backOffset = combined.Forward * -Distance;
-		var upOffset = Vector3.Up * Height;
-		var desiredPos = leafPos + backOffset + upOffset;
+		var resolved = ResolveCameraPosition( leafPos, combined );
 
-		WorldPosition = WorldPosition.LerpTo( desiredPos, Time.Delta * PositionLerpRate );
+		WorldPosition = WorldPosition.LerpTo( resolved, Time.Delta * PositionLerpRate );
 		WorldRotation = Rotation.LookAt( leafPos - WorldPosition, Vector3.Up );
 
 		if ( Camera is not null )
@@ -166,10 +176,9 @@ public sealed class LeafCamera : Component
 			? GameplayDirection.Normal
 			: Vector3.Forward;
 
-		// Apply mouse orbit on top of the gameplay direction
 		var baseRot = Rotation.LookAt( dir );
 		var combined = baseRot * OrbitRotation;
-		var targetPos = leafPos - (combined.Forward * Distance) + (Vector3.Up * Height);
+		var targetPos = ResolveCameraPosition( leafPos, combined );
 		var targetRot = Rotation.LookAt( leafPos - targetPos, Vector3.Up );
 
 		var t = (_transitionElapsed / TransitionDuration).Clamp( 0f, 1f );
@@ -182,5 +191,44 @@ public sealed class LeafCamera : Component
 		{
 			Camera.FieldOfView = MinFov;
 		}
+	}
+
+	/// <summary>
+	/// Compute the desired camera position with collision avoidance + min height clamp.
+	/// If something is between the leaf and the desired camera spot, pull the camera in
+	/// (Spider-Man / Forza style). Also clamps Z so camera never goes below MinCameraHeight.
+	/// </summary>
+	private Vector3 ResolveCameraPosition( Vector3 leafPos, Rotation orbitOrientation )
+	{
+		var backOffset = orbitOrientation.Forward * -Distance;
+		var upOffset = Vector3.Up * Height;
+		var desiredPos = leafPos + backOffset + upOffset;
+
+		var actualDistance = Distance;
+
+		if ( AvoidObstacles )
+		{
+			var rayStart = leafPos + Vector3.Up * (Height * 0.5f);
+			var rayEnd = desiredPos;
+			var trace = Scene.Trace.Ray( rayStart, rayEnd )
+				.IgnoreGameObjectHierarchy( Target )
+				.IgnoreGameObjectHierarchy( GameObject )
+				.Run();
+
+			if ( trace.Hit )
+			{
+				var hitDist = (trace.HitPosition - rayStart).Length - ObstaclePadding;
+				actualDistance = MathF.Max( MinCollisionDistance, hitDist );
+				var dir = (desiredPos - rayStart).Normal;
+				desiredPos = rayStart + dir * actualDistance;
+			}
+		}
+
+		// Never let the camera dip below the minimum height
+		if ( desiredPos.z < MinCameraHeight )
+			desiredPos = desiredPos.WithZ( MinCameraHeight );
+
+		_currentDistance = actualDistance;
+		return desiredPos;
 	}
 }

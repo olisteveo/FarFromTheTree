@@ -41,6 +41,13 @@ public sealed class LeafController : Component
 	[Property, Group( "Tilt Control" ), Range( 0f, 50f )]
 	public float TiltDamping { get; set; } = 4f;
 
+	/// <summary>
+	/// Strength of the auto-stabilize torque that gently rotates the leaf back to flat
+	/// (surface normal up) when the player isn't giving input. Prevents endless spinning.
+	/// </summary>
+	[Property, Group( "Tilt Control" ), Range( 0f, 30f )]
+	public float AutoStabilizeStrength { get; set; } = 4f;
+
 	[Property, Group( "Safety" ), Range( 0f, 5000f )]
 	public float MaxLinearSpeed { get; set; } = 600f;
 
@@ -261,8 +268,16 @@ public sealed class LeafController : Component
 		}
 		else if ( !_isGrounded )
 		{
-			// No input — gently dampen angular velocity so leaf settles, doesn't spin
+			// No input — dampen angular velocity AND gently stabilize toward flat
 			Body.AngularVelocity = Body.AngularVelocity * (1f - TiltDamping * Time.Delta).Clamp( 0f, 1f );
+
+			// Auto-stabilize: torque toward flat (leaf surface normal points up)
+			if ( AutoStabilizeStrength > 0f )
+			{
+				var leafUp = WorldRotation.Up;
+				var correction = Vector3.Cross( leafUp, Vector3.Up );
+				Body.ApplyTorque( correction * AutoStabilizeStrength );
+			}
 		}
 	}
 
