@@ -37,6 +37,13 @@ public sealed class LeafController : Component
 	[Property, Group( "Ground" ), Range( 1f, 50f )]
 	public float GroundCheckDistance { get; set; } = 8f;
 
+	/// <summary>
+	/// True once the leaf has touched the ground after detaching from the tree.
+	/// LeafCamera reads this to switch to gameplay framing, RunTimer reads this
+	/// to know when the player is ready for the first gust.
+	/// </summary>
+	public bool HasLanded => _hasLanded;
+
 	private Vector3 _pendulumAxis;
 	private float _pendulumTime;
 	private Vector3 _windAccum;
