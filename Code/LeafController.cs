@@ -38,16 +38,29 @@ public sealed class LeafController : Component
 	public float GroundCheckDistance { get; set; } = 8f;
 
 	/// <summary>
+	/// World-space direction of the first gust. Should match LeafCamera.GameplayDirection.
+	/// </summary>
+	[Property, Group( "First Gust" )]
+	public Vector3 GustDirection { get; set; } = Vector3.Forward;
+
+	[Property, Group( "First Gust" ), Range( 0f, 5000f )]
+	public float GustImpulse { get; set; } = 800f;
+
+	/// <summary>
 	/// True once the leaf has touched the ground after detaching from the tree.
-	/// LeafCamera reads this to switch to gameplay framing, RunTimer reads this
-	/// to know when the player is ready for the first gust.
 	/// </summary>
 	public bool HasLanded => _hasLanded;
+
+	/// <summary>
+	/// True once the first gust has fired — leaf is in active flight.
+	/// </summary>
+	public bool GustFired => _gustFired;
 
 	private Vector3 _pendulumAxis;
 	private float _pendulumTime;
 	private Vector3 _windAccum;
 	private bool _hasLanded;
+	private bool _gustFired;
 
 	public void AddWindForce( Vector3 force ) => _windAccum += force;
 
@@ -66,19 +79,57 @@ public sealed class LeafController : Component
 		_pendulumTime = 0f;
 	}
 
+	protected override void OnUpdate()
+	{
+		// Listen for the gust trigger when leaf is landed and gust hasn't fired yet.
+		// Any movement input or Jump fires the gust.
+		if ( !_hasLanded || _gustFired ) return;
+
+		var pressed =
+			Input.AnalogMove.LengthSquared > 0.01f ||
+			Input.Pressed( "Jump" );
+
+		if ( pressed )
+		{
+			FireGust();
+		}
+	}
+
+	private void FireGust()
+	{
+		if ( Body is null ) return;
+
+		_gustFired = true;
+
+		// Wake the body up in case it was sleeping after landing
+		var dir = GustDirection.LengthSquared > 0.01f ? GustDirection.Normal : Vector3.Forward;
+		Body.ApplyImpulse( dir * GustImpulse );
+	}
+
 	protected override void OnFixedUpdate()
 	{
 		if ( Body is null ) return;
+
+		// In active flight (post-gust): drag + wind only. No pendulum sway —
+		// player should feel airborne and in control, not pulled around by sway.
+		if ( _gustFired )
+		{
+			ApplyDrag();
+			ApplyAccumulatedWind();
+			ClampVelocities();
+			return;
+		}
 
 		CheckGrounded();
 
 		if ( _hasLanded )
 		{
-			// Leaf has settled — only wind can disturb it. Drag/sway/tumble off.
+			// Settled, awaiting gust trigger.
 			ApplyAccumulatedWind();
 			return;
 		}
 
+		// Initial fall from tree
 		ApplyDrag();
 		ApplySway();
 		ApplyTumble();
