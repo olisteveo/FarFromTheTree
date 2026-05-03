@@ -4222,6 +4222,7 @@
           "__enabled": true,
           "Flags": 0,
           "Body": null,
+          "DebugLogging": true,
           "DragCoefficient": 2.5,
           "EdgeOnWindCatch": 0.2,
           "GroundCheckDistance": 8,

@@ -47,6 +47,14 @@ public sealed class LeafController : Component
 	[Property, Group( "Safety" ), Range( 0f, 1000f )]
 	public float MaxAngularSpeed { get; set; } = 360f;
 
+	/// <summary>
+	/// Cap on total wind force applied per fixed update tick. Prevents catastrophic
+	/// over-acceleration when multiple wind zones overlap. Tune low for "leaf-light"
+	/// feel, high for "kite" feel.
+	/// </summary>
+	[Property, Group( "Safety" ), Range( 100f, 20000f )]
+	public float MaxWindForcePerTick { get; set; } = 2000f;
+
 	[Property, Group( "Ground" ), Range( 1f, 50f )]
 	public float GroundCheckDistance { get; set; } = 8f;
 
@@ -277,6 +285,14 @@ public sealed class LeafController : Component
 
 	private void ApplyAccumulatedWind()
 	{
+		// Cap the per-tick wind force regardless of how many overlapping zones added to it.
+		// Without this, leaf gets shot through the floor when zones overlap.
+		var mag = _windAccum.Length;
+		if ( mag > MaxWindForcePerTick )
+		{
+			_windAccum = _windAccum.Normal * MaxWindForcePerTick;
+		}
+
 		if ( _windAccum.LengthSquared > 0.01f )
 		{
 			Body.ApplyForce( _windAccum );
