@@ -26,8 +26,17 @@ public sealed class CityWindGenerator : Component
 	[Property, Group( "Wind Strengths" ), Range( 50f, 1500f )]
 	public float AlleyStrength { get; set; } = 250f;
 
+	[Property, Group( "Wind Strengths" ), Range( 100f, 2000f )]
+	public float EdgeStrength { get; set; } = 500f;
+
 	[Property, Group( "Density" ), Range( 0f, 1f )]
-	public float AlleyDensity { get; set; } = 0.15f;
+	public float AlleyDensity { get; set; } = 0.35f;
+
+	[Property, Group( "Density" )]
+	public bool GenerateEdgeZones { get; set; } = true;
+
+	[Property, Group( "Density" ), Range( 0.5f, 5f )]
+	public float EdgeWidthMultiplier { get; set; } = 1.5f;
 
 	[Property, Group( "Oscillation" ), Range( 0f, 1f )]
 	public float OscillationChance { get; set; } = 0.4f;
@@ -51,6 +60,48 @@ public sealed class CityWindGenerator : Component
 		var random = new Random();
 		var totalX = GridX * CellSpacing;
 		var totalY = GridY * CellSpacing;
+
+		// Edge zones — wide ribbons of wind along each side of the city
+		if ( GenerateEdgeZones )
+		{
+			var edgeWidth = CellSpacing * EdgeWidthMultiplier;
+
+			// North edge — wind blowing east along the top (oscillating)
+			CreateZone( "Wind_Edge_North",
+				localPos: new Vector3( totalX * 0.5f, totalY + edgeWidth * 0.5f - CellSpacing, StreetLevelZ ),
+				size: new Vector3( totalX + edgeWidth, edgeWidth, StreetLayerHeight * 1.2f ),
+				direction: new Vector3( 1, 0, 0 ),
+				strength: EdgeStrength,
+				oscillates: true,
+				phase: 0f );
+
+			// South edge — wind blowing west, opposite phase
+			CreateZone( "Wind_Edge_South",
+				localPos: new Vector3( totalX * 0.5f, -edgeWidth * 0.5f + CellSpacing, StreetLevelZ ),
+				size: new Vector3( totalX + edgeWidth, edgeWidth, StreetLayerHeight * 1.2f ),
+				direction: new Vector3( -1, 0, 0 ),
+				strength: EdgeStrength,
+				oscillates: true,
+				phase: 180f );
+
+			// East edge — wind blowing north
+			CreateZone( "Wind_Edge_East",
+				localPos: new Vector3( totalX + edgeWidth * 0.5f - CellSpacing, totalY * 0.5f, StreetLevelZ ),
+				size: new Vector3( edgeWidth, totalY + edgeWidth, StreetLayerHeight * 1.2f ),
+				direction: new Vector3( 0, 1, 0 ),
+				strength: EdgeStrength,
+				oscillates: true,
+				phase: 90f );
+
+			// West edge — wind blowing south
+			CreateZone( "Wind_Edge_West",
+				localPos: new Vector3( -edgeWidth * 0.5f + CellSpacing, totalY * 0.5f, StreetLevelZ ),
+				size: new Vector3( edgeWidth, totalY + edgeWidth, StreetLayerHeight * 1.2f ),
+				direction: new Vector3( 0, -1, 0 ),
+				strength: EdgeStrength,
+				oscillates: true,
+				phase: 270f );
+		}
 
 		// Main E-W avenues (across each Nth row, full length)
 		for ( int y = MainAvenueEvery; y < GridY; y += MainAvenueEvery )
