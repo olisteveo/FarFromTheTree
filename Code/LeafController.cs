@@ -145,6 +145,16 @@ public sealed class LeafController : Component
 	{
 		if ( Body is null ) return;
 
+		// During tutorial settle, freeze the leaf completely — no movement, no rotation,
+		// no input response. The HUD has the player's attention.
+		if ( IsInTutorialSettle )
+		{
+			Body.Velocity = Vector3.Zero;
+			Body.AngularVelocity = Vector3.Zero;
+			_windAccum = Vector3.Zero;
+			return;
+		}
+
 		CheckGrounded();
 		ApplyDrag();
 		ApplyTilt();           // player input rotates the leaf (always available)
