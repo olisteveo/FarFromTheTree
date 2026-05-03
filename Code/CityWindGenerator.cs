@@ -30,7 +30,7 @@ public sealed class CityWindGenerator : Component
 	public float EdgeStrength { get; set; } = 500f;
 
 	[Property, Group( "Density" ), Range( 0f, 1f )]
-	public float AlleyDensity { get; set; } = 0.35f;
+	public float AlleyDensity { get; set; } = 0.75f;
 
 	[Property, Group( "Density" )]
 	public bool GenerateEdgeZones { get; set; } = true;
@@ -38,17 +38,24 @@ public sealed class CityWindGenerator : Component
 	[Property, Group( "Density" ), Range( 0.5f, 5f )]
 	public float EdgeWidthMultiplier { get; set; } = 1.5f;
 
+	/// <summary>
+	/// Fraction of the cell that an alley zone covers. 1.0 means cells touch edge to edge,
+	/// no gaps. Higher means cells overlap.
+	/// </summary>
+	[Property, Group( "Density" ), Range( 0.5f, 2f )]
+	public float CellCoverage { get; set; } = 1.1f;
+
 	[Property, Group( "Oscillation" ), Range( 0f, 1f )]
 	public float OscillationChance { get; set; } = 0.4f;
 
 	[Property, Group( "Oscillation" ), Range( 2f, 20f )]
 	public float OscillationPeriod { get; set; } = 6f;
 
-	[Property, Group( "Vertical Layer" ), Range( 0f, 200f )]
-	public float StreetLevelZ { get; set; } = 80f;
+	[Property, Group( "Vertical Layer" ), Range( 0f, 500f )]
+	public float StreetLevelZ { get; set; } = 150f;
 
-	[Property, Group( "Vertical Layer" ), Range( 50f, 500f )]
-	public float StreetLayerHeight { get; set; } = 200f;
+	[Property, Group( "Vertical Layer" ), Range( 50f, 1000f )]
+	public float StreetLayerHeight { get; set; } = 500f;
 
 	[Property, Group( "Visualizer" )]
 	public bool AddVisualizers { get; set; } = true;
@@ -151,7 +158,7 @@ public sealed class CityWindGenerator : Component
 				CreateZone(
 					name: $"Wind_Alley_{x}_{y}",
 					localPos: new Vector3( x * CellSpacing, y * CellSpacing, StreetLevelZ ),
-					size: new Vector3( CellSpacing * 0.6f, CellSpacing * 0.6f, StreetLayerHeight * 0.7f ),
+					size: new Vector3( CellSpacing * CellCoverage, CellSpacing * CellCoverage, StreetLayerHeight ),
 					direction: new Vector3( dx, dy, 0 ),
 					strength: AlleyStrength,
 					oscillates: random.NextSingle() < OscillationChance,
