@@ -543,7 +543,7 @@
           "__guid": "9d094a61-e7d5-4e35-b8da-6dbd23c1a80f",
           "__enabled": true,
           "Flags": 0,
-          "AngularDamping": 0.5,
+          "AngularDamping": 1.5,
           "EnableImpactDamage": true,
           "EnhancedCcd": false,
           "Gravity": true,
@@ -571,6 +571,25 @@
           "OverrideMassCenter": false,
           "RigidbodyFlags": 0,
           "StartAsleep": false
+        },
+        {
+          "__type": "LeafController",
+          "__guid": "9198b354-6a75-4926-b77e-9cc421c30636",
+          "__enabled": true,
+          "Flags": 0,
+          "Body": null,
+          "DragCoefficient": 2.5,
+          "LiftCoefficient": 601.85187,
+          "MinDragMultiplier": 0.3,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "TumbleStrength": 3,
+          "WobbleFrequency": 1.5,
+          "WobbleStrength": 5
         }
       ],
       "Children": []

@@ -1,50 +1,58 @@
 /// <summary>
-/// The leaf. Aerodynamic forces + natural pendulum sway.
+/// The leaf. Aerodynamic forces + natural pendulum sway + safety caps.
 ///
 /// Physics model — designed to feel like a real falling leaf:
 ///   * Rigidbody handles gravity + collision (built-in)
 ///   * Drag opposes velocity, varying with leaf orientation:
-///       face-on (perpendicular to motion) = high drag like a parachute
-///       edge-on (parallel to motion)      = low drag like an arrow
-///   * Lift acts perpendicular to leaf SURFACE (local up, not world up):
-///       a tilted leaf gets pushed sideways → natural drift
-///       a flat leaf gets pushed up → glide
-///   * Wobble torque = sinusoidal force perpendicular to fall direction:
-///       drives the side-to-side pendulum motion of a real falling leaf
-///   * Tumble torque = small random torque for flutter
-///   * Wind zones add their own forces via AddWindForce()
-///
-/// Player tilt control is currently disabled — to be re-enabled with a
-/// torque-based approach (not WorldRotation override, which fights Rigidbody).
+///       face-on (perpendicular to motion) = high drag (parachute)
+///       edge-on (parallel to motion)      = low drag (arrow)
+///   * Lift acts in WORLD UP, scaled by how flat the leaf is. Always upward,
+///     never downward — prevents runaway acceleration when leaf inverts.
+///   * Drift = horizontal component of leaf surface direction × small force.
+///     Tilted leaf drifts sideways, flat leaf doesn't drift. Decoupled from
+///     lift so we can't get into a self-amplifying spiral.
+///   * Wobble torque = sinusoidal force perpendicular to fall direction —
+///     drives the side-to-side pendulum.
+///   * Tumble torque = small random flutter.
+///   * Hard caps on linear and angular velocity prevent any combination of
+///     forces from launching the leaf into orbit.
 /// </summary>
 public sealed class LeafController : Component
 {
 	[Property] public Rigidbody Body { get; set; }
 
 	[Property, Group( "Aerodynamics" ), Range( 0f, 5f )]
-	public float DragCoefficient { get; set; } = 1.2f;
+	public float DragCoefficient { get; set; } = 2.5f;
 
-	[Property, Group( "Aerodynamics" ), Range( 0f, 5000f )]
-	public float LiftCoefficient { get; set; } = 1500f;
+	[Property, Group( "Aerodynamics" ), Range( 0f, 500f )]
+	public float LiftCoefficient { get; set; } = 80f;
+
+	[Property, Group( "Aerodynamics" ), Range( 0f, 100f )]
+	public float DriftCoefficient { get; set; } = 30f;
 
 	[Property, Group( "Aerodynamics" ), Range( 0f, 1f )]
 	public float MinDragMultiplier { get; set; } = 0.3f;
 
-	[Property, Group( "Wobble" ), Range( 0f, 50f )]
-	public float WobbleStrength { get; set; } = 12f;
+	[Property, Group( "Wobble" ), Range( 0f, 20f )]
+	public float WobbleStrength { get; set; } = 3f;
 
-	[Property, Group( "Wobble" ), Range( 0f, 10f )]
-	public float WobbleFrequency { get; set; } = 2.5f;
+	[Property, Group( "Wobble" ), Range( 0f, 5f )]
+	public float WobbleFrequency { get; set; } = 1.5f;
 
-	[Property, Group( "Wobble" ), Range( 0f, 100f )]
-	public float TumbleStrength { get; set; } = 6f;
+	[Property, Group( "Wobble" ), Range( 0f, 20f )]
+	public float TumbleStrength { get; set; } = 1.5f;
+
+	[Property, Group( "Safety Caps" ), Range( 0f, 5000f )]
+	public float MaxLinearSpeed { get; set; } = 800f;
+
+	[Property, Group( "Safety Caps" ), Range( 0f, 1000f )]
+	public float MaxAngularSpeed { get; set; } = 360f;
 
 	private float _wobbleTime;
 	private Vector3 _windAccum;
 
 	/// <summary>
 	/// WindZone components call this each tick to push the leaf.
-	/// Accumulates over the frame so multiple overlapping zones add cleanly.
 	/// </summary>
 	public void AddWindForce( Vector3 force ) => _windAccum += force;
 
@@ -63,6 +71,7 @@ public sealed class LeafController : Component
 		ApplyLeafWobble();
 		ApplyTumble();
 		ApplyAccumulatedWind();
+		ClampVelocities();
 	}
 
 	private void ApplyAerodynamics()
@@ -74,25 +83,27 @@ public sealed class LeafController : Component
 		var velNormal = velocity / speed;
 		var leafSurface = WorldRotation.Up;
 
-		// Drag scales with how face-on the leaf is to its motion.
-		// Face-on (motionAlignment ≈ 1)   → parachute, max drag
-		// Edge-on (motionAlignment ≈ 0)   → arrow, MinDragMultiplier
+		// Drag with orientation-aware multiplier.
 		var motionAlignment = MathF.Abs( Vector3.Dot( leafSurface, velNormal ) );
 		var dragMultiplier = MinDragMultiplier + (1f - MinDragMultiplier) * motionAlignment;
 		var dragForce = -velNormal * (speed * speed * DragCoefficient * dragMultiplier * 0.001f);
 		Body.ApplyForce( dragForce );
 
-		// Lift acts along leaf's surface normal (its local up).
-		// Tilted leaf → lift pushes sideways → natural drift.
-		// Flat leaf  → lift pushes up → glides like a paper plane.
-		var liftForce = leafSurface * (speed * speed * LiftCoefficient * 0.0001f);
+		// Lift always points in WORLD up, scaled by leaf flatness.
+		// Never pushes down even if leaf inverts — keeps physics stable.
+		var flatness = MathF.Max( 0f, Vector3.Dot( leafSurface, Vector3.Up ) );
+		var liftForce = Vector3.Up * (speed * LiftCoefficient * flatness);
 		Body.ApplyForce( liftForce );
+
+		// Drift = horizontal projection of leaf surface direction.
+		// Tilted leaf gets pushed sideways in the direction it tilts.
+		var horizontalTilt = leafSurface.WithZ( 0 );
+		var driftForce = horizontalTilt * (speed * DriftCoefficient);
+		Body.ApplyForce( driftForce );
 	}
 
 	private void ApplyLeafWobble()
 	{
-		// Sinusoidal torque about an axis perpendicular to the fall direction.
-		// This is what makes a real leaf rock side to side as it falls.
 		var velocity = Body.Velocity;
 		if ( velocity.LengthSquared < 1f ) return;
 
@@ -104,8 +115,7 @@ public sealed class LeafController : Component
 		}
 		else
 		{
-			// Velocity is straight up/down — pick a horizontal axis that itself rotates
-			// over time so the leaf doesn't just rock on a single plane forever.
+			// Velocity is near vertical — pick a horizontal axis that rotates over time.
 			float angle = _wobbleTime * 0.5f;
 			wobbleAxis = new Vector3( MathF.Cos( angle ), MathF.Sin( angle ), 0 );
 		}
@@ -116,8 +126,6 @@ public sealed class LeafController : Component
 
 	private void ApplyTumble()
 	{
-		// Small random torque — flutter, makes the leaf feel alive
-		// even before any input or wobble.
 		var torque = new Vector3(
 			Game.Random.Float( -1f, 1f ),
 			Game.Random.Float( -1f, 1f ),
@@ -134,5 +142,18 @@ public sealed class LeafController : Component
 			Body.ApplyForce( _windAccum );
 		}
 		_windAccum = Vector3.Zero;
+	}
+
+	private void ClampVelocities()
+	{
+		if ( Body.Velocity.Length > MaxLinearSpeed )
+		{
+			Body.Velocity = Body.Velocity.Normal * MaxLinearSpeed;
+		}
+
+		if ( Body.AngularVelocity.Length > MaxAngularSpeed )
+		{
+			Body.AngularVelocity = Body.AngularVelocity.Normal * MaxAngularSpeed;
+		}
 	}
 }
