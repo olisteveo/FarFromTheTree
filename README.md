@@ -28,9 +28,9 @@ farfromthetree.sbproj # s&box project manifest
 
 The first time the editor opens the project it will auto-generate the `.csproj`, `.sln`, and `bin/`/`obj/` directories — all gitignored.
 
-## Known caveat: OneDrive path
+## Project location
 
-Project lives under `C:\Users\Ollie\OneDrive\Desktop\` — fine for now, but OneDrive can occasionally fight with build/cache files. The `.gitignore` excludes the heavy ones (`.sbox/`, `bin/`, `obj/`). If you start seeing weird sync conflicts during builds, move the project off OneDrive (e.g. `C:\Dev\FarFromTheTree`).
+`C:\Dev\FarFromTheTree` — outside OneDrive so build artifacts and the s&box editor cache don't fight with sync.
 
 ## Next
 
