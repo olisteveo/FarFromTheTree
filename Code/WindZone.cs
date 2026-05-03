@@ -21,13 +21,13 @@ public sealed class WindZone : Component, Component.ITriggerListener
 
 	void Component.ITriggerListener.OnTriggerEnter( Collider other )
 	{
-		var leaf = other.GameObject.Components.Get<LeafController>( FindMode.EnabledInSelfAndAncestors );
+		var leaf = other.GameObject.Components.Get<LeafController>();
 		if ( leaf is not null ) _occupants.Add( leaf );
 	}
 
 	void Component.ITriggerListener.OnTriggerExit( Collider other )
 	{
-		var leaf = other.GameObject.Components.Get<LeafController>( FindMode.EnabledInSelfAndAncestors );
+		var leaf = other.GameObject.Components.Get<LeafController>();
 		if ( leaf is not null ) _occupants.Remove( leaf );
 	}
 
