@@ -1,14 +1,14 @@
 /// <summary>
-/// Auto chase camera for the leaf. Two modes, switches automatically:
+/// Auto chase camera for the leaf with optional mouse orbit on top.
 ///
 ///   1. FALL mode — leaf is detaching/falling. Loose follow, lerps toward velocity
 ///      direction so we always see the leaf and the ground below.
 ///
 ///   2. GAMEPLAY mode — leaf has landed. Camera locks to a fixed framing pointing
-///      down GameplayDirection (the direction the first gust will blow). This is
-///      the "ready to play" view.
+///      down GameplayDirection (the direction the first gust will blow).
 ///
-/// No player input ever. Camera always shows where the leaf is going.
+/// In both modes, mouse movement orbits the camera around the leaf within limits.
+/// When mouse hasn't moved, camera slowly recenters back to the auto direction.
 /// </summary>
 public sealed class LeafCamera : Component
 {
@@ -29,14 +29,32 @@ public sealed class LeafCamera : Component
 
 	/// <summary>
 	/// World-space direction the camera looks toward in gameplay mode.
-	/// Should match the direction the first gust pushes the leaf, so the player
-	/// is always facing forward into the action.
+	/// Should match the direction the first gust pushes the leaf.
 	/// </summary>
 	[Property, Group( "Gameplay" )]
 	public Vector3 GameplayDirection { get; set; } = Vector3.Forward;
 
 	[Property, Group( "Gameplay" ), Range( 0.5f, 5f )]
 	public float TransitionDuration { get; set; } = 1.5f;
+
+	[Property, Group( "Mouse Orbit" )]
+	public bool EnableMouseOrbit { get; set; } = true;
+
+	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
+	public float MouseSensitivity { get; set; } = 1f;
+
+	[Property, Group( "Mouse Orbit" ), Range( 0f, 180f )]
+	public float MaxYawOffset { get; set; } = 80f;
+
+	[Property, Group( "Mouse Orbit" ), Range( 0f, 80f )]
+	public float MaxPitchOffset { get; set; } = 50f;
+
+	/// <summary>
+	/// How fast the orbit recenters when the player isn't moving the mouse.
+	/// 0 = never recenter (camera stays where you left it).
+	/// </summary>
+	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
+	public float RecenterRate { get; set; } = 0.8f;
 
 	[Property, Group( "FOV" ), Range( 30f, 90f )]
 	public float MinFov { get; set; } = 60f;
@@ -50,6 +68,8 @@ public sealed class LeafCamera : Component
 	private Rotation _trackedYaw = Rotation.Identity;
 	private bool _inGameplayMode;
 	private float _transitionElapsed;
+	private float _mouseYaw;
+	private float _mousePitch;
 
 	protected override void OnAwake()
 	{
@@ -60,11 +80,12 @@ public sealed class LeafCamera : Component
 	{
 		if ( Target is null ) return;
 
+		ProcessMouseInput();
+
 		var leafPos = Target.WorldPosition;
 		var leafController = Target.Components.Get<LeafController>();
 		var hasLanded = leafController?.HasLanded ?? false;
 
-		// Detect transition into gameplay mode
 		if ( hasLanded && !_inGameplayMode )
 		{
 			_inGameplayMode = true;
@@ -82,6 +103,32 @@ public sealed class LeafCamera : Component
 		}
 	}
 
+	private void ProcessMouseInput()
+	{
+		if ( !EnableMouseOrbit )
+		{
+			_mouseYaw = 0;
+			_mousePitch = 0;
+			return;
+		}
+
+		var look = Input.AnalogLook;
+		var dx = look.yaw * MouseSensitivity;
+		var dy = look.pitch * MouseSensitivity;
+
+		_mouseYaw = (_mouseYaw + dx).Clamp( -MaxYawOffset, MaxYawOffset );
+		_mousePitch = (_mousePitch + dy).Clamp( -MaxPitchOffset, MaxPitchOffset );
+
+		// Recenter when no input and recenter rate > 0
+		if ( MathF.Abs( dx ) < 0.001f && MathF.Abs( dy ) < 0.001f && RecenterRate > 0f )
+		{
+			_mouseYaw = _mouseYaw.LerpTo( 0f, Time.Delta * RecenterRate );
+			_mousePitch = _mousePitch.LerpTo( 0f, Time.Delta * RecenterRate );
+		}
+	}
+
+	private Rotation OrbitRotation => Rotation.From( -_mousePitch, _mouseYaw, 0 );
+
 	private void UpdateFollowMode( Vector3 leafPos )
 	{
 		var leafBody = Target.Components.Get<Rigidbody>();
@@ -95,7 +142,9 @@ public sealed class LeafCamera : Component
 			_trackedYaw = Rotation.Lerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
 		}
 
-		var backOffset = _trackedYaw.Forward * -Distance;
+		// Apply mouse orbit on top of the auto-tracked direction
+		var combined = _trackedYaw * OrbitRotation;
+		var backOffset = combined.Forward * -Distance;
 		var upOffset = Vector3.Up * Height;
 		var desiredPos = leafPos + backOffset + upOffset;
 
@@ -111,20 +160,18 @@ public sealed class LeafCamera : Component
 
 	private void UpdateGameplayMode( Vector3 leafPos )
 	{
-		// Camera locked to a fixed framing pointed along GameplayDirection.
-		// During TransitionDuration, lerp gently from current pose to the locked one,
-		// then settle.
 		_transitionElapsed += Time.Delta;
 
 		var dir = GameplayDirection.LengthSquared > 0.01f
 			? GameplayDirection.Normal
 			: Vector3.Forward;
 
-		var targetPos = leafPos - (dir * Distance) + (Vector3.Up * Height);
+		// Apply mouse orbit on top of the gameplay direction
+		var baseRot = Rotation.LookAt( dir );
+		var combined = baseRot * OrbitRotation;
+		var targetPos = leafPos - (combined.Forward * Distance) + (Vector3.Up * Height);
 		var targetRot = Rotation.LookAt( leafPos - targetPos, Vector3.Up );
 
-		// Slower, smoother transition while we're still settling. After TransitionDuration,
-		// the lerp tightens up to a hard lock.
 		var t = (_transitionElapsed / TransitionDuration).Clamp( 0f, 1f );
 		var followRate = MathX.Lerp( 2f, 12f, t );
 

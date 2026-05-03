@@ -14889,7 +14889,11 @@
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
           "OnComponentUpdate": null,
+          "Oscillates": false,
+          "OscillationPeriod": 4,
+          "PhaseOffsetDeg": 0,
           "RequireFirstLanding": true,
+          "Reverses": true,
           "Strength": 600
         },
         {
@@ -14969,7 +14973,11 @@
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
           "OnComponentUpdate": null,
+          "Oscillates": false,
+          "OscillationPeriod": 4,
+          "PhaseOffsetDeg": 0,
           "RequireFirstLanding": true,
+          "Reverses": true,
           "Strength": 700
         },
         {
@@ -15049,7 +15057,11 @@
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
           "OnComponentUpdate": null,
+          "Oscillates": false,
+          "OscillationPeriod": 4,
+          "PhaseOffsetDeg": 0,
           "RequireFirstLanding": false,
+          "Reverses": true,
           "Strength": 700
         },
         {
@@ -15129,7 +15141,11 @@
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
           "OnComponentUpdate": null,
+          "Oscillates": false,
+          "OscillationPeriod": 4,
+          "PhaseOffsetDeg": 0,
           "RequireFirstLanding": false,
+          "Reverses": true,
           "Strength": 500
         },
         {
