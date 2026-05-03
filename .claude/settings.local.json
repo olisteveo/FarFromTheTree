@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(systeminfo)",
+      "Bash(wmic cpu:*)",
+      "Bash(wmic memorychip:*)",
+      "Bash(wmic path:*)",
+      "Bash(wmic baseboard:*)",
+      "Bash(wmic memphysical:*)",
+      "WebFetch(domain:www.amazon.co.uk)",
+      "Bash(wmic logicaldisk:*)",
+      "Bash(taskkill //f //im \"vs_installer.exe\")",
+      "Bash(taskkill //f //im \"vs_installershell.exe\")",
+      "Bash(gh repo:*)",
+      "Bash(where gh:*)",
+      "Bash(cmd.exe /c \"where gh\")",
+      "Bash(\"/c/Program Files/Epic Games/UE_5.7/Engine/Build/BatchFiles/Build.bat\" FarFromTheTree01Editor Win64 Development \"C:/UnrealProjects/FarFromTheTree01/FarFromTheTree01.uproject\" -WaitMutex)",
+      "PowerShell($vs = @\\(\\); $vsPaths = @\\('C:\\\\Program Files\\\\Microsoft Visual Studio\\\\2022', 'C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\2022'\\); foreach \\($p in $vsPaths\\) { if \\(Test-Path $p\\) { Get-ChildItem $p -ErrorAction SilentlyContinue | ForEach-Object { $vs += \"$\\($_.Name\\) at $\\($_.FullName\\)\" } } }; if \\($vs.Count -eq 0\\) { \"VS2022: not found in standard locations\" } else { \"VS2022: $\\($vs -join '; '\\)\" }; \"---\"; $vswhere = 'C:\\\\Program Files \\(x86\\)\\\\Microsoft Visual Studio\\\\Installer\\\\vswhere.exe'; if \\(Test-Path $vswhere\\) { & $vswhere -latest -format json | ConvertFrom-Json | Select-Object displayName, installationVersion, installationPath | Format-List })",
+      "PowerShell(\"GIT:\")",
+      "PowerShell(\"---\")",
+      "PowerShell(\"DOTNET SDKs:\")",
+      "PowerShell(\"DOTNET RUNTIMES:\")"
+    ]
+  }
+}
