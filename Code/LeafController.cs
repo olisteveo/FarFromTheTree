@@ -275,6 +275,10 @@ public sealed class LeafController : Component
 
 	private void ApplyTumble()
 	{
+		// Don't add random tumble while player is actively tilting — the random torque
+		// would fight the player's input and make control feel mushy.
+		if ( Input.AnalogMove.LengthSquared > 0.01f ) return;
+
 		var torque = new Vector3(
 			Game.Random.Float( -1f, 1f ),
 			Game.Random.Float( -1f, 1f ),
