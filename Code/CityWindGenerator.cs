@@ -42,8 +42,8 @@ public sealed class CityWindGenerator : Component
 	/// Fraction of the cell that an alley zone covers. 1.0 means cells touch edge to edge,
 	/// no gaps. Higher means cells overlap.
 	/// </summary>
-	[Property, Group( "Density" ), Range( 0.5f, 2f )]
-	public float CellCoverage { get; set; } = 1.1f;
+	[Property, Group( "Density" ), Range( 0.5f, 3f )]
+	public float CellCoverage { get; set; } = 1.6f;
 
 	[Property, Group( "Oscillation" ), Range( 0f, 1f )]
 	public float OscillationChance { get; set; } = 0.4f;
@@ -51,11 +51,11 @@ public sealed class CityWindGenerator : Component
 	[Property, Group( "Oscillation" ), Range( 2f, 20f )]
 	public float OscillationPeriod { get; set; } = 6f;
 
-	[Property, Group( "Vertical Layer" ), Range( 0f, 500f )]
-	public float StreetLevelZ { get; set; } = 150f;
+	[Property, Group( "Vertical Layer" ), Range( 0f, 1000f )]
+	public float StreetLevelZ { get; set; } = 400f;
 
-	[Property, Group( "Vertical Layer" ), Range( 50f, 1000f )]
-	public float StreetLayerHeight { get; set; } = 500f;
+	[Property, Group( "Vertical Layer" ), Range( 50f, 3000f )]
+	public float StreetLayerHeight { get; set; } = 1500f;
 
 	[Property, Group( "Visualizer" )]
 	public bool AddVisualizers { get; set; } = true;
