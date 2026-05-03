@@ -17,6 +17,14 @@ public sealed class WindZone : Component, Component.ITriggerListener
 	[Property, Group( "Wind" )]
 	public bool LocalDirection { get; set; } = false;
 
+	/// <summary>
+	/// If true, this wind zone only applies force AFTER the leaf has touched the ground
+	/// at least once. Use this for the "first gust" zone — prevents it from catching the
+	/// leaf mid-fall and short-circuiting the cinematic landing moment.
+	/// </summary>
+	[Property, Group( "Activation" )]
+	public bool RequireFirstLanding { get; set; } = false;
+
 	private readonly HashSet<LeafController> _occupants = new();
 
 	void Component.ITriggerListener.OnTriggerEnter( Collider other )
@@ -43,8 +51,10 @@ public sealed class WindZone : Component, Component.ITriggerListener
 
 		foreach ( var leaf in _occupants )
 		{
-			if ( leaf.IsValid )
-				leaf.AddWindForce( force );
+			if ( !leaf.IsValid ) continue;
+			if ( RequireFirstLanding && !leaf.HasLanded ) continue;
+
+			leaf.AddWindForce( force );
 		}
 	}
 }
