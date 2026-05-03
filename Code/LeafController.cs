@@ -20,16 +20,13 @@ public sealed class LeafController : Component
 	public float DragCoefficient { get; set; } = 0.8f;
 
 	[Property, Group( "Sway" ), Range( 0f, 500f )]
-	public float SwayStrength { get; set; } = 80f;
+	public float SwayStrength { get; set; } = 60f;
 
 	[Property, Group( "Sway" ), Range( 0.1f, 5f )]
-	public float MinSwayDuration { get; set; } = 0.5f;
-
-	[Property, Group( "Sway" ), Range( 0.5f, 10f )]
-	public float MaxSwayDuration { get; set; } = 2f;
+	public float SwayFrequency { get; set; } = 0.8f;
 
 	[Property, Group( "Sway" ), Range( 0f, 20f )]
-	public float TumbleStrength { get; set; } = 2f;
+	public float TumbleStrength { get; set; } = 1.5f;
 
 	[Property, Group( "Safety" ), Range( 0f, 5000f )]
 	public float MaxLinearSpeed { get; set; } = 300f;
@@ -37,9 +34,8 @@ public sealed class LeafController : Component
 	[Property, Group( "Safety" ), Range( 0f, 1000f )]
 	public float MaxAngularSpeed { get; set; } = 180f;
 
-	private Vector3 _swayDirection;
-	private float _swayElapsed;
-	private float _swayDuration = 1f;
+	private Vector3 _pendulumAxis;
+	private float _pendulumTime;
 	private Vector3 _windAccum;
 
 	public void AddWindForce( Vector3 force ) => _windAccum += force;
@@ -47,7 +43,16 @@ public sealed class LeafController : Component
 	protected override void OnAwake()
 	{
 		Body ??= GetComponent<Rigidbody>();
-		PickNewSwayDirection();
+		PickPendulumAxis();
+	}
+
+	private void PickPendulumAxis()
+	{
+		// Pick a random horizontal direction. Leaf will swing back and forth
+		// along this axis as it falls — natural pendulum feel.
+		var angle = Game.Random.Float( 0f, MathF.PI * 2f );
+		_pendulumAxis = new Vector3( MathF.Cos( angle ), MathF.Sin( angle ), 0f );
+		_pendulumTime = 0f;
 	}
 
 	protected override void OnFixedUpdate()
@@ -73,29 +78,11 @@ public sealed class LeafController : Component
 
 	private void ApplySway()
 	{
-		// Periodically pick a new random horizontal direction to drift in.
-		_swayElapsed += Time.Delta;
-		if ( _swayElapsed >= _swayDuration )
-		{
-			PickNewSwayDirection();
-		}
-
-		Body.ApplyForce( _swayDirection * SwayStrength );
-	}
-
-	private void PickNewSwayDirection()
-	{
-		_swayDirection = new Vector3(
-			Game.Random.Float( -1f, 1f ),
-			Game.Random.Float( -1f, 1f ),
-			0f
-		);
-
-		if ( _swayDirection.LengthSquared > 0.01f )
-			_swayDirection = _swayDirection.Normal;
-
-		_swayElapsed = 0f;
-		_swayDuration = Game.Random.Float( MinSwayDuration, MaxSwayDuration );
+		// Smooth sinusoidal force along a fixed horizontal axis — pendulum motion.
+		// The leaf swings to one side, decelerates, swings back, repeats.
+		_pendulumTime += Time.Delta;
+		var swingForce = MathF.Sin( _pendulumTime * SwayFrequency * MathF.PI * 2f ) * SwayStrength;
+		Body.ApplyForce( _pendulumAxis * swingForce );
 	}
 
 	private void ApplyTumble()
