@@ -166,7 +166,8 @@ public sealed class CityGridGenerator : Component
 	[Button( "Clear" )]
 	public void ClearGenerated()
 	{
-		var children = GameObject.Children.ToList();
+		// Only clear children we spawned (named "Building_...")
+		var children = GameObject.Children.Where( c => c.Name.StartsWith( "Building_" ) ).ToList();
 		foreach ( var child in children )
 		{
 			child.Destroy();

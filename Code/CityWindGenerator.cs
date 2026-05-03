@@ -141,7 +141,8 @@ public sealed class CityWindGenerator : Component
 	[Button( "Clear" )]
 	public void ClearGenerated()
 	{
-		var children = GameObject.Children.ToList();
+		// Only clear children we spawned (named "Wind_...")
+		var children = GameObject.Children.Where( c => c.Name.StartsWith( "Wind_" ) ).ToList();
 		foreach ( var c in children )
 		{
 			c.Destroy();
