@@ -148,4 +148,29 @@ public sealed class CityWindGenerator : Component
 			c.Destroy();
 		}
 	}
+
+	/// <summary>
+	/// Walks the entire scene and adds a WindVisualizer to every WindZone that doesn't
+	/// already have one. Useful for retrofitting visualization onto manually placed zones.
+	/// </summary>
+	[Button( "Visualize All Wind Zones In Scene" )]
+	public void VisualizeAllWindZones()
+	{
+		int added = 0;
+		var allZones = Scene.GetAllComponents<WindZone>();
+		foreach ( var zone in allZones )
+		{
+			var hasVis = zone.GameObject.Components.Get<WindVisualizer>();
+			if ( hasVis is not null ) continue;
+
+			var box = zone.GameObject.Components.Get<BoxCollider>();
+			if ( box is null ) continue;
+
+			var vis = zone.GameObject.Components.Create<WindVisualizer>();
+			vis.Zone = zone;
+			vis.Box = box;
+			added++;
+		}
+		Log.Info( $"[CityWindGenerator] Added WindVisualizer to {added} zones" );
+	}
 }
