@@ -67,6 +67,13 @@ public sealed class CityWindGenerator : Component
 	[Property, Group( "Flow Direction" ), Range( 0f, 1f )]
 	public float DirectionVariation { get; set; } = 0.3f;
 
+	/// <summary>
+	/// Seed for reproducible wind layout. Same seed = same wind every Generate.
+	/// 0 means random each click.
+	/// </summary>
+	[Property, Group( "Flow Direction" )]
+	public int Seed { get; set; } = 12345;
+
 	[Property, Group( "Vertical Layer" ), Range( 0f, 1000f )]
 	public float StreetLevelZ { get; set; } = 400f;
 
@@ -87,7 +94,7 @@ public sealed class CityWindGenerator : Component
 	public void Generate()
 	{
 		ClearGenerated();
-		var random = new Random();
+		var random = Seed != 0 ? new Random( Seed ) : new Random();
 		var totalX = GridX * CellSpacing;
 		var totalY = GridY * CellSpacing;
 

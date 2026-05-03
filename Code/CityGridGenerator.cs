@@ -42,6 +42,13 @@ public sealed class CityGridGenerator : Component
 	[Property, Group( "Maze Layout" ), Range( 0f, 0.5f )]
 	public float DeadEndBlockChance { get; set; } = 0.15f;
 
+	/// <summary>
+	/// Seed for reproducible generation. Same seed = same layout every Generate.
+	/// 0 means use a random seed (different layout each click).
+	/// </summary>
+	[Property, Group( "Maze Layout" )]
+	public int Seed { get; set; } = 12345;
+
 	[Property, Group( "Visuals" )]
 	public Color BuildingTintMin { get; set; } = new Color( 0.35f, 0.35f, 0.4f );
 
@@ -54,7 +61,7 @@ public sealed class CityGridGenerator : Component
 		ClearGenerated();
 
 		var spacing = BuildingSize + StreetWidth;
-		var random = new Random();
+		var random = Seed != 0 ? new Random( Seed ) : new Random();
 
 		// Cell map: true = building, false = street
 		var hasBuilding = new bool[GridX, GridY];
