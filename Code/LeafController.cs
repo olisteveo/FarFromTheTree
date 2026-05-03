@@ -34,9 +34,13 @@ public sealed class LeafController : Component
 	[Property, Group( "Safety" ), Range( 0f, 1000f )]
 	public float MaxAngularSpeed { get; set; } = 180f;
 
+	[Property, Group( "Ground" ), Range( 1f, 50f )]
+	public float GroundCheckDistance { get; set; } = 8f;
+
 	private Vector3 _pendulumAxis;
 	private float _pendulumTime;
 	private Vector3 _windAccum;
+	private bool _hasLanded;
 
 	public void AddWindForce( Vector3 force ) => _windAccum += force;
 
@@ -59,11 +63,36 @@ public sealed class LeafController : Component
 	{
 		if ( Body is null ) return;
 
+		CheckGrounded();
+
+		if ( _hasLanded )
+		{
+			// Leaf has settled — only wind can disturb it. Drag/sway/tumble off.
+			ApplyAccumulatedWind();
+			return;
+		}
+
 		ApplyDrag();
 		ApplySway();
 		ApplyTumble();
 		ApplyAccumulatedWind();
 		ClampVelocities();
+	}
+
+	private void CheckGrounded()
+	{
+		if ( _hasLanded ) return;
+
+		var rayStart = WorldPosition;
+		var rayEnd = WorldPosition + Vector3.Down * GroundCheckDistance;
+		var result = Scene.Trace.Ray( rayStart, rayEnd )
+			.IgnoreGameObjectHierarchy( GameObject )
+			.Run();
+
+		if ( result.Hit )
+		{
+			_hasLanded = true;
+		}
 	}
 
 	private void ApplyDrag()
