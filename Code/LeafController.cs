@@ -60,7 +60,7 @@ public sealed class LeafController : Component
 	/// feel, high for "kite" feel.
 	/// </summary>
 	[Property, Group( "Safety" ), Range( 100f, 20000f )]
-	public float MaxWindForcePerTick { get; set; } = 2000f;
+	public float MaxWindForcePerTick { get; set; } = 4000f;
 
 	[Property, Group( "Ground" ), Range( 1f, 50f )]
 	public float GroundCheckDistance { get; set; } = 8f;

@@ -21,10 +21,10 @@ public sealed class CityWindGenerator : Component
 	public int MainAvenueEvery { get; set; } = 5;
 
 	[Property, Group( "Wind Strengths" ), Range( 100f, 2000f )]
-	public float MainAvenueStrength { get; set; } = 700f;
+	public float MainAvenueStrength { get; set; } = 800f;
 
 	[Property, Group( "Wind Strengths" ), Range( 50f, 1500f )]
-	public float AlleyStrength { get; set; } = 350f;
+	public float AlleyStrength { get; set; } = 500f;
 
 	[Property, Group( "Wind Strengths" ), Range( 100f, 2000f )]
 	public float EdgeStrength { get; set; } = 500f;
@@ -65,7 +65,7 @@ public sealed class CityWindGenerator : Component
 	/// 0.2-0.4 = mostly directional with some variation (recommended).
 	/// </summary>
 	[Property, Group( "Flow Direction" ), Range( 0f, 1f )]
-	public float DirectionVariation { get; set; } = 0.3f;
+	public float DirectionVariation { get; set; } = 0.15f;
 
 	/// <summary>
 	/// Seed for reproducible wind layout. Same seed = same wind every Generate.
