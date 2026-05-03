@@ -4250,7 +4250,7 @@
       "__version": 2,
       "Flags": 0,
       "Name": "Wind_1_Catch",
-      "Position": "0,0,20",
+      "Position": "0,0,30",
       "Rotation": "0,0,0,1",
       "Scale": "1,1,1",
       "Tags": "",
@@ -4282,7 +4282,7 @@
           "OnTriggerEnter": null,
           "OnTriggerExit": null,
           "RollingResistance": null,
-          "Scale": "250,250,80",
+          "Scale": "180,250,100",
           "Static": false,
           "Surface": null,
           "SurfaceVelocity": "0,0,0"
@@ -4302,6 +4302,25 @@
           "OnComponentUpdate": null,
           "RequireFirstLanding": true,
           "Strength": 600
+        },
+        {
+          "__type": "WindVisualizer",
+          "__guid": "654cfb25-1dbf-4431-8f78-ccece0519e3e",
+          "__enabled": true,
+          "Flags": 0,
+          "Box": null,
+          "Color": "0.85,0.95,1,0.6",
+          "Count": 60,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Size": 3,
+          "SpeedMultiplier": 6,
+          "StretchAlongFlow": 4,
+          "Zone": null
         }
       ],
       "Children": []
@@ -4311,7 +4330,7 @@
       "__version": 2,
       "Flags": 0,
       "Name": "Wind_2_Updraft",
-      "Position": "90,0,50",
+      "Position": "200,0,80",
       "Rotation": "0,0,0,1",
       "Scale": "1,1,1",
       "Tags": "",
@@ -4343,7 +4362,7 @@
           "OnTriggerEnter": null,
           "OnTriggerExit": null,
           "RollingResistance": null,
-          "Scale": "120,200,200",
+          "Scale": "150,200,200",
           "Static": false,
           "Surface": null,
           "SurfaceVelocity": "0,0,0"
@@ -4362,7 +4381,26 @@
           "OnComponentStart": null,
           "OnComponentUpdate": null,
           "RequireFirstLanding": false,
-          "Strength": 400
+          "Strength": 700
+        },
+        {
+          "__type": "WindVisualizer",
+          "__guid": "38a6af8a-7a39-4673-8c00-823445cc6e5b",
+          "__enabled": true,
+          "Flags": 0,
+          "Box": null,
+          "Color": "0.85,0.95,1,0.6",
+          "Count": 60,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Size": 3,
+          "SpeedMultiplier": 6,
+          "StretchAlongFlow": 4,
+          "Zone": null
         }
       ],
       "Children": []
@@ -4372,7 +4410,7 @@
       "__version": 2,
       "Flags": 0,
       "Name": "Wind_3_Crosswind",
-      "Position": "180,0,100",
+      "Position": "420,0,130",
       "Rotation": "0,0,0,1",
       "Scale": "1,1,1",
       "Tags": "",
@@ -4404,7 +4442,7 @@
           "OnTriggerEnter": null,
           "OnTriggerExit": null,
           "RollingResistance": null,
-          "Scale": "150,250,150",
+          "Scale": "150,300,200",
           "Static": false,
           "Surface": null,
           "SurfaceVelocity": "0,0,0"
@@ -4423,7 +4461,26 @@
           "OnComponentStart": null,
           "OnComponentUpdate": null,
           "RequireFirstLanding": false,
-          "Strength": 500
+          "Strength": 700
+        },
+        {
+          "__type": "WindVisualizer",
+          "__guid": "3130cf30-5c26-4e08-92ff-eaeee668deeb",
+          "__enabled": true,
+          "Flags": 0,
+          "Box": null,
+          "Color": "0.85,0.95,1,0.6",
+          "Count": 60,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Size": 3,
+          "SpeedMultiplier": 6,
+          "StretchAlongFlow": 4,
+          "Zone": null
         }
       ],
       "Children": []
@@ -4433,7 +4490,7 @@
       "__version": 2,
       "Flags": 0,
       "Name": "Wind_4_Drive",
-      "Position": "260,0,100",
+      "Position": "620,0,150",
       "Rotation": "0,0,0,1",
       "Scale": "1,1,1",
       "Tags": "",
@@ -4484,7 +4541,26 @@
           "OnComponentStart": null,
           "OnComponentUpdate": null,
           "RequireFirstLanding": false,
-          "Strength": 800
+          "Strength": 500
+        },
+        {
+          "__type": "WindVisualizer",
+          "__guid": "63d9865c-b2fe-4d66-ae6c-39d1f5185aaa",
+          "__enabled": true,
+          "Flags": 0,
+          "Box": null,
+          "Color": "0.85,0.95,1,0.6",
+          "Count": 60,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Size": 3,
+          "SpeedMultiplier": 6,
+          "StretchAlongFlow": 4,
+          "Zone": null
         }
       ],
       "Children": []

@@ -11,20 +11,20 @@ public sealed class WindVisualizer : Component
 	[Property] public WindZone Zone { get; set; }
 	[Property] public BoxCollider Box { get; set; }
 
-	[Property, Group( "Particles" ), Range( 5, 300 )]
-	public int Count { get; set; } = 60;
+	[Property, Group( "Particles" ), Range( 5, 500 )]
+	public int Count { get; set; } = 120;
 
-	[Property, Group( "Particles" ), Range( 1f, 20f )]
-	public float Size { get; set; } = 3f;
+	[Property, Group( "Particles" ), Range( 0.2f, 10f )]
+	public float Thickness { get; set; } = 0.6f;
+
+	[Property, Group( "Particles" ), Range( 5f, 80f )]
+	public float Length { get; set; } = 25f;
 
 	[Property, Group( "Particles" )]
-	public Color Color { get; set; } = new Color( 0.85f, 0.95f, 1f, 0.6f );
+	public Color Color { get; set; } = new Color( 1f, 1f, 1f, 0.45f );
 
 	[Property, Group( "Particles" ), Range( 0.1f, 50f )]
-	public float SpeedMultiplier { get; set; } = 6f;
-
-	[Property, Group( "Particles" ), Range( 0.5f, 10f )]
-	public float StretchAlongFlow { get; set; } = 4f;
+	public float SpeedMultiplier { get; set; } = 8f;
 
 	private readonly List<GameObject> _particles = new();
 	private Vector3 _boxHalf;
@@ -54,14 +54,18 @@ public sealed class WindVisualizer : Component
 	private void SpawnParticles()
 	{
 		var dirLocal = Zone.Direction.Normal;
-		var stretchScale = Vector3.One + (dirLocal * (StretchAlongFlow - 1f)).Abs();
+		var orientation = Rotation.LookAt( dirLocal );
+		var thicknessScale = Thickness / 50f;
+		var lengthScale = Length / 50f;
+		var streakScale = new Vector3( lengthScale, thicknessScale, thicknessScale );
 
 		for ( int i = 0; i < Count; i++ )
 		{
-			var p = new GameObject( true, $"WindParticle_{i}" );
+			var p = new GameObject( true, $"WindStreak_{i}" );
 			p.SetParent( GameObject );
 			p.LocalPosition = RandomLocalPos();
-			p.LocalScale = stretchScale * (Size / 50f);
+			p.LocalRotation = orientation;
+			p.LocalScale = streakScale;
 
 			var renderer = p.Components.Create<ModelRenderer>();
 			renderer.Model = Model.Load( "models/dev/box.vmdl" );
