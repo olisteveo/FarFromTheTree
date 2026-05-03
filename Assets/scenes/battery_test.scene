@@ -533,7 +533,7 @@
           "OnTriggerEnter": null,
           "OnTriggerExit": null,
           "RollingResistance": null,
-          "Scale": "50,50,50",
+          "Scale": "3,3,1",
           "Static": false,
           "Surface": null,
           "SurfaceVelocity": "0,0,0"
@@ -547,7 +547,7 @@
           "EnableImpactDamage": true,
           "EnhancedCcd": false,
           "Gravity": true,
-          "GravityScale": 1,
+          "GravityScale": 0.3,
           "ImpactDamage": 0,
           "LinearDamping": 0,
           "Locking": {

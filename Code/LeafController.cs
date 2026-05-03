@@ -1,32 +1,25 @@
 /// <summary>
-/// The leaf. Reads tilt input (WASD / left-stick), applies aerodynamic forces.
+/// The leaf. Aerodynamic forces + natural pendulum sway.
 ///
-/// Physics model (intentionally simple — feel beats sim accuracy):
+/// Physics model — designed to feel like a real falling leaf:
 ///   * Rigidbody handles gravity + collision (built-in)
-///   * Drag opposes velocity, scaled by speed²        — slows the leaf down
-///   * Lift always points up, scaled by speed² × flatness  — flat leaf glides, vertical leaf falls
-///   * Tilt input rotates the leaf (smoothed) — pitch for nose up/down, roll for banking
-///   * Yaw eases toward direction of travel — leaf "faces" where it's going
-///   * Tumble torque applied when no input — passive flutter
+///   * Drag opposes velocity, varying with leaf orientation:
+///       face-on (perpendicular to motion) = high drag like a parachute
+///       edge-on (parallel to motion)      = low drag like an arrow
+///   * Lift acts perpendicular to leaf SURFACE (local up, not world up):
+///       a tilted leaf gets pushed sideways → natural drift
+///       a flat leaf gets pushed up → glide
+///   * Wobble torque = sinusoidal force perpendicular to fall direction:
+///       drives the side-to-side pendulum motion of a real falling leaf
+///   * Tumble torque = small random torque for flutter
 ///   * Wind zones add their own forces via AddWindForce()
 ///
-/// Convention: forward input (W / stick up) = nose DOWN = dive (real aerodynamics).
+/// Player tilt control is currently disabled — to be re-enabled with a
+/// torque-based approach (not WorldRotation override, which fights Rigidbody).
 /// </summary>
 public sealed class LeafController : Component
 {
 	[Property] public Rigidbody Body { get; set; }
-
-	[Property, Group( "Tilt" ), Range( 0f, 90f )]
-	public float MaxPitchDeg { get; set; } = 60f;
-
-	[Property, Group( "Tilt" ), Range( 0f, 90f )]
-	public float MaxRollDeg { get; set; } = 70f;
-
-	[Property, Group( "Tilt" ), Range( 0f, 20f )]
-	public float TiltLerpRate { get; set; } = 6f;
-
-	[Property, Group( "Tilt" ), Range( 0f, 10f )]
-	public float YawLerpRate { get; set; } = 2f;
 
 	[Property, Group( "Aerodynamics" ), Range( 0f, 5f )]
 	public float DragCoefficient { get; set; } = 1.2f;
@@ -34,14 +27,19 @@ public sealed class LeafController : Component
 	[Property, Group( "Aerodynamics" ), Range( 0f, 5000f )]
 	public float LiftCoefficient { get; set; } = 1500f;
 
-	[Property, Group( "Aerodynamics" ), Range( 0f, 100f )]
+	[Property, Group( "Aerodynamics" ), Range( 0f, 1f )]
+	public float MinDragMultiplier { get; set; } = 0.3f;
+
+	[Property, Group( "Wobble" ), Range( 0f, 50f )]
+	public float WobbleStrength { get; set; } = 12f;
+
+	[Property, Group( "Wobble" ), Range( 0f, 10f )]
+	public float WobbleFrequency { get; set; } = 2.5f;
+
+	[Property, Group( "Wobble" ), Range( 0f, 100f )]
 	public float TumbleStrength { get; set; } = 6f;
 
-	[Property, Group( "Aerodynamics" ), Range( 0f, 50f )]
-	public float MinSpeedForYawTracking { get; set; } = 5f;
-
-	private float _currentPitch;
-	private float _currentRoll;
+	private float _wobbleTime;
 	private Vector3 _windAccum;
 
 	/// <summary>
@@ -59,42 +57,12 @@ public sealed class LeafController : Component
 	{
 		if ( Body is null ) return;
 
-		// Tilt control disabled for first-flight gravity test.
-		// Forcing WorldRotation each tick fights Source 2's Rigidbody simulation —
-		// causes the body to freeze in place and the camera to jitter.
-		// Re-enable via physics-friendly torque-based control once gravity works.
-		// ApplyTilt();
+		_wobbleTime += Time.Delta;
 
 		ApplyAerodynamics();
+		ApplyLeafWobble();
 		ApplyTumble();
 		ApplyAccumulatedWind();
-	}
-
-	private void ApplyTilt()
-	{
-		var input = Input.AnalogMove;
-
-		// Forward (input.y > 0) = nose down = negative pitch
-		// Right (input.x > 0)   = roll right = positive roll
-		var targetPitch = -input.y * MaxPitchDeg;
-		var targetRoll = input.x * MaxRollDeg;
-
-		_currentPitch = _currentPitch.LerpTo( targetPitch, Time.Delta * TiltLerpRate );
-		_currentRoll = _currentRoll.LerpTo( targetRoll, Time.Delta * TiltLerpRate );
-
-		// Yaw eases toward velocity direction once we're moving — leaf naturally
-		// rotates to face where it's going so the player sees forward.
-		var velocity = Body.Velocity;
-		var horizontalSpeed = velocity.WithZ( 0 ).Length;
-
-		float yaw = WorldRotation.Yaw();
-		if ( horizontalSpeed > MinSpeedForYawTracking )
-		{
-			float targetYaw = velocity.WithZ( 0 ).EulerAngles.yaw;
-			yaw = yaw.LerpDegreesTo( targetYaw, Time.Delta * YawLerpRate );
-		}
-
-		WorldRotation = Rotation.From( _currentPitch, yaw, _currentRoll );
 	}
 
 	private void ApplyAerodynamics()
@@ -103,24 +71,43 @@ public sealed class LeafController : Component
 		var speed = velocity.Length;
 		if ( speed < 0.1f ) return;
 
-		// Quadratic drag opposing motion. The 0.001 is just unit-scaling so
-		// DragCoefficient stays in a tunable 0-5 range.
-		var dragForce = -velocity.Normal * (speed * speed * DragCoefficient * 0.001f);
+		var velNormal = velocity / speed;
+		var leafSurface = WorldRotation.Up;
+
+		// Drag scales with how face-on the leaf is to its motion.
+		// Face-on (motionAlignment ≈ 1)   → parachute, max drag
+		// Edge-on (motionAlignment ≈ 0)   → arrow, MinDragMultiplier
+		var motionAlignment = MathF.Abs( Vector3.Dot( leafSurface, velNormal ) );
+		var dragMultiplier = MinDragMultiplier + (1f - MinDragMultiplier) * motionAlignment;
+		var dragForce = -velNormal * (speed * speed * DragCoefficient * dragMultiplier * 0.001f);
 		Body.ApplyForce( dragForce );
 
-		// Lift: how flat is the leaf relative to horizontal?
-		// Dot of leaf-up against world-up = 1 when flat, 0 when on edge.
-		var flatness = MathF.Max( 0f, Vector3.Dot( WorldRotation.Up, Vector3.Up ) );
-		var liftForce = Vector3.Up * (speed * speed * LiftCoefficient * flatness * 0.0001f);
+		// Lift acts along leaf's surface normal (its local up).
+		// Tilted leaf → lift pushes sideways → natural drift.
+		// Flat leaf  → lift pushes up → glides like a paper plane.
+		var liftForce = leafSurface * (speed * speed * LiftCoefficient * 0.0001f);
 		Body.ApplyForce( liftForce );
+	}
+
+	private void ApplyLeafWobble()
+	{
+		// Sinusoidal torque about an axis perpendicular to the fall direction.
+		// This is what makes a real leaf rock side to side as it falls.
+		var velocity = Body.Velocity;
+		if ( velocity.LengthSquared < 1f ) return;
+
+		var wobbleAxis = Vector3.Cross( velocity.Normal, Vector3.Up );
+		if ( wobbleAxis.LengthSquared < 0.01f ) return; // velocity near vertical → no defined axis
+
+		wobbleAxis = wobbleAxis.Normal;
+		var wobble = MathF.Sin( _wobbleTime * WobbleFrequency ) * WobbleStrength;
+		Body.ApplyTorque( wobbleAxis * wobble );
 	}
 
 	private void ApplyTumble()
 	{
-		// Passive flutter when player isn't tilting. Random small torques —
-		// not physically meaningful, just makes the leaf feel alive.
-		if ( Input.AnalogMove.LengthSquared >= 0.01f ) return;
-
+		// Small random torque — flutter, makes the leaf feel alive
+		// even before any input or wobble.
 		var torque = new Vector3(
 			Game.Random.Float( -1f, 1f ),
 			Game.Random.Float( -1f, 1f ),
