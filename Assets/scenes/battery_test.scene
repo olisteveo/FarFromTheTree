@@ -4297,6 +4297,7 @@
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
           "OnComponentUpdate": null,
+          "RequireFirstLanding": true,
           "Strength": 1500
         }
       ],

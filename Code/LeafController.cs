@@ -50,17 +50,41 @@ public sealed class LeafController : Component
 	[Property, Group( "Ground" ), Range( 1f, 50f )]
 	public float GroundCheckDistance { get; set; } = 8f;
 
+	/// <summary>
+	/// How long the leaf sits still on the ground after first landing before the
+	/// first gust kicks in. Tutorial UI shows during this window. Player can press
+	/// any input to skip to instant pickup.
+	/// </summary>
+	[Property, Group( "Tutorial Settle" ), Range( 0f, 10f )]
+	public float SettleDuration { get; set; } = 3f;
+
 	/// <summary>True when leaf is currently in contact with (or just above) the ground.</summary>
 	public bool IsGrounded => _isGrounded;
 
 	/// <summary>True after the leaf has touched the ground at least once this run (cinematic landing moment).</summary>
 	public bool HasLanded => _hasLanded;
 
+	/// <summary>
+	/// True once the leaf has landed AND the settle period has elapsed (or been skipped).
+	/// Wind zones with RequireFirstLanding = true wait for this before activating.
+	/// </summary>
+	public bool IsReadyForFirstWind => _hasLanded && _settleElapsed >= SettleDuration;
+
+	/// <summary>
+	/// Time elapsed in the settle phase, normalized 0..1. Used by tutorial UI to
+	/// show countdown / progress.
+	/// </summary>
+	public float SettleProgress => _hasLanded ? (_settleElapsed / SettleDuration).Clamp( 0f, 1f ) : 0f;
+
+	/// <summary>True if leaf has landed but settle is still in progress (tutorial period).</summary>
+	public bool IsInTutorialSettle => _hasLanded && _settleElapsed < SettleDuration;
+
 	private Vector3 _pendulumAxis;
 	private float _pendulumTime;
 	private Vector3 _windAccum;
 	private bool _isGrounded;
 	private bool _hasLanded;
+	private float _settleElapsed;
 
 	/// <summary>
 	/// Called by WindZone components each tick. The wind vector here is the
@@ -97,6 +121,21 @@ public sealed class LeafController : Component
 		var angle = Game.Random.Float( 0f, MathF.PI * 2f );
 		_pendulumAxis = new Vector3( MathF.Cos( angle ), MathF.Sin( angle ), 0f );
 		_pendulumTime = 0f;
+	}
+
+	protected override void OnUpdate()
+	{
+		// Tick the settle timer once leaf has landed. Player can press any input to skip.
+		if ( _hasLanded && _settleElapsed < SettleDuration )
+		{
+			_settleElapsed += Time.Delta;
+
+			var anyInput = Input.AnalogMove.LengthSquared > 0.01f || Input.Pressed( "Jump" );
+			if ( anyInput )
+			{
+				_settleElapsed = SettleDuration;
+			}
+		}
 	}
 
 	protected override void OnFixedUpdate()

@@ -52,7 +52,8 @@ public sealed class WindZone : Component, Component.ITriggerListener
 		foreach ( var leaf in _occupants )
 		{
 			if ( !leaf.IsValid ) continue;
-			if ( RequireFirstLanding && !leaf.HasLanded ) continue;
+			// RequireFirstLanding now waits for the full settle period, not just first ground contact
+			if ( RequireFirstLanding && !leaf.IsReadyForFirstWind ) continue;
 
 			leaf.AddWindForce( force );
 		}
