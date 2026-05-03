@@ -21,10 +21,10 @@ public sealed class CityWindGenerator : Component
 	public int MainAvenueEvery { get; set; } = 5;
 
 	[Property, Group( "Wind Strengths" ), Range( 100f, 2000f )]
-	public float MainAvenueStrength { get; set; } = 400f;
+	public float MainAvenueStrength { get; set; } = 700f;
 
 	[Property, Group( "Wind Strengths" ), Range( 50f, 1500f )]
-	public float AlleyStrength { get; set; } = 250f;
+	public float AlleyStrength { get; set; } = 350f;
 
 	[Property, Group( "Wind Strengths" ), Range( 100f, 2000f )]
 	public float EdgeStrength { get; set; } = 500f;
@@ -46,10 +46,26 @@ public sealed class CityWindGenerator : Component
 	public float CellCoverage { get; set; } = 1.6f;
 
 	[Property, Group( "Oscillation" ), Range( 0f, 1f )]
-	public float OscillationChance { get; set; } = 0.4f;
+	public float OscillationChance { get; set; } = 0.1f;
 
 	[Property, Group( "Oscillation" ), Range( 2f, 20f )]
 	public float OscillationPeriod { get; set; } = 6f;
+
+	/// <summary>
+	/// Direction the city wind generally flows. All alley zones bias toward this
+	/// direction with some variation. Set to (1,0,0) for "everything flows east"
+	/// — creates wind-tunnel corridors leading the player through the city.
+	/// </summary>
+	[Property, Group( "Flow Direction" )]
+	public Vector3 PrimaryFlow { get; set; } = new Vector3( 1, 0, 0 );
+
+	/// <summary>
+	/// 0 = pure primary flow everywhere (boring but coherent).
+	/// 1 = totally random per cell (chaotic, what we had before).
+	/// 0.2-0.4 = mostly directional with some variation (recommended).
+	/// </summary>
+	[Property, Group( "Flow Direction" ), Range( 0f, 1f )]
+	public float DirectionVariation { get; set; } = 0.3f;
 
 	[Property, Group( "Vertical Layer" ), Range( 0f, 1000f )]
 	public float StreetLevelZ { get; set; } = 400f;
@@ -193,19 +209,22 @@ public sealed class CityWindGenerator : Component
 				if ( MainAvenueEvery > 1 && (x % MainAvenueEvery == 0 || y % MainAvenueEvery == 0) ) continue;
 				if ( random.NextSingle() > AlleyDensity ) continue;
 
-				var dx = 0;
-				var dy = 0;
-				var roll = random.NextSingle();
-				if ( roll < 0.4f ) dx = 1;
-				else if ( roll < 0.6f ) dx = -1;
-				else if ( roll < 0.8f ) dy = 1;
-				else dy = -1;
+				// Direction bias toward PrimaryFlow with optional variation per cell.
+				// At DirectionVariation=0 every cell points the same way (coherent corridor).
+				// At DirectionVariation=1 it's pure random.
+				var primary = PrimaryFlow.Normal;
+				var jitter = new Vector3(
+					(random.NextSingle() - 0.5f) * 2f,
+					(random.NextSingle() - 0.5f) * 2f,
+					0f
+				);
+				var dir = (primary * (1f - DirectionVariation) + jitter * DirectionVariation).Normal;
 
 				CreateZone(
 					name: $"Wind_Alley_{x}_{y}",
 					localPos: new Vector3( x * CellSpacing, y * CellSpacing, StreetLevelZ ),
 					size: new Vector3( CellSpacing * CellCoverage, CellSpacing * CellCoverage, StreetLayerHeight ),
-					direction: new Vector3( dx, dy, 0 ),
+					direction: dir,
 					strength: AlleyStrength,
 					oscillates: random.NextSingle() < OscillationChance,
 					phase: random.NextSingle() * 360f
