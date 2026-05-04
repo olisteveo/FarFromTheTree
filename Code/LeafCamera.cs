@@ -43,6 +43,12 @@ public sealed class LeafCamera : Component
 	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
 	public float MouseSensitivity { get; set; } = 1f;
 
+	[Property, Group( "Mouse Orbit" )]
+	public bool InvertYaw { get; set; } = true;
+
+	[Property, Group( "Mouse Orbit" )]
+	public bool InvertPitch { get; set; } = true;
+
 	[Property, Group( "Mouse Orbit" ), Range( 0f, 180f )]
 	public float MaxYawOffset { get; set; } = 80f;
 
@@ -126,8 +132,8 @@ public sealed class LeafCamera : Component
 		}
 
 		var look = Input.AnalogLook;
-		var dx = look.yaw * MouseSensitivity;
-		var dy = look.pitch * MouseSensitivity;
+		var dx = look.yaw * MouseSensitivity * (InvertYaw ? -1f : 1f);
+		var dy = look.pitch * MouseSensitivity * (InvertPitch ? -1f : 1f);
 
 		_mouseYaw = (_mouseYaw + dx).Clamp( -MaxYawOffset, MaxYawOffset );
 		_mousePitch = (_mousePitch + dy).Clamp( -MaxPitchOffset, MaxPitchOffset );
