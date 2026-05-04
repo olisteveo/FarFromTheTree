@@ -30,6 +30,16 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 
 	protected override void OnAwake()
 	{
+		// Defensive: if the GameObject's LocalScale has any zero or near-zero
+		// axis, the BoxCollider trigger collapses to that plane and the visual
+		// becomes invisible. Snap it back to (1,1,1) so the zone Just Works.
+		var ls = GameObject.LocalScale;
+		if ( ls.x < 0.01f || ls.y < 0.01f || ls.z < 0.01f )
+		{
+			Log.Warning( $"[DeathZone] '{GameObject.Name}' had zero/near-zero LocalScale {ls} — resetting to (1,1,1) so the zone is usable. Resize via the BoxCollider.Scale instead." );
+			GameObject.LocalScale = new Vector3( 1f, 1f, 1f );
+		}
+
 		// Auto-setup at runtime so the zone always works even if the scene was
 		// saved before the BoxCollider / visual existed.
 		var box = GetComponent<BoxCollider>();
