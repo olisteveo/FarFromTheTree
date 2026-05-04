@@ -179,12 +179,23 @@ public sealed class LeafCamera : Component
 
 		// ALWAYS auto-track velocity direction so camera stays behind the leaf.
 		// Mouse adds an offset on top — but the base direction always follows motion.
-		// Lerp speed scales with leaf speed: faster leaf = faster camera catch-up.
+		// At high speeds we SNAP directly (no lerp) so the camera doesn't lag during
+		// sharp turns — staying sideways to a fast-turning leaf is the worst feel.
 		if ( horizontalVel.Length > 5f )
 		{
 			var targetYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
-			var lerpSpeed = RotationLerpRate * (1f + speed / 300f);
-			_trackedYaw = Rotation.Lerp( _trackedYaw, targetYaw, Time.Delta * lerpSpeed );
+
+			if ( speed > 200f )
+			{
+				// Fast leaf — direct snap, no smoothing
+				_trackedYaw = targetYaw;
+			}
+			else
+			{
+				// Slow leaf — smooth lerp for cinematic feel
+				var lerpSpeed = RotationLerpRate * (1f + speed / 100f);
+				_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * lerpSpeed );
+			}
 		}
 
 		var combined = _trackedYaw * OrbitRotation;
