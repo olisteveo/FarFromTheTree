@@ -83,9 +83,28 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 
 	void Component.ITriggerListener.OnTriggerEnter( Collider other )
 	{
+		Log.Info( $"[DeathZone] OnTriggerEnter from {other.GameObject?.Name ?? "?"}" );
 		var leaf = other.GameObject.Components.Get<LeafController>();
+		if ( leaf is null )
+		{
+			// Leaf might be a child of the entered object; walk up
+			leaf = other.GameObject?.Parent?.Components.Get<LeafController>();
+		}
 		if ( leaf is null ) return;
 		leaf.FailRun( FailReason );
+	}
+
+	[Button( "Reset (clear children, scale to 1, default size)" )]
+	public void ResetEverything()
+	{
+		ClearVisual();
+		GameObject.LocalScale = new Vector3( 1f, 1f, 1f );
+		var box = GetComponent<BoxCollider>() ?? Components.Create<BoxCollider>();
+		box.IsTrigger = true;
+		box.Center = Vector3.Zero;
+		box.Scale = DefaultSize;
+		Log.Info( $"[DeathZone] Reset '{GameObject.Name}' — scale (1,1,1), BoxCollider {DefaultSize}, IsTrigger=true." );
+		GenerateVisual();
 	}
 
 	void Component.ITriggerListener.OnTriggerExit( Collider other )
