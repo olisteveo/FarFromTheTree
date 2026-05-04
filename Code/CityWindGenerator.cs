@@ -181,7 +181,7 @@ public sealed class CityWindGenerator : Component
 				phase: 0f );
 		}
 
-		// Main E-W avenues (across each Nth row, full length)
+		// Main E-W avenues — pure east, no oscillation. Forgiving.
 		for ( int y = MainAvenueEvery; y < GridY; y += MainAvenueEvery )
 		{
 			CreateZone(
@@ -190,22 +190,23 @@ public sealed class CityWindGenerator : Component
 				size: new Vector3( totalX * 0.95f, CellSpacing * 0.7f, StreetLayerHeight ),
 				direction: new Vector3( 1, 0, 0 ),
 				strength: MainAvenueStrength,
-				oscillates: random.NextSingle() < OscillationChance,
-				phase: random.NextSingle() * 360f
+				oscillates: false,
+				phase: 0f
 			);
 		}
 
-		// Main N-S avenues (across each Nth column, full length)
+		// Main N-S avenues — biased east + slight northbound, no oscillation.
+		// They contribute eastward force so they don't trap the leaf in a N-S oscillation.
 		for ( int x = MainAvenueEvery; x < GridX; x += MainAvenueEvery )
 		{
 			CreateZone(
 				name: $"Wind_AvenueNS_x{x}",
 				localPos: new Vector3( x * CellSpacing, totalY * 0.5f, StreetLevelZ ),
 				size: new Vector3( CellSpacing * 0.7f, totalY * 0.95f, StreetLayerHeight ),
-				direction: new Vector3( 0, 1, 0 ),
-				strength: MainAvenueStrength,
-				oscillates: random.NextSingle() < OscillationChance,
-				phase: random.NextSingle() * 360f
+				direction: new Vector3( 0.7f, 0.3f, 0 ),
+				strength: MainAvenueStrength * 0.6f,
+				oscillates: false,
+				phase: 0f
 			);
 		}
 
