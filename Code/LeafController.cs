@@ -537,14 +537,6 @@ public sealed class LeafController : Component, Component.ICollisionListener
 		Body.ApplyForce( primary * CollisionForwardKick );
 	}
 
-	void Component.ICollisionListener.OnCollisionStop( Collision collision )
-	{
-	}
-
-	void Component.ICollisionListener.OnCollisionUpdate( Collision collision )
-	{
-	}
-
 	private void ApplyAccumulatedWind()
 	{
 		// Cap the per-tick wind force regardless of how many overlapping zones added to it.
