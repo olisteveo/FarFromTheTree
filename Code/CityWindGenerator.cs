@@ -91,10 +91,10 @@ public sealed class CityWindGenerator : Component
 	public bool GenerateRooftopLayer { get; set; } = true;
 
 	[Property, Group( "Rooftop Layer" ), Range( 30f, 3000f )]
-	public float RooftopLevelZ { get; set; } = 120f;
+	public float RooftopLevelZ { get; set; } = 70f;
 
 	[Property, Group( "Rooftop Layer" ), Range( 30f, 2000f )]
-	public float RooftopLayerHeight { get; set; } = 80f;
+	public float RooftopLayerHeight { get; set; } = 60f;
 
 	[Property, Group( "Rooftop Layer" ), Range( 100f, 2000f )]
 	public float RooftopStrength { get; set; } = 600f;
@@ -330,22 +330,15 @@ public sealed class CityWindGenerator : Component
 	}
 
 	/// <summary>
-	/// Internal: spawns rooftop wind zones in the SAME PATTERN as street level
-	/// (only in main avenue cells), but at higher Z. Maintains consistency between layers.
+	/// Internal: spawns rooftop wind zones at every grid cell. Above the buildings
+	/// there's no obstruction, so wind covers the full city footprint at altitude.
 	/// </summary>
 	private void SpawnRooftopGrid()
 	{
-		if ( MainAvenueEvery <= 1 ) return;
-
 		for ( int x = 0; x < GridX; x++ )
 		{
 			for ( int y = 0; y < GridY; y++ )
 			{
-				bool onEW = y % MainAvenueEvery == 0;
-				bool onNS = x % MainAvenueEvery == 0;
-
-				if ( !onEW && !onNS ) continue; // match street pattern — wind only in main streets
-
 				CreateZone(
 					name: $"Wind_Rooftop_{x}_{y}",
 					localPos: new Vector3( x * CellSpacing, y * CellSpacing, RooftopLevelZ ),
