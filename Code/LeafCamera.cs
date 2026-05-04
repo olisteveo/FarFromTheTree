@@ -201,7 +201,16 @@ public sealed class LeafCamera : Component
 		var combined = _trackedYaw * OrbitRotation;
 		var resolved = ResolveCameraPosition( leafPos, combined );
 
-		WorldPosition = WorldPosition.LerpTo( resolved, Time.Delta * PositionLerpRate );
+		// At high speed, snap position too (otherwise camera travels through the leaf
+		// during direction reversals, ending up in the wrong place for ~0.5s).
+		if ( speed > 200f )
+		{
+			WorldPosition = resolved;
+		}
+		else
+		{
+			WorldPosition = WorldPosition.LerpTo( resolved, Time.Delta * PositionLerpRate );
+		}
 		WorldRotation = Rotation.LookAt( leafPos - WorldPosition, Vector3.Up );
 
 		if ( Camera is not null )
