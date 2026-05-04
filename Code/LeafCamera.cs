@@ -41,7 +41,7 @@ public sealed class LeafCamera : Component
 	public bool EnableMouseOrbit { get; set; } = true;
 
 	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
-	public float MouseSensitivity { get; set; } = 1f;
+	public float MouseSensitivity { get; set; } = 0.4f;
 
 	[Property, Group( "Mouse Orbit" )]
 	public bool InvertYaw { get; set; } = true;
@@ -50,10 +50,10 @@ public sealed class LeafCamera : Component
 	public bool InvertPitch { get; set; } = true;
 
 	[Property, Group( "Mouse Orbit" ), Range( 0f, 180f )]
-	public float MaxYawOffset { get; set; } = 80f;
+	public float MaxYawOffset { get; set; } = 30f;
 
 	[Property, Group( "Mouse Orbit" ), Range( 0f, 80f )]
-	public float MaxPitchOffset { get; set; } = 50f;
+	public float MaxPitchOffset { get; set; } = 5f;
 
 	/// <summary>
 	/// How fast the orbit recenters back to "behind leaf" when the player isn't moving the mouse.
