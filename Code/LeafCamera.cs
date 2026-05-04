@@ -205,12 +205,17 @@ public sealed class LeafCamera : Component
 				? Vector3.Dot( _lastVelDirection, currentDir )
 				: 1f;
 
-			if ( bigChange )
+			// Absolute-drift snap: catches gradual reversals where the leaf decelerates
+			// through zero and re-accelerates the other way (frame-to-frame dot stays
+			// near 1, so bigChange misses it, but cumulative yawErr balloons).
+			bool absoluteDrift = yawErrorBefore > 60f && speed > 30f;
+
+			if ( bigChange || absoluteDrift )
 			{
 				_trackedYaw = targetYaw;
 				snap = true;
 				if ( LogDiagnostics )
-					Log.Info( $"[Cam] SNAP bigChange dot={dotPrev:F2} yawErr={yawErrorBefore:F0}° speed={speed:F0}" );
+					Log.Info( $"[Cam] SNAP {(bigChange ? "bigChange" : "drift")} dot={dotPrev:F2} yawErr={yawErrorBefore:F0}° speed={speed:F0}" );
 			}
 			else
 			{
@@ -292,12 +297,14 @@ public sealed class LeafCamera : Component
 				? Vector3.Dot( _lastVelDirection, currentDir )
 				: 1f;
 
-			if ( bigChange )
+			bool absoluteDrift = yawErrorBefore > 60f && speed > 30f;
+
+			if ( bigChange || absoluteDrift )
 			{
 				_trackedYaw = targetYaw;
 				snap = true;
 				if ( LogDiagnostics )
-					Log.Info( $"[Cam] GAMEPLAY SNAP bigChange dot={dotPrev:F2} yawErr={yawErrorBefore:F0}° speed={speed:F0}" );
+					Log.Info( $"[Cam] GAMEPLAY SNAP {(bigChange ? "bigChange" : "drift")} dot={dotPrev:F2} yawErr={yawErrorBefore:F0}° speed={speed:F0}" );
 			}
 			else
 			{
