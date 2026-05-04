@@ -105,15 +105,28 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 		if ( box is null )
 		{
 			box = Components.Create<BoxCollider>();
-			box.Scale = DefaultSize;
-			Log.Info( $"[DeathZone] Created BoxCollider {DefaultSize}." );
+			Log.Info( $"[DeathZone] Created BoxCollider." );
 		}
-		// Make sure it's a trigger and big enough to see
+
+		// Always force IsTrigger on — without this the leaf bounces off instead
+		// of triggering the failure.
 		box.IsTrigger = true;
-		if ( box.Scale.x < 1f || box.Scale.y < 1f || box.Scale.z < 1f )
+
+		// If the collider is at the s&box default tiny scale, swap in DefaultSize
+		// so a fresh "Setup" click gives a usable river right away. We only nudge
+		// when every axis is small (≤100) — leaves intentional bigger sizes alone.
+		if ( box.Scale.x <= 100f && box.Scale.y <= 100f && box.Scale.z <= 100f )
 		{
 			box.Scale = DefaultSize;
+			Log.Info( $"[DeathZone] BoxCollider was at default size — resized to {DefaultSize}." );
 		}
+
+		// Make sure no zero axes survive (in case of weird inspector edits)
+		box.Scale = new Vector3(
+			MathF.Max( box.Scale.x, 50f ),
+			MathF.Max( box.Scale.y, 50f ),
+			MathF.Max( box.Scale.z, 50f )
+		);
 
 		GenerateVisual();
 	}
