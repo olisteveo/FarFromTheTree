@@ -177,12 +177,14 @@ public sealed class LeafCamera : Component
 		var horizontalVel = velocity.WithZ( 0 );
 		var speed = velocity.Length;
 
-		// Only auto-track velocity when player isn't actively using the mouse.
-		// Lets the player's mouse offset persist without the base direction shifting underneath them.
-		if ( horizontalVel.Length > 5f && !IsMouseActive )
+		// ALWAYS auto-track velocity direction so camera stays behind the leaf.
+		// Mouse adds an offset on top — but the base direction always follows motion.
+		// Lerp speed scales with leaf speed: faster leaf = faster camera catch-up.
+		if ( horizontalVel.Length > 5f )
 		{
 			var targetYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
-			_trackedYaw = Rotation.Lerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
+			var lerpSpeed = RotationLerpRate * (1f + speed / 300f);
+			_trackedYaw = Rotation.Lerp( _trackedYaw, targetYaw, Time.Delta * lerpSpeed );
 		}
 
 		var combined = _trackedYaw * OrbitRotation;
