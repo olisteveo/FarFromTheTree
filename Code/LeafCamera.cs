@@ -97,6 +97,7 @@ public sealed class LeafCamera : Component
 	private float _mousePitch;
 	private float _currentDistance;
 	private float _mouseIdleSeconds;
+	private Vector3 _lastVelDirection;
 
 	protected override void OnAwake()
 	{
@@ -178,32 +179,38 @@ public sealed class LeafCamera : Component
 		var speed = velocity.Length;
 
 		// ALWAYS auto-track velocity direction so camera stays behind the leaf.
-		// Mouse adds an offset on top — but the base direction always follows motion.
-		// At high speeds we SNAP directly (no lerp) so the camera doesn't lag during
-		// sharp turns — staying sideways to a fast-turning leaf is the worst feel.
+		// Snap rotation when speed is high OR when direction is changing significantly.
+		// Both prevent the camera lagging behind during turns.
+		bool snap = false;
+		Vector3 currentDir = Vector3.Zero;
 		if ( horizontalVel.Length > 5f )
 		{
+			currentDir = horizontalVel.Normal;
 			var targetYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
 
-			if ( speed > 200f )
+			// Detect significant direction change — dot < 0.7 ≈ >45° change in horizontal heading
+			bool bigChange = _lastVelDirection.LengthSquared > 0.01f
+				&& Vector3.Dot( _lastVelDirection, currentDir ) < 0.7f;
+
+			if ( speed > 100f || bigChange )
 			{
-				// Fast leaf — direct snap, no smoothing
 				_trackedYaw = targetYaw;
+				snap = true;
 			}
 			else
 			{
-				// Slow leaf — smooth lerp for cinematic feel
 				var lerpSpeed = RotationLerpRate * (1f + speed / 100f);
 				_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * lerpSpeed );
 			}
 		}
+		_lastVelDirection = currentDir;
 
 		var combined = _trackedYaw * OrbitRotation;
 		var resolved = ResolveCameraPosition( leafPos, combined );
 
-		// At high speed, snap position too (otherwise camera travels through the leaf
-		// during direction reversals, ending up in the wrong place for ~0.5s).
-		if ( speed > 200f )
+		// Snap position when we snapped rotation — keeps camera glued to behind-leaf
+		// during direction changes instead of lerping through space.
+		if ( snap )
 		{
 			WorldPosition = resolved;
 		}
