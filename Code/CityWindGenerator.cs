@@ -318,6 +318,45 @@ public sealed class CityWindGenerator : Component
 	}
 
 	/// <summary>
+	/// Adds ONLY the rooftop layer zone without clearing or regenerating anything else.
+	/// Use this when you've hand-tuned street-level zones and just want to add the rooftop on top.
+	/// Skips if a Wind_Rooftop_Main already exists.
+	/// </summary>
+	[Button( "Add Rooftop Layer Only" )]
+	public void AddRooftopLayerOnly()
+	{
+		var existing = GameObject.Children.FirstOrDefault( c => c.Name == "Wind_Rooftop_Main" );
+		if ( existing is not null )
+		{
+			Log.Info( "[CityWindGenerator] Rooftop layer already exists — remove it first or use 'Clear Rooftop Only'." );
+			return;
+		}
+
+		var totalX = GridX * CellSpacing;
+		var totalY = GridY * CellSpacing;
+
+		CreateZone( "Wind_Rooftop_Main",
+			localPos: new Vector3( totalX * 0.5f, totalY * 0.5f, RooftopLevelZ ),
+			size: new Vector3( totalX + CellSpacing * 2f, totalY + CellSpacing * 2f, RooftopLayerHeight ),
+			direction: new Vector3( 1, 0, 0 ),
+			strength: RooftopStrength,
+			oscillates: false,
+			phase: 0f );
+
+		Log.Info( "[CityWindGenerator] Rooftop layer added on top of existing zones." );
+	}
+
+	[Button( "Clear Rooftop Only" )]
+	public void ClearRooftopOnly()
+	{
+		var children = GameObject.Children.Where( c => c.Name.StartsWith( "Wind_Rooftop_" ) ).ToList();
+		foreach ( var c in children )
+		{
+			c.Destroy();
+		}
+	}
+
+	/// <summary>
 	/// Walks the entire scene and adds a WindVisualizer to every WindZone that doesn't
 	/// already have one. Useful for retrofitting visualization onto manually placed zones.
 	/// </summary>
