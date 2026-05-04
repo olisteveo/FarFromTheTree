@@ -35,9 +35,24 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	[Property, Group( "Initial Fall" ), Range( 0f, 1f )]
 	public float FallGravityScale { get; set; } = 0.07f;
 
-	/// <summary>Multiplier on SwayStrength while still in the initial fall — bigger pendulum.</summary>
-	[Property, Group( "Initial Fall" ), Range( 1f, 10f )]
-	public float FallSwayMultiplier { get; set; } = 1.6f;
+	/// <summary>
+	/// Multiplier on SwayStrength while still in the initial fall. Set < 1 for a
+	/// cinematic, drifting descent — the leaf wobbles gently without flying off
+	/// horizontally. Set > 1 for a wild fluttering fall.
+	/// </summary>
+	[Property, Group( "Initial Fall" ), Range( 0f, 5f )]
+	public float FallSwayMultiplier { get; set; } = 0.4f;
+
+	/// <summary>Slows the sway oscillation during the fall (1 = same as gameplay, 0.5 = half-speed).</summary>
+	[Property, Group( "Initial Fall" ), Range( 0.1f, 2f )]
+	public float FallSwayFrequencyScale { get; set; } = 0.45f;
+
+	/// <summary>
+	/// Per-second horizontal velocity damping while falling. Higher = leaf stays
+	/// closer to spawn point, less prone to cumulative sway drift.
+	/// </summary>
+	[Property, Group( "Initial Fall" ), Range( 0f, 8f )]
+	public float FallHorizontalDamping { get; set; } = 2.5f;
 
 	/// <summary>
 	/// How much wind force the leaf catches when its surface is edge-on to the wind.
@@ -571,16 +586,27 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	private void ApplySway()
 	{
 		_pendulumTime += Time.Delta;
-		var amplitude = SwayStrength * (_hasLanded ? 1f : FallSwayMultiplier);
+		var inFall = !_hasLanded;
+		var amplitude = SwayStrength * (inFall ? FallSwayMultiplier : 1f);
+		var freqScale = inFall ? FallSwayFrequencyScale : 1f;
 
 		// Lissajous-style 2D sway in the XY plane: X uses one frequency, Y uses
 		// a slightly different one. The closed-loop pattern means the leaf wobbles
-		// without the net positional drift a fixed-axis pendulum produces — the
-		// reason it was getting flung "behind the tree" before.
-		var phase = _pendulumTime * SwayFrequency * MathF.PI * 2f;
+		// without the net positional drift a fixed-axis pendulum produces.
+		var phase = _pendulumTime * SwayFrequency * freqScale * MathF.PI * 2f;
 		var fx = MathF.Sin( phase ) * amplitude;
 		var fy = MathF.Cos( phase * 0.73f ) * amplitude * 0.7f;
 		Body.ApplyForce( new Vector3( fx, fy, 0f ) );
+
+		// Active horizontal damping during the fall so the leaf can't drift far
+		// from spawn even if forces happen to bias one way.
+		if ( inFall && FallHorizontalDamping > 0f )
+		{
+			var v = Body.Velocity;
+			var horiz = v.WithZ( 0 );
+			var damp = horiz * (FallHorizontalDamping * Time.Delta);
+			Body.Velocity = v - new Vector3( damp.x, damp.y, 0 );
+		}
 	}
 
 	private void ApplyTumble()
