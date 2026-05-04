@@ -106,19 +106,24 @@ public sealed class WindZone : Component, Component.ITriggerListener
 
 	/// <summary>
 	/// Editor gizmo: arrow showing wind direction. Length and thickness scale with Strength.
+	/// Clickable hitbox along the shaft selects this GameObject.
 	/// </summary>
 	protected override void DrawGizmos()
 	{
 		if ( Strength <= 0.01f ) return;
 
-		// Direction in local space (the GameObject's space — Gizmo auto-transforms)
 		var dir = LocalDirection ? Direction.Normal : (WorldRotation.Inverse * Direction.Normal);
 		if ( dir.LengthSquared < 0.01f ) return;
 
 		var arrowLength = (Strength * 0.5f).Clamp( 30f, 400f );
 		var intensity = (Strength / 1500f).Clamp( 0.4f, 1f );
 
-		Gizmo.Draw.Color = new Color( 0.4f, 0.85f, 1f, intensity );
+		// Highlight when hovered or selected
+		var color = new Color( 0.4f, 0.85f, 1f, intensity );
+		if ( Gizmo.IsHovered ) color = Color.Yellow;
+		else if ( Gizmo.IsSelected ) color = new Color( 1f, 0.8f, 0.3f, 1f );
+
+		Gizmo.Draw.Color = color;
 		Gizmo.Draw.LineThickness = 1f + (Strength / 400f).Clamp( 0f, 4f );
 		Gizmo.Draw.IgnoreDepth = true;
 
@@ -128,7 +133,7 @@ public sealed class WindZone : Component, Component.ITriggerListener
 		// Shaft
 		Gizmo.Draw.Line( origin, tip );
 
-		// Arrowhead — 4 short diagonal lines from tip for visibility from any angle
+		// Arrowhead — 4 short diagonal lines from tip
 		var up = MathF.Abs( dir.z ) < 0.95f ? Vector3.Up : Vector3.Right;
 		var perp = Vector3.Cross( dir, up ).Normal;
 		var perp2 = Vector3.Cross( dir, perp ).Normal;
@@ -138,5 +143,18 @@ public sealed class WindZone : Component, Component.ITriggerListener
 		Gizmo.Draw.Line( tip, tip - dir * headSize - perp * headSize );
 		Gizmo.Draw.Line( tip, tip - dir * headSize + perp2 * headSize );
 		Gizmo.Draw.Line( tip, tip - dir * headSize - perp2 * headSize );
+
+		// Clickable hitbox — long thin BBox around the shaft.
+		// Makes the arrow selectable in the viewport.
+		var halfThickness = 8f + (Strength / 400f).Clamp( 0f, 8f );
+		var midpoint = tip * 0.5f;
+		var shaftHalfLength = arrowLength * 0.5f;
+
+		// Build a box oriented along the arrow direction by using a wider AABB
+		// that tightly contains both endpoints.
+		var pad = new Vector3( halfThickness, halfThickness, halfThickness );
+		var minPt = Vector3.Min( origin, tip ) - pad;
+		var maxPt = Vector3.Max( origin, tip ) + pad;
+		Gizmo.Hitbox.BBox( new BBox( minPt, maxPt ) );
 	}
 }
