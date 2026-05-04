@@ -190,10 +190,30 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	public float RunTime => _runElapsed;
 
 	/// <summary>True while the run timer is ticking (post-settle, not yet finished).</summary>
-	public bool IsRunning => _hasLanded && _settleElapsed >= SettleDuration && !HasFinished;
+	public bool IsRunning => _hasLanded && _settleElapsed >= SettleDuration && !HasFinished && !HasFailed;
 
 	/// <summary>True once the leaf has reached the run goal. Stops the timer. (No goal yet.)</summary>
 	public bool HasFinished { get; private set; }
+
+	/// <summary>True if the leaf hit a death zone (river, out-of-bounds). Stops the timer.</summary>
+	public bool HasFailed { get; private set; }
+
+	/// <summary>Reason text shown on the failure overlay (set by the DeathZone that killed it).</summary>
+	public string FailureReason { get; private set; } = "";
+
+	/// <summary>Called by DeathZone trigger. Halts the leaf and shows the failure overlay.</summary>
+	public void FailRun( string reason )
+	{
+		if ( HasFailed ) return;
+		HasFailed = true;
+		FailureReason = reason ?? "";
+		if ( Body is not null )
+		{
+			Body.Velocity = Vector3.Zero;
+			Body.AngularVelocity = Vector3.Zero;
+		}
+		if ( DebugLogging ) Log.Info( $"[Leaf] RUN FAILED — {reason} at pos=({WorldPosition.x:F0},{WorldPosition.y:F0},{WorldPosition.z:F0})" );
+	}
 
 	/// <summary>Seconds remaining until the first gust kicks in (0 once skipped or elapsed).</summary>
 	public float SettleTimeRemaining => MathF.Max( 0f, SettleDuration - _settleElapsed );

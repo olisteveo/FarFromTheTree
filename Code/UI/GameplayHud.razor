@@ -25,6 +25,20 @@
 				}
 			</div>
 
+			@if ( Leaf.HasFailed )
+			{
+				<div class="overlay">
+					<div class="overlay-card">
+						<div class="overlay-title">RUN FAILED</div>
+						<div class="overlay-reason">@Leaf.FailureReason</div>
+						<div class="overlay-stat">
+							<span class="overlay-stat-label">TIME</span>
+							<span class="overlay-stat-value">@FormattedTime</span>
+						</div>
+					</div>
+				</div>
+			}
+
 		</div>
 	</root>
 }
@@ -70,6 +84,7 @@
 	protected override int BuildHash() => System.HashCode.Combine(
 		Leaf?.HasLanded,
 		Leaf?.IsInTutorialSettle,
+		Leaf?.HasFailed,
 		(int)((Leaf?.CurrentSpeed ?? 0f) / 5f),
 		(int)((Leaf?.RunTime ?? 0f) * 100f),
 		Leaf?.Petals
