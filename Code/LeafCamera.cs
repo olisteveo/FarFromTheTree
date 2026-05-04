@@ -178,45 +178,27 @@ public sealed class LeafCamera : Component
 		var horizontalVel = velocity.WithZ( 0 );
 		var speed = velocity.Length;
 
-		// ALWAYS auto-track velocity direction so camera stays behind the leaf.
-		// Snap rotation when speed is high OR when direction is changing significantly.
-		// Both prevent the camera lagging behind during turns.
-		bool snap = false;
-		Vector3 currentDir = Vector3.Zero;
+		// Forza / Spider-Man style: camera is RIGIDLY bolted behind the leaf.
+		// Heading tracks the leaf's velocity instantly — no lerp on the chase yaw.
+		// Mouse orbit on top still feels smooth because OrbitRotation is its own state.
 		if ( horizontalVel.Length > 5f )
 		{
-			currentDir = horizontalVel.Normal;
-			var targetYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
-
-			// Detect significant direction change — dot < 0.7 ≈ >45° change in horizontal heading
-			bool bigChange = _lastVelDirection.LengthSquared > 0.01f
-				&& Vector3.Dot( _lastVelDirection, currentDir ) < 0.7f;
-
-			if ( speed > 100f || bigChange )
-			{
-				_trackedYaw = targetYaw;
-				snap = true;
-			}
-			else
-			{
-				var lerpSpeed = RotationLerpRate * (1f + speed / 100f);
-				_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * lerpSpeed );
-			}
+			_trackedYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
 		}
-		_lastVelDirection = currentDir;
+		_lastVelDirection = horizontalVel.Length > 5f ? horizontalVel.Normal : Vector3.Zero;
 
 		var combined = _trackedYaw * OrbitRotation;
 		var resolved = ResolveCameraPosition( leafPos, combined );
 
-		// Snap position when we snapped rotation — keeps camera glued to behind-leaf
-		// during direction changes instead of lerping through space.
-		if ( snap )
+		// Tight position follow — small smoothing only to dampen micro-jitter from physics tick.
+		// Snap entirely when the player is NOT actively orbiting, so the rig feels bolted on.
+		if ( !IsMouseActive )
 		{
 			WorldPosition = resolved;
 		}
 		else
 		{
-			WorldPosition = WorldPosition.LerpTo( resolved, Time.Delta * PositionLerpRate );
+			WorldPosition = WorldPosition.LerpTo( resolved, Time.Delta * PositionLerpRate * 4f );
 		}
 		WorldRotation = Rotation.LookAt( leafPos - WorldPosition, Vector3.Up );
 
