@@ -90,11 +90,11 @@ public sealed class CityWindGenerator : Component
 	[Property, Group( "Rooftop Layer" )]
 	public bool GenerateRooftopLayer { get; set; } = true;
 
-	[Property, Group( "Rooftop Layer" ), Range( 100f, 3000f )]
-	public float RooftopLevelZ { get; set; } = 320f;
+	[Property, Group( "Rooftop Layer" ), Range( 50f, 3000f )]
+	public float RooftopLevelZ { get; set; } = 180f;
 
 	[Property, Group( "Rooftop Layer" ), Range( 50f, 2000f )]
-	public float RooftopLayerHeight { get; set; } = 200f;
+	public float RooftopLayerHeight { get; set; } = 150f;
 
 	[Property, Group( "Rooftop Layer" ), Range( 100f, 2000f )]
 	public float RooftopStrength { get; set; } = 600f;
