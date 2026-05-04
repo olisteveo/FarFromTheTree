@@ -27,6 +27,19 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	public float TumbleStrength { get; set; } = 1.5f;
 
 	/// <summary>
+	/// Gravity scale applied during the initial cinematic fall (before the leaf has
+	/// touched the ground for the first time). Very low so the leaf drifts downward
+	/// slowly while sway pendulums it side-to-side. Restored to the rigidbody's
+	/// configured GravityScale once the leaf lands.
+	/// </summary>
+	[Property, Group( "Initial Fall" ), Range( 0f, 1f )]
+	public float FallGravityScale { get; set; } = 0.04f;
+
+	/// <summary>Multiplier on SwayStrength while still in the initial fall — bigger pendulum.</summary>
+	[Property, Group( "Initial Fall" ), Range( 1f, 10f )]
+	public float FallSwayMultiplier { get; set; } = 4f;
+
+	/// <summary>
 	/// How much wind force the leaf catches when its surface is edge-on to the wind.
 	/// 0 = pure surface area model (no push at all when edge-on, full push when flat).
 	/// 1 = wind pushes the leaf the same regardless of orientation (no surf mechanic).
@@ -195,6 +208,7 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	private bool _hasLanded;
 	private float _settleElapsed;
 	private float _runElapsed;
+	private float _normalGravityScale;
 	private float _speedSum;
 	private int _speedSamples;
 	private float _stallCooldown;
@@ -237,6 +251,14 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	{
 		Body ??= GetComponent<Rigidbody>();
 		PickPendulumAxis();
+
+		// Stash the rigidbody's configured gravity scale (the "post-landing" value)
+		// and override with the lower fall scale until the leaf lands.
+		if ( Body is not null )
+		{
+			_normalGravityScale = Body.GravityScale;
+			Body.GravityScale = FallGravityScale;
+		}
 	}
 
 	private void PickPendulumAxis()
@@ -444,6 +466,7 @@ public sealed class LeafController : Component, Component.ICollisionListener
 		if ( !_hasLanded && _isGrounded )
 		{
 			_hasLanded = true;
+			if ( Body is not null ) Body.GravityScale = _normalGravityScale;
 			if ( DebugLogging )
 			{
 				Log.Info( $"[Leaf] LANDED at pos=({WorldPosition.x:F0},{WorldPosition.y:F0},{WorldPosition.z:F0}) — settle phase begins ({SettleDuration}s)" );
@@ -528,7 +551,8 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	private void ApplySway()
 	{
 		_pendulumTime += Time.Delta;
-		var swingForce = MathF.Sin( _pendulumTime * SwayFrequency * MathF.PI * 2f ) * SwayStrength;
+		var amplitude = SwayStrength * (_hasLanded ? 1f : FallSwayMultiplier);
+		var swingForce = MathF.Sin( _pendulumTime * SwayFrequency * MathF.PI * 2f ) * amplitude;
 		Body.ApplyForce( _pendulumAxis * swingForce );
 	}
 
