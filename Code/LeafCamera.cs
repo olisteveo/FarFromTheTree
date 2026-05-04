@@ -96,6 +96,18 @@ public sealed class LeafCamera : Component
 	[Property, Group( "Debug" ), Range( 0.1f, 5f )]
 	public float LogInterval { get; set; } = 1f;
 
+	/// <summary>
+	/// Heading angular speed (deg/sec) above which the camera enters "stable" mode —
+	/// chase yaw freezes so the leaf can orbit (e.g. inside a tornado) without the
+	/// camera spinning. 360°/sec ≈ once per second, which is roughly tornado pace.
+	/// </summary>
+	[Property, Group( "Swirl" ), Range( 60f, 720f )]
+	public float SwirlAngularSpeedThreshold { get; set; } = 200f;
+
+	/// <summary>How fast the swirl factor smooths up/down. Higher = reacts faster.</summary>
+	[Property, Group( "Swirl" ), Range( 0.5f, 10f )]
+	public float SwirlSmoothing { get; set; } = 4f;
+
 	private Rotation _trackedYaw = Rotation.Identity;
 	private bool _inGameplayMode;
 	private float _transitionElapsed;
@@ -105,6 +117,9 @@ public sealed class LeafCamera : Component
 	private float _mouseIdleSeconds;
 	private Vector3 _lastVelDirection;
 	private float _logTimer;
+	private float _lastHeadingDeg;
+	private bool _hasLastHeading;
+	private float _swirlFactor; // 0..1 smoothed; 1 = locked-stable, 0 = normal chase
 
 	protected override void OnAwake()
 	{
@@ -178,12 +193,45 @@ public sealed class LeafCamera : Component
 
 	private Rotation OrbitRotation => Rotation.From( -_mousePitch, _mouseYaw, 0 );
 
+	/// <summary>
+	/// Update _swirlFactor based on how fast the leaf's heading is rotating.
+	/// 1 = strong swirl (tornado), 0 = straight flight. Smoothed so brief direction
+	/// changes don't trip it.
+	/// </summary>
+	private void UpdateSwirlFactor( Vector3 horizontalVel )
+	{
+		float instAngularSpeed = 0f;
+		if ( horizontalVel.LengthSquared > 25f ) // ignore noise at very low speed
+		{
+			float headingDeg = horizontalVel.EulerAngles.yaw;
+			if ( _hasLastHeading )
+			{
+				float delta = headingDeg - _lastHeadingDeg;
+				while ( delta > 180f ) delta -= 360f;
+				while ( delta < -180f ) delta += 360f;
+				instAngularSpeed = MathF.Abs( delta ) / MathF.Max( Time.Delta, 0.0001f );
+			}
+			_lastHeadingDeg = headingDeg;
+			_hasLastHeading = true;
+		}
+		else
+		{
+			_hasLastHeading = false;
+		}
+
+		// Normalize against threshold (1.0 at threshold, saturates above)
+		float target = (instAngularSpeed / SwirlAngularSpeedThreshold).Clamp( 0f, 1f );
+		_swirlFactor = MathX.Lerp( _swirlFactor, target, Time.Delta * SwirlSmoothing );
+	}
+
 	private void UpdateFollowMode( Vector3 leafPos )
 	{
 		var leafBody = Target.Components.Get<Rigidbody>();
 		var velocity = leafBody?.Velocity ?? Vector3.Zero;
 		var horizontalVel = velocity.WithZ( 0 );
 		var speed = velocity.Length;
+
+		UpdateSwirlFactor( horizontalVel );
 
 		// Smooth the heading the camera tracks. Raw velocity jitters every tick, which
 		// makes a hard-locked camera feel like it's whipping around. We slerp toward the
@@ -205,12 +253,14 @@ public sealed class LeafCamera : Component
 				? Vector3.Dot( _lastVelDirection, currentDir )
 				: 1f;
 
-			// Absolute-drift snap: catches gradual reversals where the leaf decelerates
-			// through zero and re-accelerates the other way (frame-to-frame dot stays
-			// near 1, so bigChange misses it, but cumulative yawErr balloons).
 			bool absoluteDrift = yawErrorBefore > 60f && speed > 30f;
 
-			if ( bigChange || absoluteDrift )
+			// Swirl gate: when the leaf is orbiting (e.g. tornado), freeze the chase
+			// yaw so the camera doesn't whip around with the orbit. Snaps + slerp are
+			// suppressed when _swirlFactor is high, allowing a stable external view.
+			bool swirlSuppress = _swirlFactor > 0.5f;
+
+			if ( (bigChange || absoluteDrift) && !swirlSuppress )
 			{
 				_trackedYaw = targetYaw;
 				snap = true;
@@ -219,8 +269,10 @@ public sealed class LeafCamera : Component
 			}
 			else
 			{
-				// Tight slerp acts as a low-pass on velocity noise while staying responsive.
-				_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
+				// Effective lerp rate fades to ~0 as swirl approaches 1.
+				float effRate = RotationLerpRate * (1f - _swirlFactor);
+				if ( effRate > 0.01f )
+					_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * effRate );
 			}
 		}
 		_lastVelDirection = currentDir;
@@ -265,7 +317,7 @@ public sealed class LeafCamera : Component
 		}
 
 		var trackedFwd = _trackedYaw.Forward;
-		Log.Info( $"[Cam] FOLLOW spd={speed:F0} velDir=({currentDir.x:F2},{currentDir.y:F2}) trackedFwd=({trackedFwd.x:F2},{trackedFwd.y:F2}) yawErr={yawErr:F0}° behindAngle={behindAngle:F0}° mouseYaw={_mouseYaw:F0} mousePitch={_mousePitch:F0} mouseIdle={_mouseIdleSeconds:F1}s dist={_currentDistance:F0}" );
+		Log.Info( $"[Cam] FOLLOW spd={speed:F0} velDir=({currentDir.x:F2},{currentDir.y:F2}) trackedFwd=({trackedFwd.x:F2},{trackedFwd.y:F2}) yawErr={yawErr:F0}° behindAngle={behindAngle:F0}° mouseYaw={_mouseYaw:F0} mousePitch={_mousePitch:F0} mouseIdle={_mouseIdleSeconds:F1}s swirl={_swirlFactor:F2} dist={_currentDistance:F0}" );
 	}
 
 	private void UpdateGameplayMode( Vector3 leafPos )
@@ -276,6 +328,8 @@ public sealed class LeafCamera : Component
 		var velocity = leafBody?.Velocity ?? Vector3.Zero;
 		var horizontalVel = velocity.WithZ( 0 );
 		var speed = velocity.Length;
+
+		UpdateSwirlFactor( horizontalVel );
 
 		// SSX Tricky / Forza chase cam: always behind the leaf relative to its velocity.
 		// Before the leaf has speed (during settle), use GameplayDirection as the fallback
@@ -298,8 +352,9 @@ public sealed class LeafCamera : Component
 				: 1f;
 
 			bool absoluteDrift = yawErrorBefore > 60f && speed > 30f;
+			bool swirlSuppress = _swirlFactor > 0.5f;
 
-			if ( bigChange || absoluteDrift )
+			if ( (bigChange || absoluteDrift) && !swirlSuppress )
 			{
 				_trackedYaw = targetYaw;
 				snap = true;
@@ -308,7 +363,9 @@ public sealed class LeafCamera : Component
 			}
 			else
 			{
-				_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
+				float effRate = RotationLerpRate * (1f - _swirlFactor);
+				if ( effRate > 0.01f )
+					_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * effRate );
 			}
 		}
 		else
@@ -364,7 +421,7 @@ public sealed class LeafCamera : Component
 		}
 
 		var trackedFwd = _trackedYaw.Forward;
-		Log.Info( $"[Cam] GAMEPLAY spd={speed:F0} velDir=({currentDir.x:F2},{currentDir.y:F2}) trackedFwd=({trackedFwd.x:F2},{trackedFwd.y:F2}) yawErr={yawErr:F0}° behindAngle={behindAngle:F0}° mouseYaw={_mouseYaw:F0} mousePitch={_mousePitch:F0} mouseIdle={_mouseIdleSeconds:F1}s dist={_currentDistance:F0}" );
+		Log.Info( $"[Cam] GAMEPLAY spd={speed:F0} velDir=({currentDir.x:F2},{currentDir.y:F2}) trackedFwd=({trackedFwd.x:F2},{trackedFwd.y:F2}) yawErr={yawErr:F0}° behindAngle={behindAngle:F0}° mouseYaw={_mouseYaw:F0} mousePitch={_mousePitch:F0} mouseIdle={_mouseIdleSeconds:F1}s swirl={_swirlFactor:F2} dist={_currentDistance:F0}" );
 	}
 
 	/// <summary>
