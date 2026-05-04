@@ -90,6 +90,12 @@ public sealed class LeafCamera : Component
 	[Property, Group( "Collision Avoidance" ), Range( 10f, 300f )]
 	public float MinCollisionDistance { get; set; } = 50f;
 
+	[Property, Group( "Debug" )]
+	public bool LogDiagnostics { get; set; } = true;
+
+	[Property, Group( "Debug" ), Range( 0.1f, 5f )]
+	public float LogInterval { get; set; } = 1f;
+
 	private Rotation _trackedYaw = Rotation.Identity;
 	private bool _inGameplayMode;
 	private float _transitionElapsed;
@@ -98,6 +104,7 @@ public sealed class LeafCamera : Component
 	private float _currentDistance;
 	private float _mouseIdleSeconds;
 	private Vector3 _lastVelDirection;
+	private float _logTimer;
 
 	protected override void OnAwake()
 	{
@@ -184,18 +191,26 @@ public sealed class LeafCamera : Component
 		// direction reversals (>45° change) so U-turns are instant.
 		bool snap = false;
 		Vector3 currentDir = Vector3.Zero;
+		float dotPrev = 1f;
+		float yawErrorBefore = 0f;
 		if ( horizontalVel.Length > 5f )
 		{
 			currentDir = horizontalVel.Normal;
 			var targetYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
+			yawErrorBefore = MathF.Acos( Vector3.Dot( _trackedYaw.Forward, targetYaw.Forward ).Clamp( -1f, 1f ) ) * 57.2958f;
 
 			bool bigChange = _lastVelDirection.LengthSquared > 0.01f
 				&& Vector3.Dot( _lastVelDirection, currentDir ) < 0.7f;
+			dotPrev = _lastVelDirection.LengthSquared > 0.01f
+				? Vector3.Dot( _lastVelDirection, currentDir )
+				: 1f;
 
 			if ( bigChange )
 			{
 				_trackedYaw = targetYaw;
 				snap = true;
+				if ( LogDiagnostics )
+					Log.Info( $"[Cam] SNAP bigChange dot={dotPrev:F2} yawErr={yawErrorBefore:F0}° speed={speed:F0}" );
 			}
 			else
 			{
@@ -223,6 +238,29 @@ public sealed class LeafCamera : Component
 			float t = (speed / SpeedAtMaxFov).Clamp( 0f, 1f );
 			Camera.FieldOfView = MinFov.LerpTo( MaxFov, t );
 		}
+
+		LogHeartbeat( leafPos, horizontalVel, speed, currentDir, yawErrorBefore );
+	}
+
+	private void LogHeartbeat( Vector3 leafPos, Vector3 horizontalVel, float speed, Vector3 currentDir, float yawErr )
+	{
+		if ( !LogDiagnostics ) return;
+		_logTimer += Time.Delta;
+		if ( _logTimer < LogInterval ) return;
+		_logTimer = 0f;
+
+		// Camera-behind-leaf accuracy: ideal cam-to-leaf direction == leaf velocity direction.
+		// Angle between them measures how well "behind" the camera actually is. 0° = perfect.
+		var camToLeaf = (leafPos - WorldPosition).WithZ( 0 );
+		float behindAngle = -1f;
+		if ( camToLeaf.LengthSquared > 1f && currentDir.LengthSquared > 0.01f )
+		{
+			var dot = Vector3.Dot( camToLeaf.Normal, currentDir );
+			behindAngle = MathF.Acos( dot.Clamp( -1f, 1f ) ) * 57.2958f;
+		}
+
+		var trackedFwd = _trackedYaw.Forward;
+		Log.Info( $"[Cam] FOLLOW spd={speed:F0} velDir=({currentDir.x:F2},{currentDir.y:F2}) trackedFwd=({trackedFwd.x:F2},{trackedFwd.y:F2}) yawErr={yawErr:F0}° behindAngle={behindAngle:F0}° mouseYaw={_mouseYaw:F0} mousePitch={_mousePitch:F0} mouseIdle={_mouseIdleSeconds:F1}s dist={_currentDistance:F0}" );
 	}
 
 	private void UpdateGameplayMode( Vector3 leafPos )
