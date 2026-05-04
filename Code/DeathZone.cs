@@ -30,19 +30,40 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 
 	protected override void OnAwake()
 	{
-		// Defensive: if the GameObject's LocalScale has any zero or near-zero
-		// axis, the BoxCollider trigger collapses to that plane and the visual
-		// becomes invisible. Snap it back to (1,1,1) so the zone Just Works.
 		var ls = GameObject.LocalScale;
-		if ( ls.x < 0.01f || ls.y < 0.01f || ls.z < 0.01f )
+		var box = GetComponent<BoxCollider>();
+
+		// If LocalScale has any zero axis (or is non-(1,1,1) non-uniform), bake
+		// it into the BoxCollider.Scale BEFORE snapping LocalScale to (1,1,1).
+		// Otherwise the in-game zone ends up at LocalScale x BoxCollider.Scale =
+		// 1x default = much smaller than what was visible in the editor with the
+		// old scaled transform.
+		bool hasBadAxis = ls.x < 0.01f || ls.y < 0.01f || ls.z < 0.01f;
+		bool nonUnit    = MathF.Abs( ls.x - 1f ) > 0.01f
+		               || MathF.Abs( ls.y - 1f ) > 0.01f
+		               || MathF.Abs( ls.z - 1f ) > 0.01f;
+
+		if ( (hasBadAxis || nonUnit) && box is not null )
 		{
-			Log.Warning( $"[DeathZone] '{GameObject.Name}' had zero/near-zero LocalScale {ls} — resetting to (1,1,1) so the zone is usable. Resize via the BoxCollider.Scale instead." );
+			// Bake non-zero axes into BoxCollider.Scale; for zero axes, leave the
+			// existing BoxCollider value (so trigger has reasonable extent there).
+			var newScale = new Vector3(
+				ls.x > 0.01f ? box.Scale.x * ls.x : box.Scale.x,
+				ls.y > 0.01f ? box.Scale.y * ls.y : box.Scale.y,
+				ls.z > 0.01f ? box.Scale.z * ls.z : box.Scale.z
+			);
+			Log.Info( $"[DeathZone] '{GameObject.Name}' LocalScale {ls} baked into BoxCollider.Scale (was {box.Scale}, now {newScale}). LocalScale -> (1,1,1)." );
+			box.Scale = newScale;
+			GameObject.LocalScale = new Vector3( 1f, 1f, 1f );
+		}
+		else if ( hasBadAxis )
+		{
+			Log.Warning( $"[DeathZone] '{GameObject.Name}' had zero/near-zero LocalScale {ls} but no BoxCollider yet — resetting to (1,1,1)." );
 			GameObject.LocalScale = new Vector3( 1f, 1f, 1f );
 		}
 
 		// Auto-setup at runtime so the zone always works even if the scene was
 		// saved before the BoxCollider / visual existed.
-		var box = GetComponent<BoxCollider>();
 		if ( box is null )
 		{
 			box = Components.Create<BoxCollider>();
@@ -55,12 +76,9 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 			box.IsTrigger = true;
 		}
 
-		// Spawn the visual if it isn't already there
-		var hasVisual = GameObject.Children.Any( c => c.Name == "DeathZone_Water" );
-		if ( !hasVisual )
-		{
-			GenerateVisual();
-		}
+		// Always (re)generate the visual at runtime so it matches the actual
+		// post-bake collider size, not whatever was saved earlier.
+		GenerateVisual();
 	}
 
 	void Component.ITriggerListener.OnTriggerEnter( Collider other )
