@@ -2,9 +2,10 @@
 /// Spawns flowing tracer particles inside a WindZone for visual feedback.
 /// Attach to the same GameObject as the WindZone + BoxCollider.
 ///
-/// Particles spawn at random positions in the box, drift along the wind
-/// direction, and wrap around when they exit. Their speed scales with
-/// the WindZone's Strength so you can see strong vs weak winds at a glance.
+/// Visual matches the WindZone.Mode:
+///   Directional — particles drift along Direction, wrap on exit.
+///   Tornado     — particles orbit around the local Z axis, drifting upward.
+///   Pulse       — same as Directional but speed + opacity breathe with the pulse cycle.
 /// </summary>
 public sealed class WindVisualizer : Component
 {
@@ -27,6 +28,7 @@ public sealed class WindVisualizer : Component
 	public float SpeedMultiplier { get; set; } = 8f;
 
 	private readonly List<GameObject> _particles = new();
+	private readonly List<ModelRenderer> _renderers = new();
 	private Vector3 _boxHalf;
 
 	protected override void OnAwake()
@@ -49,12 +51,11 @@ public sealed class WindVisualizer : Component
 			if ( p.IsValid() ) p.Destroy();
 		}
 		_particles.Clear();
+		_renderers.Clear();
 	}
 
 	private void SpawnParticles()
 	{
-		var dirLocal = Zone.Direction.Normal;
-		var orientation = Rotation.LookAt( dirLocal );
 		var thicknessScale = Thickness / 50f;
 		var lengthScale = Length / 50f;
 		var streakScale = new Vector3( lengthScale, thicknessScale, thicknessScale );
@@ -64,7 +65,6 @@ public sealed class WindVisualizer : Component
 			var p = new GameObject( true, $"WindStreak_{i}" );
 			p.SetParent( GameObject );
 			p.LocalPosition = RandomLocalPos();
-			p.LocalRotation = orientation;
 			p.LocalScale = streakScale;
 
 			var renderer = p.Components.Create<ModelRenderer>();
@@ -72,6 +72,7 @@ public sealed class WindVisualizer : Component
 			renderer.Tint = Color;
 
 			_particles.Add( p );
+			_renderers.Add( renderer );
 		}
 	}
 
@@ -88,24 +89,104 @@ public sealed class WindVisualizer : Component
 	{
 		if ( Zone is null || Box is null || _particles.Count == 0 ) return;
 
-		// Direction in local space (the GameObject's space)
-		var dirLocal = Zone.Direction.Normal;
-		var stepLocal = dirLocal * (SpeedMultiplier * Time.Delta * (Zone.Strength * 0.01f + 1f));
-
-		foreach ( var p in _particles )
+		switch ( Zone.Mode )
 		{
-			var newPos = p.LocalPosition + stepLocal;
+			case WindMode.Tornado:
+				UpdateTornado();
+				break;
+			case WindMode.Pulse:
+				UpdatePulse();
+				break;
+			default:
+				UpdateDirectional();
+				break;
+		}
+	}
 
-			// Wrap around if outside box bounds
-			if ( MathF.Abs( newPos.x ) > _boxHalf.x ||
-				 MathF.Abs( newPos.y ) > _boxHalf.y ||
-				 MathF.Abs( newPos.z ) > _boxHalf.z )
-			{
+	private void UpdateDirectional()
+	{
+		var dirLocal = Zone.Direction.Normal;
+		var step = dirLocal * (SpeedMultiplier * Time.Delta * (Zone.Strength * 0.01f + 1f));
+
+		for ( int i = 0; i < _particles.Count; i++ )
+		{
+			var p = _particles[i];
+			var newPos = p.LocalPosition + step;
+
+			if ( OutOfBounds( newPos ) )
 				newPos = ResetToEntrySide( dirLocal );
-			}
 
 			p.LocalPosition = newPos;
+			p.LocalRotation = Rotation.LookAt( dirLocal );
 		}
+	}
+
+	private void UpdatePulse()
+	{
+		var dirLocal = Zone.Direction.Normal;
+		var pulse = Zone.ComputePulseMultiplier();
+		var step = dirLocal * (SpeedMultiplier * Time.Delta * (Zone.Strength * 0.01f + 1f) * MathX.Lerp( 0.2f, 1f, pulse ));
+		var alpha = Color.a * MathX.Lerp( 0.4f, 1f, pulse );
+
+		for ( int i = 0; i < _particles.Count; i++ )
+		{
+			var p = _particles[i];
+			var newPos = p.LocalPosition + step;
+
+			if ( OutOfBounds( newPos ) )
+				newPos = ResetToEntrySide( dirLocal );
+
+			p.LocalPosition = newPos;
+			p.LocalRotation = Rotation.LookAt( dirLocal );
+
+			var tint = Color;
+			tint.a = alpha;
+			_renderers[i].Tint = tint;
+		}
+	}
+
+	private void UpdateTornado()
+	{
+		// Orbit around the local Z axis, drifting upward over time.
+		float angularSpeed = (Zone.Strength * 0.001f + 0.5f) * Zone.TornadoSwirl; // rad/sec
+		float upSpeed = (Zone.Strength * 0.01f) * Zone.TornadoUpward;
+
+		for ( int i = 0; i < _particles.Count; i++ )
+		{
+			var p = _particles[i];
+			var pos = p.LocalPosition;
+
+			// Polar coords on XY plane
+			float r = MathF.Sqrt( pos.x * pos.x + pos.y * pos.y );
+			float a = MathF.Atan2( pos.y, pos.x );
+			a += angularSpeed * Time.Delta;
+			float newX = MathF.Cos( a ) * r;
+			float newY = MathF.Sin( a ) * r;
+			float newZ = pos.z + upSpeed * Time.Delta;
+
+			// Wrap upward → reseed at bottom near a fresh radius
+			if ( newZ > _boxHalf.z )
+			{
+				newZ = -_boxHalf.z;
+				r = Game.Random.Float( 0f, MathF.Min( _boxHalf.x, _boxHalf.y ) );
+				a = Game.Random.Float( 0f, MathF.PI * 2f );
+				newX = MathF.Cos( a ) * r;
+				newY = MathF.Sin( a ) * r;
+			}
+
+			p.LocalPosition = new Vector3( newX, newY, newZ );
+
+			// Orient particle along its tangential motion
+			var tangent = new Vector3( -MathF.Sin( a ), MathF.Cos( a ), 0 );
+			p.LocalRotation = Rotation.LookAt( tangent );
+		}
+	}
+
+	private bool OutOfBounds( Vector3 p )
+	{
+		return MathF.Abs( p.x ) > _boxHalf.x
+			|| MathF.Abs( p.y ) > _boxHalf.y
+			|| MathF.Abs( p.z ) > _boxHalf.z;
 	}
 
 	/// <summary>
@@ -115,7 +196,6 @@ public sealed class WindVisualizer : Component
 	{
 		var absDir = new Vector3( MathF.Abs( dir.x ), MathF.Abs( dir.y ), MathF.Abs( dir.z ) );
 
-		// Pick the dominant axis — the one wind primarily flows along
 		if ( absDir.x >= absDir.y && absDir.x >= absDir.z )
 		{
 			return new Vector3(
