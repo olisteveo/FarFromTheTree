@@ -66,6 +66,24 @@ public sealed class WindZone : Component, Component.ITriggerListener
 		}
 	}
 
+	[Button( "Flip Direction (180°)" )]
+	public void FlipDirection()
+	{
+		Direction = -Direction;
+	}
+
+	[Button( "Rotate 90° CW (around Z)" )]
+	public void RotateClockwise()
+	{
+		Direction = new Vector3( Direction.y, -Direction.x, Direction.z );
+	}
+
+	[Button( "Rotate 90° CCW (around Z)" )]
+	public void RotateCounterClockwise()
+	{
+		Direction = new Vector3( -Direction.y, Direction.x, Direction.z );
+	}
+
 	private float ComputeOscillationMultiplier()
 	{
 		var phase = (_oscTime / OscillationPeriod) * MathF.PI * 2f
