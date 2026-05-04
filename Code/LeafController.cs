@@ -70,8 +70,8 @@ public sealed class LeafController : Component
 	/// Stops the leaf from sticking to the floor — the air is always trying to lift it.
 	/// 0 disables. Higher values = leaf bounces off ground quickly.
 	/// </summary>
-	[Property, Group( "Ground" ), Range( 0f, 2000f )]
-	public float GroundRecoveryForce { get; set; } = 900f;
+	[Property, Group( "Ground" ), Range( 0f, 5000f )]
+	public float GroundRecoveryForce { get; set; } = 2000f;
 
 	/// <summary>
 	/// How long the leaf sits still on the ground after first landing before the

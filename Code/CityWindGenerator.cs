@@ -209,28 +209,39 @@ public sealed class CityWindGenerator : Component
 			);
 		}
 
-		// Alley zones — random cells inside blocks, mixed directions
+		// Per-street wind zones — only place wind in STREET cells (where there are no
+		// buildings). Direction follows the street's orientation so wind flows along
+		// the street, not into walls.
+		if ( MainAvenueEvery <= 1 ) return;
+
 		for ( int x = 0; x < GridX; x++ )
 		{
 			for ( int y = 0; y < GridY; y++ )
 			{
-				// Skip cells that are on main avenues (already covered)
-				if ( MainAvenueEvery > 1 && (x % MainAvenueEvery == 0 || y % MainAvenueEvery == 0) ) continue;
-				if ( random.NextSingle() > AlleyDensity ) continue;
+				bool onEW = y % MainAvenueEvery == 0;
+				bool onNS = x % MainAvenueEvery == 0;
 
-				// Direction bias toward PrimaryFlow with optional variation per cell.
-				// At DirectionVariation=0 every cell points the same way (coherent corridor).
-				// At DirectionVariation=1 it's pure random.
-				var primary = PrimaryFlow.Normal;
-				var jitter = new Vector3(
-					(random.NextSingle() - 0.5f) * 2f,
-					(random.NextSingle() - 0.5f) * 2f,
-					0f
-				);
-				var dir = (primary * (1f - DirectionVariation) + jitter * DirectionVariation).Normal;
+				if ( !onEW && !onNS ) continue; // building cell — no wind here
+
+				Vector3 dir;
+				if ( onEW && onNS )
+				{
+					// Intersection — bias toward PrimaryFlow direction
+					dir = PrimaryFlow.Normal;
+				}
+				else if ( onEW )
+				{
+					// E-W street: wind flows east most of the time, west occasionally
+					dir = new Vector3( random.NextSingle() < 0.85f ? 1 : -1, 0, 0 );
+				}
+				else
+				{
+					// N-S street: wind flows north or south
+					dir = new Vector3( 0, random.NextSingle() < 0.5f ? 1 : -1, 0 );
+				}
 
 				CreateZone(
-					name: $"Wind_Alley_{x}_{y}",
+					name: $"Wind_Street_{x}_{y}",
 					localPos: new Vector3( x * CellSpacing, y * CellSpacing, StreetLevelZ ),
 					size: new Vector3( CellSpacing * CellCoverage, CellSpacing * CellCoverage, StreetLayerHeight ),
 					direction: dir,
