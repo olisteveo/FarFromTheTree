@@ -642,12 +642,31 @@ public sealed class LeafController : Component, Component.ICollisionListener
 		// Damp the velocity so the leaf doesn't keep slamming into the same wall
 		Body.Velocity = Body.Velocity * CollisionLinearDamping;
 
-		// Push upward + forward (along PrimaryDirection) to escape the surface
+		// Push AWAY from the contact surface, not blindly along PrimaryDirection.
+		// Previous bug: when the leaf hit a wall facing -X, the +X "forward" kick
+		// shoved it straight back into the wall (fwdKickAlignsAway = -1.00) and
+		// the stall recovery would escalate to 4× without ever escaping.
 		var primary = PrimaryDirection.LengthSquared > 0.01f
 			? PrimaryDirection.Normal
 			: Vector3.Forward;
-		Body.ApplyForce( Vector3.Up * CollisionUpwardKick );
-		Body.ApplyForce( primary * CollisionForwardKick );
+
+		// Tangential component of PrimaryDirection along the contact plane —
+		// preserves the "keep moving east" intent without pushing into the wall.
+		var primaryTangent = primary - contactNormal * Vector3.Dot( primary, contactNormal );
+		if ( primaryTangent.LengthSquared > 0.01f )
+			primaryTangent = primaryTangent.Normal;
+		else
+			primaryTangent = Vector3.Zero;
+
+		// Floor hits: contactNormal ≈ +Z, so awayKick ≈ Up — same as old behaviour.
+		// Wall hits: contactNormal is horizontal, so awayKick pushes off the wall.
+		var awayKick = contactNormal * CollisionUpwardKick;
+		var tangentKick = primaryTangent * CollisionForwardKick;
+
+		// Small constant up component so the leaf clears any lip on wall slides.
+		var upBias = Vector3.Up * (CollisionUpwardKick * 0.3f);
+
+		Body.ApplyForce( awayKick + tangentKick + upBias );
 
 		if ( LogCollisions )
 		{
@@ -659,11 +678,10 @@ public sealed class LeafController : Component, Component.ICollisionListener
 				var dot = Vector3.Dot( preVel.Normal, -contactNormal );
 				incidence = MathF.Acos( dot.Clamp( -1f, 1f ) ) * 57.2958f;
 			}
-			// Is the kick fighting the wall, or shoving into it?
-			// Up-kick: dot with surface normal — positive = away from wall (good).
-			float upDotNorm = Vector3.Dot( Vector3.Up, contactNormal );
-			float fwdDotNorm = Vector3.Dot( primary, contactNormal );
-			Log.Info( $"[Leaf] HIT {otherName} at ({contactPoint.x:F0},{contactPoint.y:F0},{contactPoint.z:F0}) preSpeed={preSpeed:F0} incidence={incidence:F0}° normal=({contactNormal.x:F2},{contactNormal.y:F2},{contactNormal.z:F2}) upKickAlignsAway={upDotNorm:F2} fwdKickAlignsAway={fwdDotNorm:F2} preAng={preAng.Length:F0}" );
+			// awayKick is along contactNormal by construction (always +1 = perfectly away).
+			// tangentKick is in the surface plane — should be 0 (perpendicular to normal).
+			float tangentDot = Vector3.Dot( primaryTangent, contactNormal );
+			Log.Info( $"[Leaf] HIT {otherName} at ({contactPoint.x:F0},{contactPoint.y:F0},{contactPoint.z:F0}) preSpeed={preSpeed:F0} incidence={incidence:F0}° normal=({contactNormal.x:F2},{contactNormal.y:F2},{contactNormal.z:F2}) tangent=({primaryTangent.x:F2},{primaryTangent.y:F2},{primaryTangent.z:F2}) tangentDotNorm={tangentDot:F2} preAng={preAng.Length:F0}" );
 		}
 	}
 
