@@ -24,8 +24,8 @@ public sealed class LeafCamera : Component
 	[Property, Group( "Follow" ), Range( 0f, 20f )]
 	public float PositionLerpRate { get; set; } = 6f;
 
-	[Property, Group( "Follow" ), Range( 0f, 20f )]
-	public float RotationLerpRate { get; set; } = 4f;
+	[Property, Group( "Follow" ), Range( 0f, 30f )]
+	public float RotationLerpRate { get; set; } = 10f;
 
 	/// <summary>
 	/// World-space direction the camera looks toward in gameplay mode.
@@ -56,18 +56,18 @@ public sealed class LeafCamera : Component
 	public float MaxPitchOffset { get; set; } = 50f;
 
 	/// <summary>
-	/// How fast the orbit recenters when the player isn't moving the mouse.
-	/// 0 = never recenter (camera stays where you left it). Default low so player input persists.
+	/// How fast the orbit recenters back to "behind leaf" when the player isn't moving the mouse.
+	/// High = snaps back instantly. Low = drifts back slowly. 0 = sticky, never recenters.
 	/// </summary>
-	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
-	public float RecenterRate { get; set; } = 0.15f;
+	[Property, Group( "Mouse Orbit" ), Range( 0f, 10f )]
+	public float RecenterRate { get; set; } = 4f;
 
 	/// <summary>
-	/// Seconds of mouse idle before auto-tracking and recentering kicks back in.
-	/// While the player is using the mouse, the camera obeys completely.
+	/// Seconds of mouse idle before recentering kicks back in. Short = camera snaps
+	/// behind leaf almost as soon as you stop moving the mouse.
 	/// </summary>
-	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
-	public float MouseIdleDelay { get; set; } = 1f;
+	[Property, Group( "Mouse Orbit" ), Range( 0f, 3f )]
+	public float MouseIdleDelay { get; set; } = 0.2f;
 
 	[Property, Group( "FOV" ), Range( 30f, 90f )]
 	public float MinFov { get; set; } = 60f;
