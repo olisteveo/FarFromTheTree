@@ -127,6 +127,9 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	[Property, Group( "Collision" ), Range( 0f, 1f )]
 	public float CollisionLinearDamping { get; set; } = 0.5f;
 
+	[Property, Group( "Collision" )]
+	public bool LogCollisions { get; set; } = true;
+
 	/// <summary>
 	/// How long the leaf sits still on the ground after first landing before the
 	/// first gust kicks in. Tutorial UI shows during this window. Player can press
@@ -523,6 +526,13 @@ public sealed class LeafController : Component, Component.ICollisionListener
 		if ( !_hasLanded ) return; // initial fall — let it land naturally
 		if ( IsInTutorialSettle ) return;
 
+		var preVel = Body.Velocity;
+		var preAng = Body.AngularVelocity;
+		var preSpeed = preVel.Length;
+		var contactNormal = collision.Contact.Normal;
+		var contactPoint = collision.Contact.Point;
+		var otherName = collision.Other?.GameObject?.Name ?? "?";
+
 		// Kill rotation so the leaf doesn't spin off into a wall
 		Body.AngularVelocity = Body.AngularVelocity * CollisionAngularDamping;
 
@@ -535,6 +545,23 @@ public sealed class LeafController : Component, Component.ICollisionListener
 			: Vector3.Forward;
 		Body.ApplyForce( Vector3.Up * CollisionUpwardKick );
 		Body.ApplyForce( primary * CollisionForwardKick );
+
+		if ( LogCollisions )
+		{
+			// Angle between incoming velocity and contact normal — tells us if leaf
+			// hit head-on (180° = straight at wall) or grazed (90° = parallel slide).
+			float incidence = -1f;
+			if ( preVel.LengthSquared > 1f && contactNormal.LengthSquared > 0.01f )
+			{
+				var dot = Vector3.Dot( preVel.Normal, -contactNormal );
+				incidence = MathF.Acos( dot.Clamp( -1f, 1f ) ) * 57.2958f;
+			}
+			// Is the kick fighting the wall, or shoving into it?
+			// Up-kick: dot with surface normal — positive = away from wall (good).
+			float upDotNorm = Vector3.Dot( Vector3.Up, contactNormal );
+			float fwdDotNorm = Vector3.Dot( primary, contactNormal );
+			Log.Info( $"[Leaf] HIT {otherName} at ({contactPoint.x:F0},{contactPoint.y:F0},{contactPoint.z:F0}) preSpeed={preSpeed:F0} incidence={incidence:F0}° normal=({contactNormal.x:F2},{contactNormal.y:F2},{contactNormal.z:F2}) upKickAlignsAway={upDotNorm:F2} fwdKickAlignsAway={fwdDotNorm:F2} preAng={preAng.Length:F0}" );
+		}
 	}
 
 	private void ApplyAccumulatedWind()
