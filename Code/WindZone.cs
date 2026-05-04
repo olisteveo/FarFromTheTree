@@ -103,4 +103,40 @@ public sealed class WindZone : Component, Component.ITriggerListener
 			leaf.AddWindForce( force );
 		}
 	}
+
+	/// <summary>
+	/// Editor gizmo: arrow showing wind direction. Length and thickness scale with Strength.
+	/// </summary>
+	protected override void DrawGizmos()
+	{
+		if ( Strength <= 0.01f ) return;
+
+		// Direction in local space (the GameObject's space — Gizmo auto-transforms)
+		var dir = LocalDirection ? Direction.Normal : (WorldRotation.Inverse * Direction.Normal);
+		if ( dir.LengthSquared < 0.01f ) return;
+
+		var arrowLength = (Strength * 0.5f).Clamp( 30f, 400f );
+		var intensity = (Strength / 1500f).Clamp( 0.4f, 1f );
+
+		Gizmo.Draw.Color = new Color( 0.4f, 0.85f, 1f, intensity );
+		Gizmo.Draw.LineThickness = 1f + (Strength / 400f).Clamp( 0f, 4f );
+		Gizmo.Draw.IgnoreDepth = true;
+
+		var origin = Vector3.Zero;
+		var tip = dir * arrowLength;
+
+		// Shaft
+		Gizmo.Draw.Line( origin, tip );
+
+		// Arrowhead — 4 short diagonal lines from tip for visibility from any angle
+		var up = MathF.Abs( dir.z ) < 0.95f ? Vector3.Up : Vector3.Right;
+		var perp = Vector3.Cross( dir, up ).Normal;
+		var perp2 = Vector3.Cross( dir, perp ).Normal;
+		var headSize = arrowLength * 0.18f;
+
+		Gizmo.Draw.Line( tip, tip - dir * headSize + perp * headSize );
+		Gizmo.Draw.Line( tip, tip - dir * headSize - perp * headSize );
+		Gizmo.Draw.Line( tip, tip - dir * headSize + perp2 * headSize );
+		Gizmo.Draw.Line( tip, tip - dir * headSize - perp2 * headSize );
+	}
 }
