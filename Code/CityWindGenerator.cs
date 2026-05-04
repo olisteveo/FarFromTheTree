@@ -330,15 +330,22 @@ public sealed class CityWindGenerator : Component
 	}
 
 	/// <summary>
-	/// Internal: spawns rooftop wind zones at every grid cell. Above the buildings
-	/// there's no obstruction, so wind covers the full city footprint at altitude.
+	/// Internal: spawns rooftop wind zones using the SAME PATTERN as street level —
+	/// only in main avenue cells (where x % MainAvenueEvery == 0 || y % MainAvenueEvery == 0).
+	/// Same density and layout as street zones, just at higher Z.
 	/// </summary>
 	private void SpawnRooftopGrid()
 	{
+		if ( MainAvenueEvery <= 1 ) return;
+
 		for ( int x = 0; x < GridX; x++ )
 		{
 			for ( int y = 0; y < GridY; y++ )
 			{
+				bool onEW = y % MainAvenueEvery == 0;
+				bool onNS = x % MainAvenueEvery == 0;
+				if ( !onEW && !onNS ) continue;
+
 				CreateZone(
 					name: $"Wind_Rooftop_{x}_{y}",
 					localPos: new Vector3( x * CellSpacing, y * CellSpacing, RooftopLevelZ ),
