@@ -87,6 +87,18 @@ public sealed class CityWindGenerator : Component
 	[Property, Group( "Vertical Layer" ), Range( 0f, 1f )]
 	public float UpwardBias { get; set; } = 0.2f;
 
+	[Property, Group( "Rooftop Layer" )]
+	public bool GenerateRooftopLayer { get; set; } = true;
+
+	[Property, Group( "Rooftop Layer" ), Range( 200f, 3000f )]
+	public float RooftopLevelZ { get; set; } = 1300f;
+
+	[Property, Group( "Rooftop Layer" ), Range( 100f, 2000f )]
+	public float RooftopLayerHeight { get; set; } = 800f;
+
+	[Property, Group( "Rooftop Layer" ), Range( 100f, 2000f )]
+	public float RooftopStrength { get; set; } = 600f;
+
 	[Property, Group( "Visualizer" )]
 	public bool AddVisualizers { get; set; } = true;
 
@@ -208,6 +220,19 @@ public sealed class CityWindGenerator : Component
 				oscillates: false,
 				phase: 0f
 			);
+		}
+
+		// Rooftop layer — open wind above the buildings. Pure east, no buildings to dodge.
+		// Player who climbs above the city gets this clean fast lane.
+		if ( GenerateRooftopLayer )
+		{
+			CreateZone( "Wind_Rooftop_Main",
+				localPos: new Vector3( totalX * 0.5f, totalY * 0.5f, RooftopLevelZ ),
+				size: new Vector3( totalX + CellSpacing * 2f, totalY + CellSpacing * 2f, RooftopLayerHeight ),
+				direction: new Vector3( 1, 0, 0 ),
+				strength: RooftopStrength,
+				oscillates: false,
+				phase: 0f );
 		}
 
 		// Per-street wind zones — only place wind in STREET cells. ALL flow east toward
