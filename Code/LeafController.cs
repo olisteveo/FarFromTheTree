@@ -10,7 +10,7 @@
 ///   * Edge into wind  → minimum push     (slices through)
 ///   * Angled to wind  → redirected force (surf mechanic, the heart of the game)
 /// </summary>
-public sealed class LeafController : Component
+public sealed class LeafController : Component, Component.ICollisionListener
 {
 	[Property] public Rigidbody Body { get; set; }
 
@@ -95,6 +95,22 @@ public sealed class LeafController : Component
 
 	[Property, Group( "Stall Recovery" ), Range( 0.2f, 5f )]
 	public float StallSampleSeconds { get; set; } = 0.8f;
+
+	/// <summary>
+	/// On every collision (wall hit), instantly damp the leaf's angular velocity and
+	/// apply an upward + forward impulse so it doesn't stick to the surface.
+	/// </summary>
+	[Property, Group( "Collision" ), Range( 0f, 2000f )]
+	public float CollisionUpwardKick { get; set; } = 600f;
+
+	[Property, Group( "Collision" ), Range( 0f, 2000f )]
+	public float CollisionForwardKick { get; set; } = 400f;
+
+	[Property, Group( "Collision" ), Range( 0f, 1f )]
+	public float CollisionAngularDamping { get; set; } = 0.2f;
+
+	[Property, Group( "Collision" ), Range( 0f, 1f )]
+	public float CollisionLinearDamping { get; set; } = 0.5f;
 
 	/// <summary>
 	/// How long the leaf sits still on the ground after first landing before the
@@ -463,6 +479,34 @@ public sealed class LeafController : Component
 			Game.Random.Float( -1f, 1f )
 		) * TumbleStrength;
 		Body.ApplyTorque( torque );
+	}
+
+	void Component.ICollisionListener.OnCollisionStart( Collision collision )
+	{
+		if ( Body is null ) return;
+		if ( !_hasLanded ) return; // initial fall — let it land naturally
+		if ( IsInTutorialSettle ) return;
+
+		// Kill rotation so the leaf doesn't spin off into a wall
+		Body.AngularVelocity = Body.AngularVelocity * CollisionAngularDamping;
+
+		// Damp the velocity so the leaf doesn't keep slamming into the same wall
+		Body.Velocity = Body.Velocity * CollisionLinearDamping;
+
+		// Push upward + forward (along PrimaryDirection) to escape the surface
+		var primary = PrimaryDirection.LengthSquared > 0.01f
+			? PrimaryDirection.Normal
+			: Vector3.Forward;
+		Body.ApplyForce( Vector3.Up * CollisionUpwardKick );
+		Body.ApplyForce( primary * CollisionForwardKick );
+	}
+
+	void Component.ICollisionListener.OnCollisionStop( Collision collision )
+	{
+	}
+
+	void Component.ICollisionListener.OnCollisionUpdate( Collision collision )
+	{
 	}
 
 	private void ApplyAccumulatedWind()
