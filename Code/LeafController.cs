@@ -531,7 +531,7 @@ public sealed class LeafController : Component, Component.ICollisionListener
 		var preSpeed = preVel.Length;
 		var contactNormal = collision.Contact.Normal;
 		var contactPoint = collision.Contact.Point;
-		var otherName = collision.Other?.GameObject?.Name ?? "?";
+		var otherName = collision.Other.GameObject?.Name ?? "?";
 
 		// Kill rotation so the leaf doesn't spin off into a wall
 		Body.AngularVelocity = Body.AngularVelocity * CollisionAngularDamping;
