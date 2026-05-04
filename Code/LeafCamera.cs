@@ -57,10 +57,17 @@ public sealed class LeafCamera : Component
 
 	/// <summary>
 	/// How fast the orbit recenters when the player isn't moving the mouse.
-	/// 0 = never recenter (camera stays where you left it).
+	/// 0 = never recenter (camera stays where you left it). Default low so player input persists.
 	/// </summary>
 	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
-	public float RecenterRate { get; set; } = 0.8f;
+	public float RecenterRate { get; set; } = 0.15f;
+
+	/// <summary>
+	/// Seconds of mouse idle before auto-tracking and recentering kicks back in.
+	/// While the player is using the mouse, the camera obeys completely.
+	/// </summary>
+	[Property, Group( "Mouse Orbit" ), Range( 0f, 5f )]
+	public float MouseIdleDelay { get; set; } = 1f;
 
 	[Property, Group( "FOV" ), Range( 30f, 90f )]
 	public float MinFov { get; set; } = 60f;
@@ -89,6 +96,7 @@ public sealed class LeafCamera : Component
 	private float _mouseYaw;
 	private float _mousePitch;
 	private float _currentDistance;
+	private float _mouseIdleSeconds;
 
 	protected override void OnAwake()
 	{
@@ -128,6 +136,7 @@ public sealed class LeafCamera : Component
 		{
 			_mouseYaw = 0;
 			_mousePitch = 0;
+			_mouseIdleSeconds = 999f;
 			return;
 		}
 
@@ -135,16 +144,29 @@ public sealed class LeafCamera : Component
 		var dx = look.yaw * MouseSensitivity * (InvertYaw ? -1f : 1f);
 		var dy = look.pitch * MouseSensitivity * (InvertPitch ? -1f : 1f);
 
-		_mouseYaw = (_mouseYaw + dx).Clamp( -MaxYawOffset, MaxYawOffset );
-		_mousePitch = (_mousePitch + dy).Clamp( -MaxPitchOffset, MaxPitchOffset );
+		var moved = MathF.Abs( dx ) > 0.001f || MathF.Abs( dy ) > 0.001f;
 
-		// Recenter when no input and recenter rate > 0
-		if ( MathF.Abs( dx ) < 0.001f && MathF.Abs( dy ) < 0.001f && RecenterRate > 0f )
+		if ( moved )
 		{
-			_mouseYaw = _mouseYaw.LerpTo( 0f, Time.Delta * RecenterRate );
-			_mousePitch = _mousePitch.LerpTo( 0f, Time.Delta * RecenterRate );
+			_mouseYaw = (_mouseYaw + dx).Clamp( -MaxYawOffset, MaxYawOffset );
+			_mousePitch = (_mousePitch + dy).Clamp( -MaxPitchOffset, MaxPitchOffset );
+			_mouseIdleSeconds = 0f;
+		}
+		else
+		{
+			_mouseIdleSeconds += Time.Delta;
+
+			// Only recenter after idle delay has passed — player input persists meanwhile
+			if ( _mouseIdleSeconds > MouseIdleDelay && RecenterRate > 0f )
+			{
+				_mouseYaw = _mouseYaw.LerpTo( 0f, Time.Delta * RecenterRate );
+				_mousePitch = _mousePitch.LerpTo( 0f, Time.Delta * RecenterRate );
+			}
 		}
 	}
+
+	/// <summary>True when the player is actively orbiting the camera with the mouse.</summary>
+	private bool IsMouseActive => _mouseIdleSeconds < MouseIdleDelay;
 
 	private Rotation OrbitRotation => Rotation.From( -_mousePitch, _mouseYaw, 0 );
 
@@ -155,7 +177,9 @@ public sealed class LeafCamera : Component
 		var horizontalVel = velocity.WithZ( 0 );
 		var speed = velocity.Length;
 
-		if ( horizontalVel.Length > 5f )
+		// Only auto-track velocity when player isn't actively using the mouse.
+		// Lets the player's mouse offset persist without the base direction shifting underneath them.
+		if ( horizontalVel.Length > 5f && !IsMouseActive )
 		{
 			var targetYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
 			_trackedYaw = Rotation.Lerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
