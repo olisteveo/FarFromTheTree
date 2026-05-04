@@ -46,7 +46,22 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	/// (surface normal up) when the player isn't giving input. Prevents endless spinning.
 	/// </summary>
 	[Property, Group( "Tilt Control" ), Range( 0f, 30f )]
-	public float AutoStabilizeStrength { get; set; } = 4f;
+	public float AutoStabilizeStrength { get; set; } = 1.5f;
+
+	/// <summary>
+	/// When the leaf is banked (rolled), it gradually yaws toward the bank direction —
+	/// banking right turns right, like an aeroplane. Effect scales with speed.
+	/// </summary>
+	[Property, Group( "Tilt Control" ), Range( 0f, 30f )]
+	public float BankToYawStrength { get; set; } = 8f;
+
+	/// <summary>
+	/// When the leaf is pitched forward (nose down), it gets a small forward push along
+	/// its facing direction — gives "dive into speed" feel. NOT pure thrust because it
+	/// only kicks when the leaf is already angled into a dive.
+	/// </summary>
+	[Property, Group( "Tilt Control" ), Range( 0f, 2000f )]
+	public float DiveAssist { get; set; } = 600f;
 
 	[Property, Group( "Safety" ), Range( 0f, 5000f )]
 	public float MaxLinearSpeed { get; set; } = 600f;
@@ -432,10 +447,6 @@ public sealed class LeafController : Component, Component.ICollisionListener
 
 	private void ApplyTilt()
 	{
-		// Player input rotates the leaf via torque — physics-friendly, doesn't fight Rigidbody.
-		// Forward (W / stick up) = pitch nose down (negative pitch in our convention).
-		// Right (D / stick right) = roll right.
-		// NEVER applies forward thrust — leaf cannot move on its own.
 		var input = Input.AnalogMove;
 
 		if ( input.LengthSquared > 0.01f )
@@ -447,15 +458,40 @@ public sealed class LeafController : Component, Component.ICollisionListener
 		}
 		else if ( !_isGrounded )
 		{
-			// No input — dampen angular velocity AND gently stabilize toward flat
+			// No input — gentle damping + stabilize toward flat
 			Body.AngularVelocity = Body.AngularVelocity * (1f - TiltDamping * Time.Delta).Clamp( 0f, 1f );
 
-			// Auto-stabilize: torque toward flat (leaf surface normal points up)
 			if ( AutoStabilizeStrength > 0f )
 			{
 				var leafUp = WorldRotation.Up;
 				var correction = Vector3.Cross( leafUp, Vector3.Up );
 				Body.ApplyTorque( correction * AutoStabilizeStrength );
+			}
+		}
+
+		// Bank-to-yaw: a banked leaf turns toward the bank direction (aeroplane-like).
+		// Independent of input — works whenever the leaf is rolled.
+		if ( !_isGrounded && BankToYawStrength > 0f )
+		{
+			var leafRight = WorldRotation.Right;
+			// Roll component: how much "right" axis is tilted up/down
+			var rollAmount = leafRight.z;
+			var speed = Body.Velocity.Length;
+			var speedFactor = (speed / 200f).Clamp( 0f, 2f );
+			Body.ApplyTorque( Vector3.Up * (-rollAmount * BankToYawStrength * speedFactor) );
+		}
+
+		// Dive assist: when leaf is pitched nose-down, push forward along its facing.
+		// Makes "diving" actually feel like accelerating, not just falling.
+		if ( !_isGrounded && DiveAssist > 0f )
+		{
+			var leafForward = WorldRotation.Forward;
+			// Negative Z component on forward = nose pointing down
+			var diveAmount = -leafForward.z;
+			if ( diveAmount > 0f )
+			{
+				var pushDir = leafForward.WithZ( 0 ).Normal;
+				Body.ApplyForce( pushDir * DiveAssist * diveAmount );
 			}
 		}
 	}
