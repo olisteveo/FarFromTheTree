@@ -267,25 +267,97 @@ public sealed class LeafCamera : Component
 	{
 		_transitionElapsed += Time.Delta;
 
-		var dir = GameplayDirection.LengthSquared > 0.01f
-			? GameplayDirection.Normal
-			: Vector3.Forward;
+		var leafBody = Target.Components.Get<Rigidbody>();
+		var velocity = leafBody?.Velocity ?? Vector3.Zero;
+		var horizontalVel = velocity.WithZ( 0 );
+		var speed = velocity.Length;
 
-		var baseRot = Rotation.LookAt( dir );
-		var combined = baseRot * OrbitRotation;
-		var targetPos = ResolveCameraPosition( leafPos, combined );
-		var targetRot = Rotation.LookAt( leafPos - targetPos, Vector3.Up );
+		// SSX Tricky / Forza chase cam: always behind the leaf relative to its velocity.
+		// Before the leaf has speed (during settle), use GameplayDirection as the fallback
+		// so the camera doesn't jitter while the leaf is essentially still.
+		bool snap = false;
+		Vector3 currentDir = Vector3.Zero;
+		float yawErrorBefore = 0f;
+		float dotPrev = 1f;
+		Rotation targetYaw;
+		if ( horizontalVel.Length > 5f )
+		{
+			currentDir = horizontalVel.Normal;
+			targetYaw = Rotation.From( 0, horizontalVel.EulerAngles.yaw, 0 );
+			yawErrorBefore = MathF.Acos( Vector3.Dot( _trackedYaw.Forward, targetYaw.Forward ).Clamp( -1f, 1f ) ) * 57.2958f;
 
+			bool bigChange = _lastVelDirection.LengthSquared > 0.01f
+				&& Vector3.Dot( _lastVelDirection, currentDir ) < 0.7f;
+			dotPrev = _lastVelDirection.LengthSquared > 0.01f
+				? Vector3.Dot( _lastVelDirection, currentDir )
+				: 1f;
+
+			if ( bigChange )
+			{
+				_trackedYaw = targetYaw;
+				snap = true;
+				if ( LogDiagnostics )
+					Log.Info( $"[Cam] GAMEPLAY SNAP bigChange dot={dotPrev:F2} yawErr={yawErrorBefore:F0}° speed={speed:F0}" );
+			}
+			else
+			{
+				_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
+			}
+		}
+		else
+		{
+			var fallbackDir = GameplayDirection.LengthSquared > 0.01f
+				? GameplayDirection.Normal
+				: Vector3.Forward;
+			targetYaw = Rotation.LookAt( fallbackDir );
+			_trackedYaw = Rotation.Slerp( _trackedYaw, targetYaw, Time.Delta * RotationLerpRate );
+		}
+		_lastVelDirection = currentDir;
+
+		var combined = _trackedYaw * OrbitRotation;
+		var resolved = ResolveCameraPosition( leafPos, combined );
+
+		// Transition rate ramps up over TransitionDuration so the camera eases into the
+		// chase rig after landing rather than snapping. After that, chase tightly.
 		var t = (_transitionElapsed / TransitionDuration).Clamp( 0f, 1f );
-		var followRate = MathX.Lerp( 2f, 12f, t );
+		var posRate = MathX.Lerp( 2f, PositionLerpRate * 4f, t );
 
-		WorldPosition = WorldPosition.LerpTo( targetPos, Time.Delta * followRate );
-		WorldRotation = Rotation.Slerp( WorldRotation, targetRot, Time.Delta * followRate );
+		if ( snap && t >= 1f )
+		{
+			WorldPosition = resolved;
+		}
+		else
+		{
+			WorldPosition = WorldPosition.LerpTo( resolved, Time.Delta * posRate );
+		}
+		WorldRotation = Rotation.LookAt( leafPos - WorldPosition, Vector3.Up );
 
 		if ( Camera is not null )
 		{
-			Camera.FieldOfView = MinFov;
+			float fovT = (speed / SpeedAtMaxFov).Clamp( 0f, 1f );
+			Camera.FieldOfView = MinFov.LerpTo( MaxFov, fovT );
 		}
+
+		LogGameplayHeartbeat( leafPos, horizontalVel, speed, currentDir, yawErrorBefore );
+	}
+
+	private void LogGameplayHeartbeat( Vector3 leafPos, Vector3 horizontalVel, float speed, Vector3 currentDir, float yawErr )
+	{
+		if ( !LogDiagnostics ) return;
+		_logTimer += Time.Delta;
+		if ( _logTimer < LogInterval ) return;
+		_logTimer = 0f;
+
+		var camToLeaf = (leafPos - WorldPosition).WithZ( 0 );
+		float behindAngle = -1f;
+		if ( camToLeaf.LengthSquared > 1f && currentDir.LengthSquared > 0.01f )
+		{
+			var dot = Vector3.Dot( camToLeaf.Normal, currentDir );
+			behindAngle = MathF.Acos( dot.Clamp( -1f, 1f ) ) * 57.2958f;
+		}
+
+		var trackedFwd = _trackedYaw.Forward;
+		Log.Info( $"[Cam] GAMEPLAY spd={speed:F0} velDir=({currentDir.x:F2},{currentDir.y:F2}) trackedFwd=({trackedFwd.x:F2},{trackedFwd.y:F2}) yawErr={yawErr:F0}° behindAngle={behindAngle:F0}° mouseYaw={_mouseYaw:F0} mousePitch={_mousePitch:F0} mouseIdle={_mouseIdleSeconds:F1}s dist={_currentDistance:F0}" );
 	}
 
 	/// <summary>
