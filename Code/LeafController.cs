@@ -33,11 +33,11 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	/// configured GravityScale once the leaf lands.
 	/// </summary>
 	[Property, Group( "Initial Fall" ), Range( 0f, 1f )]
-	public float FallGravityScale { get; set; } = 0.04f;
+	public float FallGravityScale { get; set; } = 0.07f;
 
 	/// <summary>Multiplier on SwayStrength while still in the initial fall — bigger pendulum.</summary>
 	[Property, Group( "Initial Fall" ), Range( 1f, 10f )]
-	public float FallSwayMultiplier { get; set; } = 4f;
+	public float FallSwayMultiplier { get; set; } = 1.6f;
 
 	/// <summary>
 	/// How much wind force the leaf catches when its surface is edge-on to the wind.
@@ -572,8 +572,15 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	{
 		_pendulumTime += Time.Delta;
 		var amplitude = SwayStrength * (_hasLanded ? 1f : FallSwayMultiplier);
-		var swingForce = MathF.Sin( _pendulumTime * SwayFrequency * MathF.PI * 2f ) * amplitude;
-		Body.ApplyForce( _pendulumAxis * swingForce );
+
+		// Lissajous-style 2D sway in the XY plane: X uses one frequency, Y uses
+		// a slightly different one. The closed-loop pattern means the leaf wobbles
+		// without the net positional drift a fixed-axis pendulum produces — the
+		// reason it was getting flung "behind the tree" before.
+		var phase = _pendulumTime * SwayFrequency * MathF.PI * 2f;
+		var fx = MathF.Sin( phase ) * amplitude;
+		var fy = MathF.Cos( phase * 0.73f ) * amplitude * 0.7f;
+		Body.ApplyForce( new Vector3( fx, fy, 0f ) );
 	}
 
 	private void ApplyTumble()

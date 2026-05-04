@@ -28,6 +28,31 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 	[Property, Group( "Visual" ), Range( 1f, 30f )]
 	public float SurfaceThickness { get; set; } = 6f;
 
+	protected override void OnAwake()
+	{
+		// Auto-setup at runtime so the zone always works even if the scene was
+		// saved before the BoxCollider / visual existed.
+		var box = GetComponent<BoxCollider>();
+		if ( box is null )
+		{
+			box = Components.Create<BoxCollider>();
+			box.Scale = DefaultSize;
+			box.IsTrigger = true;
+			Log.Info( $"[DeathZone] Auto-created BoxCollider {DefaultSize} on OnAwake." );
+		}
+		else
+		{
+			box.IsTrigger = true;
+		}
+
+		// Spawn the visual if it isn't already there
+		var hasVisual = GameObject.Children.Any( c => c.Name == "DeathZone_Water" );
+		if ( !hasVisual )
+		{
+			GenerateVisual();
+		}
+	}
+
 	void Component.ITriggerListener.OnTriggerEnter( Collider other )
 	{
 		var leaf = other.GameObject.Components.Get<LeafController>();
