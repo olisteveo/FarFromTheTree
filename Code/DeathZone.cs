@@ -2,13 +2,23 @@
 /// Trigger volume that fails the run when the leaf enters it.
 /// Attach to a GameObject with a BoxCollider that has IsTrigger = true.
 ///
-/// Editor gizmo draws a translucent dark-blue box with rippling top to suggest
-/// water / dead area at a glance.
+/// Click "Generate Sea Visual" to auto-spawn a tinted water mass that exactly
+/// fills the BoxCollider, so the death zone is visible in-game (the editor
+/// gizmo is editor-only). Re-run the button after resizing the BoxCollider.
 /// </summary>
 public sealed class DeathZone : Component, Component.ITriggerListener
 {
 	[Property]
 	public string FailReason { get; set; } = "Lost in the river";
+
+	[Property, Group( "Visual" )]
+	public Color WaterColor { get; set; } = new Color( 0.10f, 0.28f, 0.55f );
+
+	[Property, Group( "Visual" )]
+	public Color SurfaceColor { get; set; } = new Color( 0.30f, 0.55f, 0.85f );
+
+	[Property, Group( "Visual" ), Range( 1f, 30f )]
+	public float SurfaceThickness { get; set; } = 6f;
 
 	void Component.ITriggerListener.OnTriggerEnter( Collider other )
 	{
@@ -22,6 +32,69 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 		// no-op — failure is one-way
 	}
 
+	[Button( "Generate Sea Visual" )]
+	public void GenerateVisual()
+	{
+		ClearVisual();
+
+		var box = GetComponent<BoxCollider>();
+		if ( box is null )
+		{
+			Log.Warning( "[DeathZone] No BoxCollider — add one before generating the sea visual." );
+			return;
+		}
+
+		var ps = GameObject.WorldScale;
+
+		// Main water body — opaque box filling the entire trigger volume
+		SpawnChild(
+			name: "DeathZone_Water",
+			localPos: box.Center,
+			size: box.Scale,
+			tint: WaterColor,
+			parentScale: ps );
+
+		// Bright surface slab sitting on top — gives a visible "shoreline" cue
+		var surfaceSize = new Vector3( box.Scale.x, box.Scale.y, SurfaceThickness );
+		var surfaceCenter = box.Center + new Vector3( 0, 0, (box.Scale.z * 0.5f) - (SurfaceThickness * 0.5f) );
+		SpawnChild(
+			name: "DeathZone_Surface",
+			localPos: surfaceCenter,
+			size: surfaceSize,
+			tint: SurfaceColor,
+			parentScale: ps );
+	}
+
+	[Button( "Clear Visual" )]
+	public void ClearVisual()
+	{
+		var children = GameObject.Children
+			.Where( c => c.Name.StartsWith( "DeathZone_" ) )
+			.ToList();
+		foreach ( var c in children )
+		{
+			c.Destroy();
+		}
+	}
+
+	private void SpawnChild( string name, Vector3 localPos, Vector3 size, Color tint, Vector3 parentScale )
+	{
+		var go = new GameObject( true, name );
+		go.SetParent( GameObject );
+
+		// Compensate for parent scale so the visual lands at world-unit size
+		go.LocalScale = new Vector3(
+			parentScale.x != 0 ? size.x / 50f / parentScale.x : size.x / 50f,
+			parentScale.y != 0 ? size.y / 50f / parentScale.y : size.y / 50f,
+			parentScale.z != 0 ? size.z / 50f / parentScale.z : size.z / 50f
+		);
+		go.LocalPosition = localPos;
+
+		var renderer = go.Components.Create<ModelRenderer>();
+		renderer.Model = Model.Load( "models/dev/box.vmdl" );
+		renderer.Tint = tint;
+	}
+
 	protected override void DrawGizmos()
 	{
 		var box = GetComponent<BoxCollider>();
@@ -31,7 +104,6 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 		var min = box.Center - half;
 		var max = box.Center + half;
 
-		// Water-blue translucent volume, brighter when hovered/selected
 		var fill = new Color( 0.12f, 0.32f, 0.55f, 0.18f );
 		var edge = new Color( 0.35f, 0.65f, 0.95f, 0.85f );
 		if ( Gizmo.IsHovered ) edge = Color.Yellow;
@@ -39,16 +111,13 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 
 		Gizmo.Draw.IgnoreDepth = true;
 
-		// Outline box
 		Gizmo.Draw.Color = edge;
 		Gizmo.Draw.LineThickness = 2f;
 		Gizmo.Draw.LineBBox( new BBox( min, max ) );
 
-		// Translucent solid fill
 		Gizmo.Draw.Color = fill;
 		Gizmo.Draw.SolidBox( new BBox( min, max ) );
 
-		// "Water surface" lines along the top to cue it as a death surface
 		Gizmo.Draw.Color = new Color( 0.55f, 0.82f, 1f, 0.55f );
 		Gizmo.Draw.LineThickness = 1f;
 		float topZ = max.z;
@@ -60,12 +129,10 @@ public sealed class DeathZone : Component, Component.ITriggerListener
 			Gizmo.Draw.Line( new Vector3( min.x, y, topZ ), new Vector3( max.x, y, topZ ) );
 		}
 
-		// Skull tag in the centre to make it obvious this is a death zone
 		var center = (min + max) * 0.5f;
 		Gizmo.Draw.Color = new Color( 1f, 0.4f, 0.4f, 0.9f );
 		Gizmo.Draw.LineThickness = 3f;
 		float r = MathF.Min( half.x, MathF.Min( half.y, half.z ) ) * 0.18f;
-		// X mark
 		Gizmo.Draw.Line( center + new Vector3( -r, -r, 0 ), center + new Vector3( r, r, 0 ) );
 		Gizmo.Draw.Line( center + new Vector3( -r, r, 0 ), center + new Vector3( r, -r, 0 ) );
 
