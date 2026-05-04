@@ -140,6 +140,8 @@ public sealed class LeafController : Component
 	private float _speedSum;
 	private int _speedSamples;
 	private float _stallCooldown;
+	private int _consecutiveStalls;
+	private float _stallStreakTimer;
 	private bool _logSettleStart;
 	private bool _logSettleEnd;
 	private float _logHeartbeat;
@@ -275,21 +277,33 @@ public sealed class LeafController : Component
 			return;
 		}
 
+		// Tick down consecutive stall streak when not stalled
+		_stallStreakTimer -= StallSampleSeconds;
+		if ( _stallStreakTimer < 0 )
+		{
+			_consecutiveStalls = 0;
+			_stallStreakTimer = 0;
+		}
+
 		if ( avgSpeed < StallSpeedThreshold )
 		{
-			// Stuck — kick HARD upward to lift over walls + forward toward primary direction.
-			// Never push backward; the leaf can fly over walls but should never retreat.
+			_consecutiveStalls++;
+			_stallStreakTimer = 5f; // reset window — must stall again within 5s to count
+
 			var primary = PrimaryDirection.LengthSquared > 0.01f
 				? PrimaryDirection.Normal
 				: Vector3.Forward;
 
-			Body.ApplyForce( Vector3.Up * StallRecoveryUpward * 1.5f );
-			Body.ApplyForce( primary * StallRecoveryForward );
+			// Each consecutive stall multiplies the recovery force. Caps at 4× to avoid
+			// flinging the leaf into orbit.
+			var multiplier = MathF.Min( _consecutiveStalls, 4f );
+			Body.ApplyForce( Vector3.Up * StallRecoveryUpward * 1.5f * multiplier );
+			Body.ApplyForce( primary * StallRecoveryForward * multiplier );
 			_stallCooldown = 1.5f;
 
 			if ( DebugLogging )
 			{
-				Log.Info( $"[Leaf] STALL RECOVERY — avg {avgSpeed:F0}, kicking up + forward (primary)" );
+				Log.Info( $"[Leaf] STALL RECOVERY — avg {avgSpeed:F0}, streak {_consecutiveStalls}× — kick {multiplier:F0}× harder" );
 			}
 		}
 	}
