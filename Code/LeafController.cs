@@ -74,6 +74,29 @@ public sealed class LeafController : Component
 	public float GroundRecoveryForce { get; set; } = 2000f;
 
 	/// <summary>
+	/// World-space direction the leaf should be travelling. Used by stall recovery
+	/// to nudge stuck leaves forward. Should match LeafCamera.GameplayDirection.
+	/// </summary>
+	[Property, Group( "Stall Recovery" )]
+	public Vector3 PrimaryDirection { get; set; } = Vector3.Forward;
+
+	/// <summary>
+	/// If average speed over last second drops below this, the leaf is "stuck" and
+	/// gets an unstick impulse. 0 disables.
+	/// </summary>
+	[Property, Group( "Stall Recovery" ), Range( 0f, 200f )]
+	public float StallSpeedThreshold { get; set; } = 60f;
+
+	[Property, Group( "Stall Recovery" ), Range( 0f, 5000f )]
+	public float StallRecoveryUpward { get; set; } = 1500f;
+
+	[Property, Group( "Stall Recovery" ), Range( 0f, 5000f )]
+	public float StallRecoveryForward { get; set; } = 800f;
+
+	[Property, Group( "Stall Recovery" ), Range( 0.2f, 5f )]
+	public float StallSampleSeconds { get; set; } = 0.8f;
+
+	/// <summary>
 	/// How long the leaf sits still on the ground after first landing before the
 	/// first gust kicks in. Tutorial UI shows during this window. Player can press
 	/// any input to skip to instant pickup.
@@ -114,6 +137,9 @@ public sealed class LeafController : Component
 	private bool _isGrounded;
 	private bool _hasLanded;
 	private float _settleElapsed;
+	private float _speedSum;
+	private int _speedSamples;
+	private float _stallCooldown;
 	private bool _logSettleStart;
 	private bool _logSettleEnd;
 	private float _logHeartbeat;
@@ -209,6 +235,7 @@ public sealed class LeafController : Component
 
 		CheckGrounded();
 		ApplyGroundRecovery();
+		ApplyStallRecovery();
 		ApplyDrag();
 		ApplyTilt();           // player input rotates the leaf (always available)
 		ApplyAccumulatedWind();
@@ -223,6 +250,46 @@ public sealed class LeafController : Component
 		}
 
 		ClampVelocities();
+	}
+
+	private void ApplyStallRecovery()
+	{
+		if ( !_hasLanded ) return;
+		if ( IsInTutorialSettle ) return;
+		if ( StallSpeedThreshold <= 0f ) return;
+
+		// Track average speed over a rolling window
+		_speedSum += Body.Velocity.Length;
+		_speedSamples++;
+
+		var sampleWindowTicks = (int)(StallSampleSeconds * 60f); // assuming 60Hz fixed
+		if ( _speedSamples < sampleWindowTicks ) return;
+
+		var avgSpeed = _speedSum / _speedSamples;
+		_speedSum = 0;
+		_speedSamples = 0;
+
+		if ( _stallCooldown > 0 )
+		{
+			_stallCooldown -= StallSampleSeconds;
+			return;
+		}
+
+		if ( avgSpeed < StallSpeedThreshold )
+		{
+			// Stuck — apply unstick impulse upward and forward
+			var dir = PrimaryDirection.LengthSquared > 0.01f
+				? PrimaryDirection.Normal
+				: Vector3.Forward;
+			Body.ApplyForce( Vector3.Up * StallRecoveryUpward );
+			Body.ApplyForce( dir * StallRecoveryForward );
+			_stallCooldown = 1.5f; // don't spam — wait 1.5s before checking again
+
+			if ( DebugLogging )
+			{
+				Log.Info( $"[Leaf] STALL RECOVERY — avg speed was {avgSpeed:F0}, kicking up + forward" );
+			}
+		}
 	}
 
 	private void ApplyGroundRecovery()
