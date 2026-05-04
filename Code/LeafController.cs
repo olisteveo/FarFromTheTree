@@ -138,6 +138,17 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	[Property, Group( "Tutorial Settle" ), Range( 0f, 10f )]
 	public float SettleDuration { get; set; } = 3f;
 
+	/// <summary>
+	/// Leaf "petals" — long-term life/durability indicator. Starts at MaxPetals,
+	/// will eventually decrement on heavy collisions / wall scrapes. Hit zero = run failed.
+	/// Right now no logic decrements them; HUD just displays the count.
+	/// </summary>
+	[Property, Group( "Run" ), Range( 1, 10 )]
+	public int MaxPetals { get; set; } = 5;
+
+	[Property, Group( "Run" ), Range( 0, 10 )]
+	public int Petals { get; set; } = 5;
+
 	/// <summary>True when leaf is currently in contact with (or just above) the ground.</summary>
 	public bool IsGrounded => _isGrounded;
 
@@ -159,6 +170,18 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	/// <summary>True if leaf has landed but settle is still in progress (tutorial period).</summary>
 	public bool IsInTutorialSettle => _hasLanded && _settleElapsed < SettleDuration;
 
+	/// <summary>Magnitude of the leaf's current velocity. Convenience for HUD speedometer.</summary>
+	public float CurrentSpeed => Body?.Velocity.Length ?? 0f;
+
+	/// <summary>Seconds elapsed in the current run, ticking once the first wind activates.</summary>
+	public float RunTime => _runElapsed;
+
+	/// <summary>True while the run timer is ticking (post-settle, not yet finished).</summary>
+	public bool IsRunning => _hasLanded && _settleElapsed >= SettleDuration && !HasFinished;
+
+	/// <summary>True once the leaf has reached the run goal. Stops the timer. (No goal yet.)</summary>
+	public bool HasFinished { get; private set; }
+
 	/// <summary>Seconds remaining until the first gust kicks in (0 once skipped or elapsed).</summary>
 	public float SettleTimeRemaining => MathF.Max( 0f, SettleDuration - _settleElapsed );
 
@@ -171,6 +194,7 @@ public sealed class LeafController : Component, Component.ICollisionListener
 	private bool _isGrounded;
 	private bool _hasLanded;
 	private float _settleElapsed;
+	private float _runElapsed;
 	private float _speedSum;
 	private int _speedSamples;
 	private float _stallCooldown;
@@ -235,6 +259,8 @@ public sealed class LeafController : Component, Component.ICollisionListener
 				Log.Info( $"[Leaf] HB pos=({WorldPosition.x:F0},{WorldPosition.y:F0},{WorldPosition.z:F0}) vel=({v.x:F0},{v.y:F0},{v.z:F0}) speed={v.Length:F0}" );
 			}
 		}
+
+		if ( IsRunning ) _runElapsed += Time.Delta;
 
 		// Tick the settle timer once leaf has landed. Player can press any input to skip.
 		if ( _hasLanded && _settleElapsed < SettleDuration )

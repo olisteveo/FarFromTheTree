@@ -6,12 +6,23 @@
 {
 	<root>
 		<div class="hud">
-			<div class="title">THE LEAF HAS LANDED</div>
-			<div class="subtitle">First gust in @Leaf.SettleTimeRemaining.ToString("F1")s</div>
+			<div class="title">FAR FROM THE TREE</div>
+			<div class="tagline">A wind-physics speedrun across Manhattan</div>
+
+			<div class="explainer">
+				<p>You are a single leaf, freshly fallen from a tree in Battery Park. Your goal: ride the wind currents north to Central Park as fast as you can.</p>
+				<p>You can't fly — only react. Tilt the leaf <em>edge-on</em> to slice through gusts and pick up speed. Flatten <em>face-on</em> to catch wind like a parachute and change direction. The skill is reading the air and timing your angle.</p>
+			</div>
 
 			<div class="controls">
-				<div class="row"><span class="key">W A S D</span><span class="action">Tilt the leaf — angle into the wind to surf</span></div>
-				<div class="row"><span class="key">SPACE</span><span class="action">Skip and start now</span></div>
+				<div class="row"><span class="key">W A S D</span><span class="action">Tilt the leaf — angle into the wind to surf, flatten to catch it</span></div>
+				<div class="row"><span class="key">MOUSE</span><span class="action">Peek the camera left/right while flying</span></div>
+				<div class="row"><span class="key">SPACE</span><span class="action">Skip this intro and start now</span></div>
+			</div>
+
+			<div class="countdown">
+				<span class="label">FIRST GUST IN</span>
+				<span class="time">@Leaf.SettleTimeRemaining.ToString("F1")s</span>
 			</div>
 
 			<div class="progress-bar">

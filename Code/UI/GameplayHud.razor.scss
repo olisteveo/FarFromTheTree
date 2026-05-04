@@ -1,0 +1,145 @@
+$leaf-bright: rgba(155, 224, 155, 1);
+$leaf-mid:    rgba(93, 184, 92, 1);
+$leaf-deep:   rgba(45, 90, 39, 1);
+$leaf-pale:   rgba(220, 240, 220, 1);
+$panel-bg:    rgba(14, 28, 14, 0.78);
+$panel-edge:  rgba(143, 214, 143, 0.35);
+$accent-warm: rgba(255, 195, 100, 1);
+$accent-hot:  rgba(255, 110, 90, 1);
+
+.game-hud {
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	color: white;
+	font-family: Roboto;
+	pointer-events: none;
+}
+
+/* SPEEDOMETER — top left */
+.speedo {
+	position: absolute;
+	top: 28px;
+	left: 32px;
+	width: 230px;
+	padding: 12px 16px;
+	background-color: $panel-bg;
+	border: 1px solid $panel-edge;
+	border-radius: 12px;
+	flex-direction: column;
+	align-items: flex-start;
+	box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.speedo-label {
+	font-size: 11px;
+	letter-spacing: 4px;
+	color: $leaf-pale;
+	opacity: 0.7;
+	margin-bottom: 2px;
+}
+
+.speedo-value {
+	font-size: 42px;
+	font-weight: 800;
+	font-variant-numeric: tabular-nums;
+	color: $leaf-bright;
+	line-height: 46px;
+	text-shadow: 0px 0px 14px rgba(143, 214, 143, 0.5);
+}
+
+.speedo-bar {
+	width: 100%;
+	height: 5px;
+	background-color: rgba(45, 90, 39, 0.45);
+	border-radius: 3px;
+	overflow: hidden;
+	margin-top: 6px;
+}
+
+.speedo-fill {
+	height: 100%;
+	background: linear-gradient(90deg, $leaf-mid, $leaf-bright);
+	border-radius: 3px;
+	transition: width 0.08s linear;
+}
+
+.speedo.med .speedo-value {
+	color: $accent-warm;
+	text-shadow: 0px 0px 14px rgba(255, 195, 100, 0.5);
+}
+.speedo.med .speedo-fill {
+	background: linear-gradient(90deg, $leaf-mid, $accent-warm);
+}
+
+.speedo.fast .speedo-value {
+	color: $accent-hot;
+	text-shadow: 0px 0px 18px rgba(255, 110, 90, 0.7);
+}
+.speedo.fast .speedo-fill {
+	background: linear-gradient(90deg, $accent-warm, $accent-hot);
+}
+
+/* TIMER — top right */
+.timer {
+	position: absolute;
+	top: 28px;
+	right: 32px;
+	padding: 12px 22px;
+	background-color: $panel-bg;
+	border: 1px solid $panel-edge;
+	border-radius: 12px;
+	flex-direction: column;
+	align-items: flex-end;
+	box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.timer-label {
+	font-size: 11px;
+	letter-spacing: 4px;
+	color: $leaf-pale;
+	opacity: 0.7;
+	margin-bottom: 2px;
+}
+
+.timer-value {
+	font-size: 38px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	color: $leaf-bright;
+	line-height: 42px;
+	text-shadow: 0px 0px 14px rgba(143, 214, 143, 0.45);
+}
+
+/* PETALS — bottom left, life/durability */
+.petals {
+	position: absolute;
+	bottom: 32px;
+	left: 32px;
+	flex-direction: row;
+	gap: 8px;
+	padding: 10px 14px;
+	background-color: $panel-bg;
+	border: 1px solid $panel-edge;
+	border-radius: 14px;
+	box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.petal {
+	width: 22px;
+	height: 28px;
+	border-radius: 60% 60% 60% 60% / 80% 80% 30% 30%;
+	transform: rotate(0deg);
+}
+
+.petal.alive {
+	background: radial-gradient(ellipse at 50% 30%, $leaf-bright 0%, $leaf-mid 60%, $leaf-deep 100%);
+	box-shadow: 0px 0px 10px rgba(143, 214, 143, 0.4), inset 0px -4px 6px rgba(0, 0, 0, 0.25);
+}
+
+.petal.lost {
+	background-color: rgba(45, 90, 39, 0.25);
+	border: 1px solid rgba(143, 214, 143, 0.18);
+}

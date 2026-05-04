@@ -1,0 +1,77 @@
+@using Sandbox;
+@using Sandbox.UI;
+@inherits PanelComponent
+
+@if ( Leaf is not null && Leaf.HasLanded && !Leaf.IsInTutorialSettle )
+{
+	<root>
+		<div class="game-hud">
+
+			<div class="speedo @(SpeedClass)">
+				<div class="speedo-label">SPEED</div>
+				<div class="speedo-value">@((int)Leaf.CurrentSpeed)</div>
+				<div class="speedo-bar"><div class="speedo-fill" style="width: @SpeedPercent%"></div></div>
+			</div>
+
+			<div class="timer">
+				<div class="timer-label">TIME</div>
+				<div class="timer-value">@FormattedTime</div>
+			</div>
+
+			<div class="petals">
+				@for ( int i = 0; i < Leaf.MaxPetals; i++ )
+				{
+					<div class="petal @(i < Leaf.Petals ? "alive" : "lost")"></div>
+				}
+			</div>
+
+		</div>
+	</root>
+}
+
+@code
+{
+	[Property] public LeafController Leaf { get; set; }
+
+	/// <summary>
+	/// Speed at which the speedometer bar fills completely. Tune in the inspector
+	/// to match the top speeds you actually see in your scene.
+	/// </summary>
+	[Property, Range( 100f, 1500f )]
+	public float SpeedAtFullBar { get; set; } = 700f;
+
+	private string FormattedTime
+	{
+		get
+		{
+			if ( Leaf is null ) return "00:00.00";
+			var t = Leaf.RunTime;
+			int min = (int)(t / 60f);
+			float sec = t - (min * 60f);
+			return $"{min:D2}:{sec:00.00}";
+		}
+	}
+
+	private string SpeedPercent
+		=> ((Leaf?.CurrentSpeed ?? 0f) / SpeedAtFullBar * 100f).Clamp( 0f, 100f ).ToString( "F0" );
+
+	private string SpeedClass
+	{
+		get
+		{
+			if ( Leaf is null ) return "";
+			float r = Leaf.CurrentSpeed / SpeedAtFullBar;
+			if ( r > 0.85f ) return "fast";
+			if ( r > 0.55f ) return "med";
+			return "slow";
+		}
+	}
+
+	protected override int BuildHash() => System.HashCode.Combine(
+		Leaf?.HasLanded,
+		Leaf?.IsInTutorialSettle,
+		(int)((Leaf?.CurrentSpeed ?? 0f) / 5f),
+		(int)((Leaf?.RunTime ?? 0f) * 100f),
+		Leaf?.Petals
+	);
+}

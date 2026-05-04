@@ -1001,6 +1001,25 @@
           "OnComponentUpdate": null
         },
         {
+          "__type": "Sandbox.UI.GameplayHud",
+          "__guid": "8a7b6e30-1c2d-4e0f-b9aa-1234567890ab",
+          "__enabled": true,
+          "Flags": 0,
+          "Leaf": {
+            "_type": "component",
+            "component_id": "9198b354-6a75-4926-b77e-9cc421c30636",
+            "go": "73324117-c78d-4769-9a10-9325675206a0",
+            "component_type": "LeafController"
+          },
+          "SpeedAtFullBar": 700,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        },
+        {
           "__type": "Sandbox.ScreenPanel",
           "__guid": "2e7f54b9-cdf9-44b8-a30e-11f2ff624675",
           "__enabled": true,
