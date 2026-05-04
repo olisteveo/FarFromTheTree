@@ -71,7 +71,7 @@ public sealed class LeafController : Component
 	/// 0 disables. Higher values = leaf bounces off ground quickly.
 	/// </summary>
 	[Property, Group( "Ground" ), Range( 0f, 2000f )]
-	public float GroundRecoveryForce { get; set; } = 350f;
+	public float GroundRecoveryForce { get; set; } = 900f;
 
 	/// <summary>
 	/// How long the leaf sits still on the ground after first landing before the

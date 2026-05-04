@@ -106,41 +106,43 @@ public sealed class CityWindGenerator : Component
 			var edgeWidth = CellSpacing * EdgeWidthMultiplier;
 			var longAxis = MathF.Max( totalX, totalY ) + edgeWidth * 2f; // overshoot at both ends
 
-			// North edge — wind blowing east along the top
+			// All edges push the leaf BACK TOWARD CITY CENTER — corral effect.
+			// North edge — pushes SOUTH (and slight east to keep flow going)
 			CreateZone( "Wind_Edge_North",
 				localPos: new Vector3( totalX * 0.5f, totalY + edgeWidth * 0.5f, StreetLevelZ ),
 				size: new Vector3( longAxis, edgeWidth, StreetLayerHeight * 1.2f ),
-				direction: new Vector3( 1, 0, 0 ),
+				direction: new Vector3( 0.3f, -1, 0.3f ),
 				strength: EdgeStrength,
-				oscillates: true,
+				oscillates: false,
 				phase: 0f );
 
-			// South edge — wind blowing west, opposite phase
+			// South edge — pushes NORTH (and slight east)
 			CreateZone( "Wind_Edge_South",
 				localPos: new Vector3( totalX * 0.5f, -edgeWidth * 0.5f, StreetLevelZ ),
 				size: new Vector3( longAxis, edgeWidth, StreetLayerHeight * 1.2f ),
-				direction: new Vector3( -1, 0, 0 ),
+				direction: new Vector3( 0.3f, 1, 0.3f ),
 				strength: EdgeStrength,
-				oscillates: true,
-				phase: 180f );
+				oscillates: false,
+				phase: 0f );
 
-			// East edge — wind blowing north
-			CreateZone( "Wind_Edge_East",
-				localPos: new Vector3( totalX + edgeWidth * 0.5f, totalY * 0.5f, StreetLevelZ ),
-				size: new Vector3( edgeWidth, longAxis, StreetLayerHeight * 1.2f ),
-				direction: new Vector3( 0, 1, 0 ),
-				strength: EdgeStrength,
-				oscillates: true,
-				phase: 90f );
-
-			// West edge — wind blowing south
+			// West edge — pushes EAST (forward, into city)
 			CreateZone( "Wind_Edge_West",
 				localPos: new Vector3( -edgeWidth * 0.5f, totalY * 0.5f, StreetLevelZ ),
 				size: new Vector3( edgeWidth, longAxis, StreetLayerHeight * 1.2f ),
-				direction: new Vector3( 0, -1, 0 ),
+				direction: new Vector3( 1, 0, 0.3f ),
 				strength: EdgeStrength,
-				oscillates: true,
-				phase: 270f );
+				oscillates: false,
+				phase: 0f );
+
+			// East edge — light west push (so leaf doesn't overshoot the destination)
+			// but mostly soft, for "you're here" feel rather than blocking
+			CreateZone( "Wind_Edge_East",
+				localPos: new Vector3( totalX + edgeWidth * 0.5f, totalY * 0.5f, StreetLevelZ ),
+				size: new Vector3( edgeWidth, longAxis, StreetLayerHeight * 1.2f ),
+				direction: new Vector3( -0.3f, 0, 0.5f ),
+				strength: EdgeStrength * 0.5f,
+				oscillates: false,
+				phase: 0f );
 
 			// Corner pull-in zones — push leaves back toward city center if they wander out
 			var cornerOffset = edgeWidth * 0.5f;
