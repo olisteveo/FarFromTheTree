@@ -222,17 +222,11 @@ public sealed class CityWindGenerator : Component
 			);
 		}
 
-		// Rooftop layer — open wind above the buildings. Pure east, no buildings to dodge.
-		// Player who climbs above the city gets this clean fast lane.
+		// Rooftop layer — full grid of wind zones above the buildings. Same density as
+		// the street level but no building cells to skip (rooftops are open).
 		if ( GenerateRooftopLayer )
 		{
-			CreateZone( "Wind_Rooftop_Main",
-				localPos: new Vector3( totalX * 0.5f, totalY * 0.5f, RooftopLevelZ ),
-				size: new Vector3( totalX + CellSpacing * 2f, totalY + CellSpacing * 2f, RooftopLayerHeight ),
-				direction: new Vector3( 1, 0, 0 ),
-				strength: RooftopStrength,
-				oscillates: false,
-				phase: 0f );
+			SpawnRooftopGrid();
 		}
 
 		// Per-street wind zones — only place wind in STREET cells. ALL flow east toward
@@ -318,32 +312,44 @@ public sealed class CityWindGenerator : Component
 	}
 
 	/// <summary>
-	/// Adds ONLY the rooftop layer zone without clearing or regenerating anything else.
-	/// Use this when you've hand-tuned street-level zones and just want to add the rooftop on top.
-	/// Skips if a Wind_Rooftop_Main already exists.
+	/// Adds ONLY the rooftop layer zones without clearing the street zones.
+	/// Use this after you've hand-tuned the street layer and want to layer rooftop wind on top.
 	/// </summary>
 	[Button( "Add Rooftop Layer Only" )]
 	public void AddRooftopLayerOnly()
 	{
-		var existing = GameObject.Children.FirstOrDefault( c => c.Name == "Wind_Rooftop_Main" );
+		var existing = GameObject.Children.FirstOrDefault( c => c.Name.StartsWith( "Wind_Rooftop_" ) );
 		if ( existing is not null )
 		{
-			Log.Info( "[CityWindGenerator] Rooftop layer already exists — remove it first or use 'Clear Rooftop Only'." );
+			Log.Info( "[CityWindGenerator] Rooftop zones already exist — use 'Clear Rooftop Only' first." );
 			return;
 		}
 
-		var totalX = GridX * CellSpacing;
-		var totalY = GridY * CellSpacing;
-
-		CreateZone( "Wind_Rooftop_Main",
-			localPos: new Vector3( totalX * 0.5f, totalY * 0.5f, RooftopLevelZ ),
-			size: new Vector3( totalX + CellSpacing * 2f, totalY + CellSpacing * 2f, RooftopLayerHeight ),
-			direction: new Vector3( 1, 0, 0 ),
-			strength: RooftopStrength,
-			oscillates: false,
-			phase: 0f );
-
+		SpawnRooftopGrid();
 		Log.Info( "[CityWindGenerator] Rooftop layer added on top of existing zones." );
+	}
+
+	/// <summary>
+	/// Internal: spawns the grid of rooftop wind zones. Same density as street level,
+	/// every cell gets one, all flowing east.
+	/// </summary>
+	private void SpawnRooftopGrid()
+	{
+		for ( int x = 0; x < GridX; x++ )
+		{
+			for ( int y = 0; y < GridY; y++ )
+			{
+				CreateZone(
+					name: $"Wind_Rooftop_{x}_{y}",
+					localPos: new Vector3( x * CellSpacing, y * CellSpacing, RooftopLevelZ ),
+					size: new Vector3( CellSpacing * CellCoverage, CellSpacing * CellCoverage, RooftopLayerHeight ),
+					direction: new Vector3( 1, 0, 0 ),
+					strength: RooftopStrength,
+					oscillates: false,
+					phase: 0f
+				);
+			}
+		}
 	}
 
 	[Button( "Clear Rooftop Only" )]
