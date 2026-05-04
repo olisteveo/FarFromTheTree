@@ -277,19 +277,68 @@ public sealed class LeafController : Component
 
 		if ( avgSpeed < StallSpeedThreshold )
 		{
-			// Stuck — apply unstick impulse upward and forward
-			var dir = PrimaryDirection.LengthSquared > 0.01f
-				? PrimaryDirection.Normal
-				: Vector3.Forward;
+			// Stuck — find which wall is closest by casting rays in 6 directions,
+			// then kick AWAY from that wall + up. Falls back to forward if no wall found.
+			var unstickDir = FindBestUnstickDirection();
+			Body.ApplyForce( unstickDir * StallRecoveryForward );
 			Body.ApplyForce( Vector3.Up * StallRecoveryUpward );
-			Body.ApplyForce( dir * StallRecoveryForward );
-			_stallCooldown = 1.5f; // don't spam — wait 1.5s before checking again
+			_stallCooldown = 1.5f;
 
 			if ( DebugLogging )
 			{
-				Log.Info( $"[Leaf] STALL RECOVERY — avg speed was {avgSpeed:F0}, kicking up + forward" );
+				Log.Info( $"[Leaf] STALL RECOVERY — avg {avgSpeed:F0}, unstick=({unstickDir.x:F2},{unstickDir.y:F2},{unstickDir.z:F2})" );
 			}
 		}
+	}
+
+	/// <summary>
+	/// Casts rays in horizontal directions to find the closest wall, then returns
+	/// a unit vector pointing AWAY from it (with bias toward PrimaryDirection so
+	/// we don't push backward when there's no nearby wall).
+	/// </summary>
+	private Vector3 FindBestUnstickDirection()
+	{
+		var primaryDir = PrimaryDirection.LengthSquared > 0.01f
+			? PrimaryDirection.Normal
+			: Vector3.Forward;
+
+		// 8 horizontal probe directions
+		var probes = new Vector3[]
+		{
+			new Vector3( 1, 0, 0 ),
+			new Vector3( -1, 0, 0 ),
+			new Vector3( 0, 1, 0 ),
+			new Vector3( 0, -1, 0 ),
+			new Vector3( 0.7f, 0.7f, 0 ).Normal,
+			new Vector3( -0.7f, 0.7f, 0 ).Normal,
+			new Vector3( 0.7f, -0.7f, 0 ).Normal,
+			new Vector3( -0.7f, -0.7f, 0 ).Normal,
+		};
+
+		Vector3 closestHitNormal = Vector3.Zero;
+		float closestDist = 80f; // only care about walls within 80u
+
+		foreach ( var probe in probes )
+		{
+			var trace = Scene.Trace.Ray( WorldPosition, WorldPosition + probe * 80f )
+				.IgnoreGameObjectHierarchy( GameObject )
+				.Run();
+			if ( trace.Hit && trace.Distance < closestDist )
+			{
+				closestDist = trace.Distance;
+				closestHitNormal = -probe; // direction AWAY from the wall
+			}
+		}
+
+		// If a wall was found, kick away from it (+ small primary bias)
+		if ( closestHitNormal.LengthSquared > 0.01f )
+		{
+			var combined = (closestHitNormal * 0.7f + primaryDir * 0.3f).Normal;
+			return combined;
+		}
+
+		// No nearby wall — kick toward primary direction
+		return primaryDir;
 	}
 
 	private void ApplyGroundRecovery()
