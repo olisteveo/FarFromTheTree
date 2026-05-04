@@ -209,9 +209,10 @@ public sealed class CityWindGenerator : Component
 			);
 		}
 
-		// Per-street wind zones — only place wind in STREET cells (where there are no
-		// buildings). Direction follows the street's orientation so wind flows along
-		// the street, not into walls.
+		// Per-street wind zones — only place wind in STREET cells. ALL flow east toward
+		// the destination (with slight up bias). Forgiving by design — no counter-currents
+		// to get stuck in. Add complexity (north-flowing streets, oscillating zones, etc)
+		// by hand-editing specific zones later.
 		if ( MainAvenueEvery <= 1 ) return;
 
 		for ( int x = 0; x < GridX; x++ )
@@ -223,22 +224,8 @@ public sealed class CityWindGenerator : Component
 
 				if ( !onEW && !onNS ) continue; // building cell — no wind here
 
-				Vector3 dir;
-				if ( onEW && onNS )
-				{
-					// Intersection — bias toward PrimaryFlow direction
-					dir = PrimaryFlow.Normal;
-				}
-				else if ( onEW )
-				{
-					// E-W street: wind flows east most of the time, west occasionally
-					dir = new Vector3( random.NextSingle() < 0.85f ? 1 : -1, 0, 0 );
-				}
-				else
-				{
-					// N-S street: wind flows north or south
-					dir = new Vector3( 0, random.NextSingle() < 0.5f ? 1 : -1, 0 );
-				}
+				// EVERY wind flows toward primary (east by default). Simple and forgiving.
+				var dir = PrimaryFlow.Normal;
 
 				CreateZone(
 					name: $"Wind_Street_{x}_{y}",
@@ -246,8 +233,8 @@ public sealed class CityWindGenerator : Component
 					size: new Vector3( CellSpacing * CellCoverage, CellSpacing * CellCoverage, StreetLayerHeight ),
 					direction: dir,
 					strength: AlleyStrength,
-					oscillates: random.NextSingle() < OscillationChance,
-					phase: random.NextSingle() * 360f
+					oscillates: false,
+					phase: 0f
 				);
 			}
 		}
