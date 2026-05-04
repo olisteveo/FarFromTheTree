@@ -35,11 +35,11 @@ public sealed class LeafController : Component
 	[Property, Group( "Wind Interaction" ), Range( 0f, 1f )]
 	public float EdgeOnWindCatch { get; set; } = 0.2f;
 
-	[Property, Group( "Tilt Control" ), Range( 0f, 50f )]
-	public float TiltTorqueStrength { get; set; } = 8f;
+	[Property, Group( "Tilt Control" ), Range( 0f, 500f )]
+	public float TiltTorqueStrength { get; set; } = 200f;
 
 	[Property, Group( "Tilt Control" ), Range( 0f, 50f )]
-	public float TiltDamping { get; set; } = 4f;
+	public float TiltDamping { get; set; } = 0.5f;
 
 	/// <summary>
 	/// Strength of the auto-stabilize torque that gently rotates the leaf back to flat
@@ -277,16 +277,19 @@ public sealed class LeafController : Component
 
 		if ( avgSpeed < StallSpeedThreshold )
 		{
-			// Stuck — find which wall is closest by casting rays in 6 directions,
-			// then kick AWAY from that wall + up. Falls back to forward if no wall found.
-			var unstickDir = FindBestUnstickDirection();
-			Body.ApplyForce( unstickDir * StallRecoveryForward );
-			Body.ApplyForce( Vector3.Up * StallRecoveryUpward );
+			// Stuck — kick HARD upward to lift over walls + forward toward primary direction.
+			// Never push backward; the leaf can fly over walls but should never retreat.
+			var primary = PrimaryDirection.LengthSquared > 0.01f
+				? PrimaryDirection.Normal
+				: Vector3.Forward;
+
+			Body.ApplyForce( Vector3.Up * StallRecoveryUpward * 1.5f );
+			Body.ApplyForce( primary * StallRecoveryForward );
 			_stallCooldown = 1.5f;
 
 			if ( DebugLogging )
 			{
-				Log.Info( $"[Leaf] STALL RECOVERY — avg {avgSpeed:F0}, unstick=({unstickDir.x:F2},{unstickDir.y:F2},{unstickDir.z:F2})" );
+				Log.Info( $"[Leaf] STALL RECOVERY — avg {avgSpeed:F0}, kicking up + forward (primary)" );
 			}
 		}
 	}
@@ -384,7 +387,16 @@ public sealed class LeafController : Component
 		var speed = velocity.Length;
 		if ( speed < 0.1f ) return;
 
-		var dragForce = -velocity.Normal * (speed * speed * DragCoefficient * 0.001f);
+		var velNormal = velocity / speed;
+
+		// Orientation-aware drag: leaf face-on to motion = high drag (parachute),
+		// edge-on = low drag (diving). Tilting forward (nose down) puts leaf edge-on
+		// to its fall direction → drag drops → leaf accelerates down. Real surf physics.
+		var leafSurface = WorldRotation.Up;
+		var motionAlignment = MathF.Abs( Vector3.Dot( leafSurface, velNormal ) );
+		var dragMultiplier = 0.25f + 0.75f * motionAlignment;
+
+		var dragForce = -velNormal * (speed * speed * DragCoefficient * dragMultiplier * 0.001f);
 		Body.ApplyForce( dragForce );
 	}
 
