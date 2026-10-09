@@ -11,3 +11,4 @@ __pycache__/
 .tesseract-work/
 *.blend
 *.blend1
+tools/shots/

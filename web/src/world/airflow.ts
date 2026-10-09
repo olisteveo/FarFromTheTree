@@ -301,13 +301,17 @@ export class Airflow {
       for (const sh of this.under.shaftGrid.at(x, z)) {
         if (sh.kind !== "stairs" || y > 9) continue;
         const d = Math.hypot(x - sh.x, z - sh.z);
-        if (d > 5.5) continue;
-        const k = 1 - d / 5.5;
-        if (sh.out) { sy += 5 * k * (1 - y / 9); continue; }
-        if (y > 4.5) continue;
-        sy -= 3 * k;
-        sx += ((sh.x - x) / (d + 0.2)) * 2.5 * k;
-        sz += ((sh.z - z) / (d + 0.2)) * 2.5 * k;
+        if (sh.out) {
+          if (d > 5.5) continue;
+          sy += 5 * (1 - d / 5.5) * (1 - y / 9);
+          continue;
+        }
+        // a wide, firm funnel: aim at the sign and dive, and the stairs take you
+        if (d > 9 || y > 7) continue;
+        const k = 1 - d / 9, kk = k * (1 - Math.max(0, y - 2) / 5);
+        sy -= 4.5 * kk;
+        sx += ((sh.x - x) / (d + 0.2)) * 4 * kk;
+        sz += ((sh.z - z) / (d + 0.2)) * 4 * kk;
       }
       // open manholes suck you down
       for (const m of this.life.holeGrid.at(x, z)) {

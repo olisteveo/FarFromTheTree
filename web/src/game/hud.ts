@@ -103,9 +103,9 @@ export class Hud {
     if (this.toastTimer > 0 && (this.toastTimer -= dt) <= 0) this.toast.classList.remove("show");
 
     if (leaf.state === "attached") {
-      this.setScreen("start", `<div class="title">Far From the Tree</div><div class="sub">Battery Park, late November. Every other leaf in the city has fallen.<br/>Ride the wind uptown and plant your seed in Central Park.</div><div class="cta">press any key to let go</div>`);
+      this.setScreen("start", `<div class="title">Far From the Tree</div><div class="sub">Battery Park, late November. Every other leaf in the city has fallen.<br/>Ride the wind uptown and plant your seed in Central Park.</div><div class="cta">${document.body.classList.contains("is-touch") ? "tap" : "press any key"} to let go</div><button class="intro-again">▶ Watch the story</button>`);
     } else if (leaf.state === "dead") {
-      this.setScreen("dead", `<div class="title small">${leaf.failure}</div><div class="sub">${fmt(leaf.time)} · ${((progressS / this.city.route.length) * 100).toFixed(0)}% of the way to the park</div><div class="cta">R to fall again</div>`);
+      this.setScreen("dead", `<div class="title small">${leaf.failure}</div><div class="sub">${fmt(leaf.time)} · ${((progressS / this.city.route.length) * 100).toFixed(0)}% of the way to the park</div><div class="cta">${document.body.classList.contains("is-touch") ? "tap ↻" : "R"} to fall again</div>`);
     } else if (leaf.state === "planted") {
       if (this.screen.dataset.kind !== "won") {
         const pb = this.bestTime === null || leaf.time < this.bestTime;
@@ -114,7 +114,7 @@ export class Hud {
           try { localStorage.setItem("fftt.best", String(leaf.time)); } catch { /* ignore */ }
           this.showBest();
         }
-        this.setScreen("won", `<div class="title">Seed planted</div><div class="sub">${fmt(leaf.time)}${pb ? " · new best" : ""}<br/>Next spring, a tree.</div><div class="cta">R to fall again</div>`);
+        this.setScreen("won", `<div class="title">Seed planted</div><div class="sub">${fmt(leaf.time)}${pb ? " · new best" : ""}<br/>Next spring, a tree.</div><div class="cta">${document.body.classList.contains("is-touch") ? "tap ↻" : "R"} to fall again</div>`);
       }
     } else {
       this.setScreen("", "");

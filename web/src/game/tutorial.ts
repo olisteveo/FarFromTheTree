@@ -25,6 +25,15 @@ const STEPS: Step[] = [
   { html: `${key("Q")} ${key("E")} corkscrew through gaps. Double-tap ${key("S")} to loop. ${key("R")} falls again. Good luck.`, hold: 5 },
 ];
 
+/** On a touch screen, talk about the thumb stick and buttons instead of keys. */
+export function useTouchWording() {
+  const b = (t: string) => `<span class="key">${t}</span>`;
+  STEPS[0].html = `Move your left thumb left and right to bank. The leaf glides where it's pointed, and the wind carries it.`;
+  STEPS[1].html = `Push the stick up to dive: height becomes speed. Pull it down to flare: speed becomes height.`;
+  STEPS[2].html = `Hold ${b("SPREAD")} to spread out and float. Hold ${b("CURL")} to curl up and drop fast.`;
+  STEPS[6].html = `${b("⟲")} ${b("⟳")} corkscrew through gaps, ${b("LOOP")} to loop. ${b("↻")} falls again. Good luck.`;
+}
+
 export class Tutorial {
   private el: HTMLElement;
   private i = 0;

@@ -11,6 +11,14 @@ export class Input {
   readonly state: LeafInput = { pitch: 0, roll: 0, spread: false, curl: false, corkscrew: 0, loop: false };
   anyKey = false;
   usingPad = false;
+  /** analog state from the touch controls (game/touch.ts) */
+  readonly touch = { pitch: 0, roll: 0, spread: false, curl: false };
+  usingTouch = false;
+
+  /** a touch: counts as 'any key' (lets go of the tree, starts the game) */
+  touchStart() { this.anyKey = true; this.usingTouch = true; }
+  /** a touch button standing in for a key press */
+  tap(code: string) { this.pressed.add(code); this.anyKey = true; this.usingTouch = true; }
 
   constructor() {
     window.addEventListener("keydown", (e) => {
@@ -43,6 +51,10 @@ export class Input {
     let curl = k("ShiftLeft") || k("ShiftRight");
     let cork: -1 | 0 | 1 = this.hit("KeyQ") ? -1 : this.hit("KeyE") ? 1 : 0;
     let loop = this.hit("Loop");
+    const t = this.touch;
+    if (t.pitch || t.roll) { pitch = t.pitch; roll = t.roll; }
+    spread ||= t.spread;
+    curl ||= t.curl;
     const pad = navigator.getGamepads?.().find((p) => p);
     if (pad) {
       const dz = (v: number) => (Math.abs(v) < 0.14 ? 0 : v);

@@ -96,3 +96,33 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1210; col
 .board-mini { position: absolute; right: 24px; top: 96px; min-width: 200px; padding: 10px 14px; border-radius: 8px; background: rgba(20, 10, 4, 0.45); opacity: 0; transition: opacity 0.5s; pointer-events: none; }
 .board-mini.show { opacity: 1; }
 @media (max-width: 640px) { .board-mini { display: none; } .board { top: 58%; } }
+
+/* the way to the subway: an arrow at the screen edge (or over the entrance) with the distance */
+.subway-pointer { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 999px; background: rgba(12, 90, 48, 0.85); color: #fff; font: 700 13px/1 Inter, system-ui, sans-serif; letter-spacing: 0.06em; opacity: 0; transition: opacity 0.4s; pointer-events: none; white-space: nowrap; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35); }
+.subway-pointer.show { opacity: 1; }
+.subway-pointer .arrow { display: inline-block; font-size: 16px; }
+.subway-pointer b { font-weight: 800; margin-left: 4px; color: #b8ffd0; }
+
+/* touch controls (phones and tablets) */
+body.is-touch, body.is-touch #view { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+body.is-touch .keys { display: none; }
+.touch { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+.touch-stick-zone { position: absolute; left: 0; bottom: 0; width: 50%; height: 70%; pointer-events: auto; touch-action: none; }
+.touch-stick { position: absolute; width: 128px; height: 128px; margin: -64px 0 0 -64px; border-radius: 50%; border: 2px solid rgba(255, 240, 225, 0.35); background: rgba(20, 10, 4, 0.25); opacity: 0; transition: opacity 0.15s; pointer-events: none; }
+.touch-stick.on { opacity: 1; }
+.touch-knob { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; border-radius: 50%; background: rgba(255, 176, 74, 0.85); transform: translate(-50%, -50%); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); }
+.touch-buttons { position: absolute; right: calc(14px + env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: repeat(3, 58px); grid-template-rows: 58px 72px; gap: 10px; pointer-events: auto; }
+.touch-buttons .big { grid-row: 2; height: 72px; font-size: 13px; }
+.touch-buttons [data-hold="spread"] { grid-column: 2 / span 2; }
+.touch-buttons [data-hold="curl"] { grid-column: 1; }
+.touch button { border: 1px solid rgba(255, 240, 225, 0.3); border-radius: 16px; background: rgba(20, 10, 4, 0.45); color: #fff3e6; font: 800 18px Inter, system-ui, sans-serif; letter-spacing: 0.04em; touch-action: none; -webkit-tap-highlight-color: transparent; }
+.touch button.down { background: rgba(255, 176, 74, 0.75); color: #2a1406; }
+.touch-restart { position: absolute; right: calc(14px + env(safe-area-inset-right)); top: calc(70px + env(safe-area-inset-top)); width: 48px; height: 48px; pointer-events: auto; font-size: 22px !important; }
+.touch.hidden .touch-stick-zone, .touch.hidden .touch-buttons, .touch.hidden .touch-stick { display: none; }
+@media (orientation: portrait) { .touch-buttons { grid-template-columns: repeat(3, 50px); grid-template-rows: 50px 64px; } }
+
+/* title screen: watch the story again; the leaf meter stays out of the way until you let go */
+.screen .intro-again { margin-top: 6px; padding: 8px 16px; border: 1px solid rgba(255, 240, 225, 0.35); border-radius: 999px; background: rgba(20, 10, 4, 0.45); color: var(--ink); font: 600 13px Inter, system-ui, sans-serif; letter-spacing: 0.06em; cursor: pointer; pointer-events: auto; }
+.screen .intro-again:hover { background: rgba(255, 176, 74, 0.25); }
+.leafmeter { transition: opacity 0.4s; }
+.leafmeter.away { opacity: 0; }

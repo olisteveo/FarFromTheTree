@@ -3,10 +3,11 @@
 // card first (browsers only play sound after a gesture), then the film; any key skips it.
 // Once per session; restarts go straight to the tree.
 
-export function playIntro(root: HTMLElement, onGesture?: () => void): Promise<void> {
+/** again: replaying it from the title screen (a click already happened, so straight into the film) */
+export function playIntro(root: HTMLElement, onGesture?: () => void, again = false): Promise<void> {
   let seen = false;
   try { seen = sessionStorage.getItem("fftt.intro") === "seen"; } catch { /* ignore */ }
-  if (seen || new URLSearchParams(location.search).has("nointro")) return Promise.resolve();
+  if (!again && (seen || new URLSearchParams(location.search).has("nointro"))) return Promise.resolve();
 
   return new Promise((done) => {
     const el = document.createElement("div");
@@ -42,6 +43,7 @@ export function playIntro(root: HTMLElement, onGesture?: () => void): Promise<vo
         video.play().catch(() => finish());
       } else if (stage === "film") finish();
     };
+    if (again) { stage = "film"; el.classList.add("playing"); onGesture?.(); video.play().catch(() => finish()); }
     video.addEventListener("ended", finish);
     video.addEventListener("error", finish);
     addEventListener("keydown", onKey, true);

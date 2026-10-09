@@ -13,6 +13,9 @@ import GUI from "lil-gui";
 import { Leaderboard } from "./game/leaderboard";
 import { SubwayArt } from "./render/subwayArt";
 import { CentralPark } from "./render/centralPark";
+import { SubwaySigns } from "./render/subwaySigns";
+import { TouchControls, isTouchDevice } from "./game/touch";
+import { useTouchWording } from "./game/tutorial";
 import { PeopleView, type PeopleWalker } from "./render/people";
 import { CityData } from "./world/data";
 import { makeCourse } from "./world/course";
@@ -49,6 +52,8 @@ hudEl.innerHTML = `<div class="loading">Loading Manhattan…</div>`;
 function pickQuality(): Quality {
   const q = params.get("q");
   if (q === "low" || q === "medium" || q === "high") return q;
+  // phones and tablets: keep it light
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (isTouchDevice() && Math.min(screen.width, screen.height) < 900)) return "low";
   const gl = document.createElement("canvas").getContext("webgl2");
   const info = gl?.getExtension("WEBGL_debug_renderer_info");
   const r = info && gl ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
@@ -120,10 +125,17 @@ placeAt();
 const input = new Input();
 const hud = new Hud(hudEl, city);
 const leaderboard = new Leaderboard(hudEl);
+// touch screens: a thumb stick and buttons
+const touch = isTouchDevice() ? new TouchControls(document.body, input) : null;
+if (touch) document.body.classList.add("is-touch");
+// finding the subway: big signs at every way in, and a beam + pointer to the next one ahead
+const subwaySigns = new SubwaySigns(city, flow.under, hudEl);
+stage.scene.add(subwaySigns.root);
 const audio = new Audio(city);
 const leafMeter = new LeafMeter(hudEl);
 pigeons.onScatter = (x, y, z) => audio.play("pigeon_flap", { at: [x, y + 1, z], vol: 1, world: true });
 const recorder = new Recorder(canvas, stage.quality);
+if (touch) useTouchWording();
 const tutorial = new Tutorial(hudEl, params.get("tutorial") === "1");
 const achievements = new Achievements(landmarks);
 achievements.onUnlock = (a) => {
@@ -370,9 +382,13 @@ function tick(dt: number, render: boolean) {
   if (subwayArtReady) subwayArt.update(cam.position, underMix, flow.trainsAt(leaf.clock), focus);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
+  touch?.show(leaf.state === "flying" || leaf.state === "attached");
+  subwaySigns.update(wall, leaf.pos, ns.s, leaf.state === "flying" && leaf.lane === "street" && !replay, cam, dt);
   if (leaf.state === "planted" && !replay) leaderboard.showWon(leaf.time);
   leaderboard.showMini(leaf.state === "attached" && !introPlaying);
   leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);
+  // the leaf meter only once you're off the tree (it sat over the title screen's text)
+  leafMeter.el.classList.toggle("away", leaf.state === "attached");
   audio.update(dt, leaf, cam, city.district(ns.s).name);
   recorder.update(dt, leaf, input.state, ns.s, city.district(ns.s).name);
   tutorial.update(dt, leaf, input.state);
@@ -390,6 +406,13 @@ requestAnimationFrame(frame);
 // the story first (skippable); the game keeps drawing the leaf on its branch underneath
 let introPlaying = !replay && !freeCam && !params.get("at") && !params.get("sub") && !autopilot;
 if (introPlaying) playIntro(document.body, () => audio.start()).then(() => { introPlaying = false; input.endFrame(); });
+// the title screen's "watch the story" button (caught before it can count as letting go)
+addEventListener("pointerdown", (e) => {
+  if (!(e.target as HTMLElement | null)?.closest?.(".intro-again") || introPlaying || leaf.state !== "attached") return;
+  e.stopPropagation(); e.preventDefault();
+  introPlaying = true;
+  playIntro(document.body, () => audio.start(), true).then(() => { introPlaying = false; input.endFrame(); });
+}, true);
 
 /** Debug: run the game forward (works while the tab is hidden), then draw one frame. */
 function advance(seconds: number) {
