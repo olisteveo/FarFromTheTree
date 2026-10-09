@@ -27,6 +27,7 @@ import { Hud } from "./game/hud";
 import { Audio } from "./game/audio";
 import { Recorder, sampleAt, type RunLog } from "./game/recorder";
 import { Tutorial } from "./game/tutorial";
+import { playIntro } from "./game/intro";
 import { clamp } from "./core/rng";
 
 const params = new URLSearchParams(location.search);
@@ -86,7 +87,7 @@ placeAt();
 
 const input = new Input();
 const hud = new Hud(hudEl, city);
-const audio = new Audio();
+const audio = new Audio(city);
 const recorder = new Recorder(canvas, stage.quality);
 const tutorial = new Tutorial(hudEl, params.get("tutorial") === "1");
 
@@ -214,6 +215,7 @@ function frame(now: number) {
 function tick(dt: number, render: boolean) {
   wall += dt;
   input.update(dt);
+  if (introPlaying) { input.endFrame(); input.state.pitch = input.state.roll = 0; }
   if (input.hit("KeyT") && tutorial.active) tutorial.skip();
   if (input.hit("KeyG")) (gui as unknown as { _hidden: boolean })._hidden ? gui.show() : gui.hide();
   if (replay) {
@@ -287,17 +289,21 @@ function tick(dt: number, render: boolean) {
   // light: underground the sun goes and the fluorescents take over
   underMix += ((cam.position.y < -0.6 ? 1 : 0) - underMix) * (1 - Math.exp(-dt * 4));
   stage.sun.intensity = 3.4 * (1 - underMix);
-  stage.hemi.intensity = 0.6 + underMix * 0.5;
-  stage.hemi.color.setRGB(0.66 + underMix * 0.24, 0.7 + underMix * 0.25, 0.78 + underMix * 0.05);
+  stage.hemi.intensity = 0.6 * (1 - underMix) + 0.07 * underMix; // the tunnels are dark: the lamps do the lighting
+  stage.hemi.color.setRGB(0.66 + underMix * 0.2, 0.7 + underMix * 0.1, 0.78 - underMix * 0.2);
+  subway.update(leaf.clock, cam.position, underMix);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
-  audio.update(leaf);
+  audio.update(dt, leaf, cam, city.district(ns.s).name);
   recorder.update(dt, leaf, input.state, ns.s, city.district(ns.s).name);
   tutorial.update(dt, leaf, input.state);
   if (render) { stage.render(); recorder.afterRender(leaf.time, ns.s); }
   input.endFrame();
 }
 requestAnimationFrame(frame);
+// the story first (skippable); the game keeps drawing the leaf on its branch underneath
+let introPlaying = !replay && !freeCam && !params.get("at") && !params.get("sub") && !autopilot;
+if (introPlaying) playIntro(document.body, () => audio.start()).then(() => { introPlaying = false; input.endFrame(); });
 
 /** Debug: run the game forward (works while the tab is hidden), then draw one frame. */
 function advance(seconds: number) {
@@ -307,4 +313,4 @@ function advance(seconds: number) {
   return { state: l.state, failure: l.failure, t: +l.time.toFixed(1), s: +city.route.nearest(l.pos.x, l.pos.z).s.toFixed(0), y: +l.pos.y.toFixed(1), lane: l.lane, v: +l.vel.length().toFixed(1), integrity: +l.integrity.toFixed(2) };
 }
 
-Object.assign(window, { fftt: { city, flow, leaf, stage, cam, advance, input, recorder } });
+Object.assign(window, { fftt: { THREE, city, flow, leaf, stage, cam, advance, input, recorder, subway } });

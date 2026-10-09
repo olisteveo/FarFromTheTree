@@ -92,7 +92,7 @@ export class Pilot {
         if (!blocked && sub.d < 90 && sub.s < u.end - 300 && this.rng.next() < p.subway * 0.5) {
           let best: Shaft | null = null, bd = 1e9;
           for (const sh of u.shafts) {
-            if (sh.kind !== "stairs") continue;
+            if (sh.kind !== "stairs" || sh.out) continue;
             const ahead = city.route.nearest(sh.x, sh.z).s - route.s;
             const d = Math.hypot(sh.x - pos.x, sh.z - pos.z);
             if (ahead > 10 && ahead < 140 && d < bd) { bd = d; best = sh; }
@@ -114,6 +114,7 @@ export class Pilot {
       if (this.mode === "subway" && (u.isBlocked(sub.s + 200) || sub.s > u.end - 200)) {
         let best: Shaft | null = null, bd = 1e9;
         for (const sh of u.shafts) {
+          if (sh.kind === "stairs" && !sh.out) continue; // a way in won't get you out
           const ahead = sh.ss - sub.s;
           if (ahead > 8 && ahead < 150 && ahead < bd) { bd = ahead; best = sh; }
         }

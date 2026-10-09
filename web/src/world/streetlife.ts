@@ -19,6 +19,7 @@ export class StreetLife {
   readonly holeGrid = new Grid<Manhole>(16);
 
   constructor(city: CityData) {
+    const safeUntil = 420; // the tutorial ground around Battery Park and Bowling Green
     city.raw.streets.forEach((st, si) => {
       if (st.rw !== 1) return;
       const p = st.p;
@@ -38,14 +39,14 @@ export class StreetLife {
             const s: Steam = { x: x - tz * off, z: z + tx * off, height: 22 + h01(si, k + 1) * 22, speed: 9 + h01(si, k + 2) * 6, period: 5 + h01(si, k + 3) * 5, phase: h01(si, k + 4) * 10 };
             this.steam.push(s);
             this.steamGrid.add(s, s.x - 6, s.z - 6, s.x + 6, s.z + 6);
-          } else if (r < 0.15) {
+          } else if (r < 0.15 && city.route.nearest(x, z).s > safeUntil) {
             // a puddle in the gutter, by one kerb or the other
             const side = h01(si, k + 5) < 0.5 ? -1 : 1;
             const off = side * (st.w / 2 - 0.9);
             const pd: Puddle = { x: x - tz * off, z: z + tx * off, rx: 1.2 + h01(si, k + 6) * 1.8, rz: 0.7 + h01(si, k + 7) * 0.6, ang: Math.atan2(tx, tz) };
             this.puddles.push(pd);
             this.puddleGrid.add(pd, pd.x - 3, pd.z - 3, pd.x + 3, pd.z + 3);
-          } else if (r < 0.158) {
+          } else if (r < 0.158 && city.route.nearest(x, z).s > safeUntil) {
             const off = (h01(si, k + 8) - 0.5) * st.w * 0.5;
             const m: Manhole = { x: x - tz * off, z: z + tx * off, tx, tz };
             this.manholes.push(m);

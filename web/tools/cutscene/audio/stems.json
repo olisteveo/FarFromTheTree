@@ -1,0 +1,26 @@
+[
+ {
+  "assetId": "sfx-wind",
+  "name": "Wind bed (synth noise, follows gusts)",
+  "volume": 0.525,
+  "durationMs": 44000
+ },
+ {
+  "assetId": "sfx-lapse",
+  "name": "Time racing (ticks + day pulses)",
+  "volume": 0.562,
+  "durationMs": 44000
+ },
+ {
+  "assetId": "sfx-rustle",
+  "name": "Leaves rustling and blowing away",
+  "volume": 0.875,
+  "durationMs": 44000
+ },
+ {
+  "assetId": "sfx-music",
+  "name": "Music-box motif (original)",
+  "volume": 1.125,
+  "durationMs": 44000
+ }
+]

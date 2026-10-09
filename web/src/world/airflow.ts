@@ -111,22 +111,44 @@ export class Airflow {
       }
       // the air slows as the tunnel nears the flood or the end of the line and escapes up the relief vent
       const blockAhead = Math.min(...u.blocked.map((b) => (b.ss0 > ss ? b.ss0 - ss : 1e9)));
-      if (blockAhead < 140) along *= 0.3 + 0.7 * (blockAhead / 140);
+      if (blockAhead < 260) along *= 0.2 + 0.8 * (blockAhead / 260);
       wx = sp.tx * along; wz = sp.tz * along;
       // pull toward the middle of the tunnel and a little turbulence
-      wx += -sp.tz * -off * 0.15; wz += sp.tx * -off * 0.15;
+      // the tunnel air hugs the curves: it steers you back toward the middle
+      wx += sp.tz * -off * 1.1; wz += -sp.tx * -off * 1.1;
       wy = 0.8 * noise3(x / 8, y / 4, z / 8 + t, 41);
+      // vents overhead draw the tunnel air up into them: the relief vents always, the grates
+      // when a train pushes the air ahead of it. Stand under one and you're fired up to the street.
+      for (const g of u.shaftGrid.at(x, z)) {
+        if (g.kind !== "grate") continue;
+        const d = Math.hypot(x - g.x, z - g.z);
+        const reach = g.relief ? 14 : g.r + 2.5;
+        if (d > reach || (!g.relief && y < TUNNEL.ceiling - 3.5)) continue;
+        let pump = g.relief ? 13 : 0;
+        if (!g.relief) for (const tr of this.trainsAt(t)) {
+          const dd = Math.max(0, tr.dir > 0 ? g.ss - tr.head : tr.head - g.ss, tr.dir > 0 ? tr.tail - g.ss : g.ss - tr.tail);
+          pump = Math.max(pump, 16 * Math.max(0, 1 - dd / 90));
+        }
+        const k = g.relief ? 0.35 + 0.65 * (1 - d / reach) : (1 - d / reach) * Math.min(1, (y - (TUNNEL.ceiling - 3.5)) / 2);
+        wy += pump * k;
+        wx += ((g.x - x) / (d + 0.3)) * pump * 0.25 * k;
+        wz += ((g.z - z) / (d + 0.3)) * pump * 0.25 * k;
+      }
       // shafts: air leaks up the stairs, and the grates breathe out when a train passes
       const sh = this.uinfo.inShaft as { kind: string; x: number; z: number; ss: number } | null;
       if (sh) {
-        let pump = sh.kind === "stairs" ? -1.5 : 0.5; // the stations draw air (and leaves) down the stairs
+        // ways in draw air (and leaves) down the stairs; ways out breathe warm air up into the street
+        let pump = sh.kind === "stairs" ? ((sh as { out?: boolean }).out ? 6 : -1.5) : 0.5;
         if ((sh as { relief?: boolean }).relief) pump = 13;
         if (sh.kind === "grate") for (const tr of this.trainsAt(t)) {
           const d = Math.max(0, tr.dir > 0 ? sh.ss - tr.head : tr.head - sh.ss, tr.dir > 0 ? tr.tail - sh.ss : sh.ss - tr.tail);
           pump = Math.max(pump, 18 * Math.max(0, 1 - d / 90));
         }
         wy += pump;
-        wx *= 0.4; wz *= 0.4;
+        if (sh.kind === "grate") {
+          // inside a vent shaft the air rushes straight up its middle
+          wx = wx * 0.2 + (sh.x - x) * 3; wz = wz * 0.2 + (sh.z - z) * 3;
+        } else { wx *= 0.4; wz *= 0.4; }
       }
       out.x = wx; out.y = wy; out.z = wz;
       return out;
@@ -227,12 +249,15 @@ export class Airflow {
         sy += st.speed * puff * (1 - r2) * (1 - 0.5 * dy / st.height);
         sx *= 0.5; sz *= 0.5;
       }
-      // subway stairs draw you in when you're close: dive for it
+      // subway stairs: the ways in draw you down when you're close (dive for it); the ways out
+      // breathe a warm column up into the cold street
       for (const sh of this.under.shaftGrid.at(x, z)) {
-        if (sh.kind !== "stairs" || y > 4.5) continue;
+        if (sh.kind !== "stairs" || y > 9) continue;
         const d = Math.hypot(x - sh.x, z - sh.z);
         if (d > 5.5) continue;
         const k = 1 - d / 5.5;
+        if (sh.out) { sy += 5 * k * (1 - y / 9); continue; }
+        if (y > 4.5) continue;
         sy -= 3 * k;
         sx += ((sh.x - x) / (d + 0.2)) * 2.5 * k;
         sz += ((sh.z - z) / (d + 0.2)) * 2.5 * k;

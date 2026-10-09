@@ -1,0 +1,588 @@
+{
+  "version": 1,
+  "sampleRate": 44100,
+  "format": "mp3 (libmp3lame VBR q2)",
+  "notes": "gain = suggested linear playback gain. Ambience loops are mastered to -20 LUFS; one-shots are peak-normalised to -1 dBTP and their gain brings them to a role loudness (loud -14, medium -18, soft -22, ui -23 LUFS momentary max). Loops are sample-exact periodic: loop the whole buffer (samples = loop length).",
+  "sounds": {
+    "amb_harbour": {
+      "file": "amb_harbour.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 48.0,
+      "samples": 2116800,
+      "channels": 2,
+      "description": "Battery Park waterfront: water lapping on the sea wall, gulls, a distant ferry horn, light cold wind, faint city behind."
+    },
+    "amb_street": {
+      "file": "amb_street.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 60.0,
+      "samples": 2646000,
+      "channels": 2,
+      "description": "Busy downtown street (Broadway, Financial District): traffic hum, tyres and passing cars/cabs/buses with doppler, cab horns, footsteps, pedestrian murmur, slap-back off the buildings."
+    },
+    "amb_chinatown": {
+      "file": "amb_chinatown.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 48.0,
+      "samples": 2116800,
+      "channels": 2,
+      "description": "Dense Chinatown market street: close crowd babble, hand-cart wheels, crates and metal clatter, plastic bags, a far vendor calling out, light traffic."
+    },
+    "amb_timessquare": {
+      "file": "amb_timessquare.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 48.0,
+      "samples": 2116800,
+      "channels": 2,
+      "description": "Times Square: a dense crowd hubbub, synth-pop bleeding from the giant screens, lots of impatient cab horns, crawling traffic."
+    },
+    "amb_rooftop": {
+      "file": "amb_rooftop.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 48.0,
+      "samples": 2116800,
+      "channels": 2,
+      "description": "Rooftop: strong cold November wind gusts whistling round parapets and antennas, the city roar far below, an HVAC unit, a faint far siren."
+    },
+    "amb_park": {
+      "file": "amb_park.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 60.0,
+      "samples": 2646000,
+      "channels": 2,
+      "description": "Central Park in winter: wind through bare branches with twig rattle and creaks, crows, sparrows, kids playing and shouting in the distance, a far dog, the city faintly beyond."
+    },
+    "amb_construction": {
+      "file": "amb_construction.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 45.0,
+      "samples": 1984500,
+      "channels": 2,
+      "description": "Construction site: jackhammer bursts, a truck reverse beeper, steel hammer clangs, a diesel generator drone, traffic behind."
+    },
+    "amb_tunnel": {
+      "file": "amb_tunnel.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 48.0,
+      "samples": 2116800,
+      "channels": 2,
+      "description": "Subway tunnel: low tunnel drone, third-rail electrical hum, dripping water, ticking metal, distant train rumble - all in a boomy metallic tunnel reverb."
+    },
+    "amb_station": {
+      "file": "amb_station.mp3",
+      "loop": true,
+      "gain": 1.0,
+      "category": "ambience",
+      "duration": 60.0,
+      "samples": 2646000,
+      "channels": 2,
+      "description": "Subway station platform: crowd murmur and footsteps in a long bright tiled reverb, garbled PA announcements, turnstile clacks, distant trains, fluorescent hum."
+    },
+    "amb_wind_low": {
+      "file": "amb_wind_low.mp3",
+      "loop": true,
+      "gain": 0.9,
+      "category": "ambience",
+      "duration": 30.0,
+      "samples": 1323000,
+      "channels": 2,
+      "description": "Neutral gentle wind bed for low airspeed; smooth, no spikes. Crossfade with amb_wind_high by airspeed."
+    },
+    "amb_wind_high": {
+      "file": "amb_wind_high.mp3",
+      "loop": true,
+      "gain": 0.9,
+      "category": "ambience",
+      "duration": 30.0,
+      "samples": 1323000,
+      "channels": 2,
+      "description": "Neutral fast-airflow rush for high airspeed: brighter turbulent roar with a hint of whistle. Crossfade with amb_wind_low."
+    },
+    "train_pass_uptown": {
+      "file": "train_pass_uptown.mp3",
+      "loop": false,
+      "gain": 0.83,
+      "category": "sfx",
+      "duration": 10.5,
+      "samples": 463050,
+      "channels": 2,
+      "description": "Express train blasting past in a tunnel, left to right: approach, wheel-joint clatter, motor whine, rush of air, doppler recede."
+    },
+    "train_pass_downtown": {
+      "file": "train_pass_downtown.mp3",
+      "loop": false,
+      "gain": 0.904,
+      "category": "sfx",
+      "duration": 10.5,
+      "samples": 463050,
+      "channels": 2,
+      "description": "Express train blasting past in a tunnel, right to left (different train)."
+    },
+    "train_arrive": {
+      "file": "train_arrive.mp3",
+      "loop": false,
+      "gain": 0.776,
+      "category": "sfx",
+      "duration": 9.067,
+      "samples": 399855,
+      "channels": 2,
+      "description": "Train pulling into the station: slowing clatter, brake screech, stop clunk, pneumatic hiss."
+    },
+    "train_horn": {
+      "file": "train_horn.mp3",
+      "loop": false,
+      "gain": 0.483,
+      "category": "sfx",
+      "duration": 4.382,
+      "samples": 193258,
+      "channels": 2,
+      "description": "Subway train horn: harsh buzzy two-tone blast, echoing down the tunnel."
+    },
+    "door_chime": {
+      "file": "door_chime.mp3",
+      "loop": false,
+      "gain": 0.231,
+      "category": "sfx",
+      "duration": 3.458,
+      "samples": 152488,
+      "channels": 2,
+      "description": "Generic descending two-tone \"ding-dong\" door chime through a platform speaker (not the real MTA chime)."
+    },
+    "cab_horn_1": {
+      "file": "cab_horn_1.mp3",
+      "loop": false,
+      "gain": 0.272,
+      "category": "sfx",
+      "duration": 1.29,
+      "samples": 56885,
+      "channels": 2,
+      "description": "Yellow cab horn: quick impatient double tap."
+    },
+    "cab_horn_2": {
+      "file": "cab_horn_2.mp3",
+      "loop": false,
+      "gain": 0.225,
+      "category": "sfx",
+      "duration": 1.669,
+      "samples": 73610,
+      "channels": 2,
+      "description": "Yellow cab horn: long lean then a short jab."
+    },
+    "cab_horn_3": {
+      "file": "cab_horn_3.mp3",
+      "loop": false,
+      "gain": 0.259,
+      "category": "sfx",
+      "duration": 1.371,
+      "samples": 60451,
+      "channels": 2,
+      "description": "Yellow cab horn: rapid triple tap, lower pitched."
+    },
+    "cab_horn_4": {
+      "file": "cab_horn_4.mp3",
+      "loop": false,
+      "gain": 0.219,
+      "category": "sfx",
+      "duration": 1.896,
+      "samples": 83613,
+      "channels": 2,
+      "description": "Yellow cab horn: sharp single beep then an annoyed lean, higher pitched."
+    },
+    "car_horn_long": {
+      "file": "car_horn_long.mp3",
+      "loop": false,
+      "gain": 0.247,
+      "category": "sfx",
+      "duration": 2.837,
+      "samples": 125115,
+      "channels": 2,
+      "description": "Car horn held down for nearly two seconds (gridlock rage)."
+    },
+    "bus_brake_hiss": {
+      "file": "bus_brake_hiss.mp3",
+      "loop": false,
+      "gain": 0.344,
+      "category": "sfx",
+      "duration": 2.716,
+      "samples": 119778,
+      "channels": 2,
+      "description": "City bus stopping: brief brake squeal then the big pneumatic \"pssssh\"."
+    },
+    "siren_pass": {
+      "file": "siren_pass.mp3",
+      "loop": false,
+      "gain": 0.544,
+      "category": "sfx",
+      "duration": 11.293,
+      "samples": 498038,
+      "channels": 2,
+      "description": "NYPD-style police car passing: wail, switching to yelp with a low rumbler as it passes, doppler and building echoes."
+    },
+    "truck_pass": {
+      "file": "truck_pass.mp3",
+      "loop": false,
+      "gain": 0.785,
+      "category": "sfx",
+      "duration": 8.659,
+      "samples": 381851,
+      "channels": 2,
+      "description": "Heavy diesel truck rumbling past with rattles and doppler."
+    },
+    "steam_hiss": {
+      "file": "steam_hiss.mp3",
+      "loop": false,
+      "gain": 0.415,
+      "category": "sfx",
+      "duration": 2.548,
+      "samples": 112348,
+      "channels": 2,
+      "description": "Steam puffing from a manhole / street steam stack (about 2 s)."
+    },
+    "steam_burst": {
+      "file": "steam_burst.mp3",
+      "loop": false,
+      "gain": 0.725,
+      "category": "sfx",
+      "duration": 3.477,
+      "samples": 153343,
+      "channels": 2,
+      "description": "Sudden, powerful steam burst with a pressure pop and roaring hiss."
+    },
+    "pigeon_flap": {
+      "file": "pigeon_flap.mp3",
+      "loop": false,
+      "gain": 0.649,
+      "category": "sfx",
+      "duration": 1.64,
+      "samples": 72306,
+      "channels": 2,
+      "description": "Pigeon taking off: wing claps then flapping away."
+    },
+    "pigeon_coo": {
+      "file": "pigeon_coo.mp3",
+      "loop": false,
+      "gain": 0.172,
+      "category": "sfx",
+      "duration": 3.349,
+      "samples": 147707,
+      "channels": 2,
+      "description": "Pigeon cooing: rolled \"oo-RROOO-oo\", twice."
+    },
+    "gull_cry": {
+      "file": "gull_cry.mp3",
+      "loop": false,
+      "gain": 0.268,
+      "category": "sfx",
+      "duration": 2.384,
+      "samples": 105147,
+      "channels": 2,
+      "description": "Herring gull long call over the harbour: a \"kyow\" then laughing \"ha-ha-ha\"."
+    },
+    "crow_caw": {
+      "file": "crow_caw.mp3",
+      "loop": false,
+      "gain": 0.424,
+      "category": "sfx",
+      "duration": 2.612,
+      "samples": 115199,
+      "channels": 2,
+      "description": "Crow cawing three times, harsh and raspy."
+    },
+    "dog_bark": {
+      "file": "dog_bark.mp3",
+      "loop": false,
+      "gain": 0.523,
+      "category": "sfx",
+      "duration": 1.994,
+      "samples": 87928,
+      "channels": 2,
+      "description": "Medium dog barking: \"rowf-rowf... rowf\"."
+    },
+    "cat_hiss": {
+      "file": "cat_hiss.mp3",
+      "loop": false,
+      "gain": 0.319,
+      "category": "sfx",
+      "duration": 0.994,
+      "samples": 43834,
+      "channels": 1,
+      "description": "Alley cat hissing with a spit."
+    },
+    "cat_meow": {
+      "file": "cat_meow.mp3",
+      "loop": false,
+      "gain": 0.26,
+      "category": "sfx",
+      "duration": 1.49,
+      "samples": 65712,
+      "channels": 2,
+      "description": "Cat meowing \"mi-aow\"."
+    },
+    "kid_shout_1": {
+      "file": "kid_shout_1.mp3",
+      "loop": false,
+      "gain": 0.344,
+      "category": "sfx",
+      "duration": 1.288,
+      "samples": 56788,
+      "channels": 2,
+      "description": "Kid shouting \"hey!\"."
+    },
+    "kid_shout_2": {
+      "file": "kid_shout_2.mp3",
+      "loop": false,
+      "gain": 0.245,
+      "category": "sfx",
+      "duration": 1.444,
+      "samples": 63690,
+      "channels": 2,
+      "description": "Kid shouting a long rising \"wheee!\"."
+    },
+    "kid_shout_3": {
+      "file": "kid_shout_3.mp3",
+      "loop": false,
+      "gain": 0.275,
+      "category": "sfx",
+      "duration": 1.485,
+      "samples": 65496,
+      "channels": 2,
+      "description": "Kid shouting \"woo-hoo!\"."
+    },
+    "kid_laugh": {
+      "file": "kid_laugh.mp3",
+      "loop": false,
+      "gain": 0.406,
+      "category": "sfx",
+      "duration": 1.965,
+      "samples": 86669,
+      "channels": 2,
+      "description": "Kid giggling \"ha-ha-ha-ha\"."
+    },
+    "man_shout_hey": {
+      "file": "man_shout_hey.mp3",
+      "loop": false,
+      "gain": 0.412,
+      "category": "sfx",
+      "duration": 1.517,
+      "samples": 66919,
+      "channels": 2,
+      "description": "Grown man shouting \"hey!\" (a startled New Yorker)."
+    },
+    "crowd_cheer": {
+      "file": "crowd_cheer.mp3",
+      "loop": false,
+      "gain": 0.7,
+      "category": "sfx",
+      "duration": 4.573,
+      "samples": 201683,
+      "channels": 2,
+      "description": "Warm joyful crowd cheer with applause and whistles - for planting the seed."
+    },
+    "crowd_gasp": {
+      "file": "crowd_gasp.mp3",
+      "loop": false,
+      "gain": 0.439,
+      "category": "sfx",
+      "duration": 2.798,
+      "samples": 123391,
+      "channels": 2,
+      "description": "Crowd gasping then a falling \"oooh\"."
+    },
+    "leaf_flutter_loop": {
+      "file": "leaf_flutter_loop.mp3",
+      "loop": true,
+      "gain": 0.794,
+      "category": "sfx",
+      "duration": 4.0,
+      "samples": 176400,
+      "channels": 2,
+      "description": "Seamless loop: the dry leaf fluttering/flapping in fast airflow. Fade in with airspeed."
+    },
+    "leaf_tear_small": {
+      "file": "leaf_tear_small.mp3",
+      "loop": false,
+      "gain": 0.925,
+      "category": "sfx",
+      "duration": 0.32,
+      "samples": 14112,
+      "channels": 1,
+      "description": "Small dry-leaf tear: a short crisp rip."
+    },
+    "leaf_tear_big": {
+      "file": "leaf_tear_big.mp3",
+      "loop": false,
+      "gain": 0.806,
+      "category": "sfx",
+      "duration": 1.093,
+      "samples": 48219,
+      "channels": 1,
+      "description": "Big leaf rip: a long, ragged paper tear with snaps."
+    },
+    "leaf_scrape": {
+      "file": "leaf_scrape.mp3",
+      "loop": false,
+      "gain": 1.0,
+      "category": "sfx",
+      "duration": 0.95,
+      "samples": 41895,
+      "channels": 2,
+      "description": "The leaf skidding/sliding across concrete."
+    },
+    "leaf_hit_wall": {
+      "file": "leaf_hit_wall.mp3",
+      "loop": false,
+      "gain": 1.0,
+      "category": "sfx",
+      "duration": 1.051,
+      "samples": 46330,
+      "channels": 2,
+      "description": "Soft papery thwack of the leaf slapping into a wall."
+    },
+    "puddle_splash": {
+      "file": "puddle_splash.mp3",
+      "loop": false,
+      "gain": 0.716,
+      "category": "sfx",
+      "duration": 1.267,
+      "samples": 55874,
+      "channels": 2,
+      "description": "Leaf lands in a puddle: splash and droplets (death)."
+    },
+    "manhole_fall": {
+      "file": "manhole_fall.mp3",
+      "loop": false,
+      "gain": 0.591,
+      "category": "sfx",
+      "duration": 5.492,
+      "samples": 242213,
+      "channels": 2,
+      "description": "Falling down a manhole: whoosh down a pipe into an echoey drop and splash below."
+    },
+    "train_hit": {
+      "file": "train_hit.mp3",
+      "loop": false,
+      "gain": 0.801,
+      "category": "sfx",
+      "duration": 2.2,
+      "samples": 97020,
+      "channels": 2,
+      "description": "Hit by a train: a sudden overwhelming roar and screech that cuts to silence with a faint ring."
+    },
+    "whoosh_drop": {
+      "file": "whoosh_drop.mp3",
+      "loop": false,
+      "gain": 0.59,
+      "category": "sfx",
+      "duration": 1.6,
+      "samples": 70560,
+      "channels": 2,
+      "description": "Layer-drop speed boost: big satisfying swept whoosh crossing the stereo field with a sub-bass drop."
+    },
+    "whoosh_drop_big": {
+      "file": "whoosh_drop_big.mp3",
+      "loop": false,
+      "gain": 0.629,
+      "category": "sfx",
+      "duration": 4.727,
+      "samples": 208454,
+      "channels": 2,
+      "description": "Roof-to-subway combo drop: rising tension, a huge whoosh, deep sub boom and rushing tail."
+    },
+    "corkscrew_whoosh": {
+      "file": "corkscrew_whoosh.mp3",
+      "loop": false,
+      "gain": 0.507,
+      "category": "sfx",
+      "duration": 1.9,
+      "samples": 83790,
+      "channels": 2,
+      "description": "Corkscrew: whoosh spiralling around the head with accelerating rotation."
+    },
+    "loop_whoosh": {
+      "file": "loop_whoosh.mp3",
+      "loop": false,
+      "gain": 0.397,
+      "category": "sfx",
+      "duration": 1.6,
+      "samples": 70560,
+      "channels": 2,
+      "description": "Loop-the-loop: one big circular whoosh rising and falling as it sweeps around."
+    },
+    "gust_blast": {
+      "file": "gust_blast.mp3",
+      "loop": false,
+      "gain": 0.743,
+      "category": "sfx",
+      "duration": 2.398,
+      "samples": 105761,
+      "channels": 2,
+      "description": "A sudden strong gust of cold wind slamming in then easing off."
+    },
+    "vent_blast": {
+      "file": "vent_blast.mp3",
+      "loop": false,
+      "gain": 0.72,
+      "category": "sfx",
+      "duration": 4.118,
+      "samples": 181592,
+      "channels": 2,
+      "description": "Shot up a metal air-vent shaft: fan hum, rising metallic rush with duct resonance and rattling sheet metal."
+    },
+    "seed_plant": {
+      "file": "seed_plant.mp3",
+      "loop": false,
+      "gain": 0.344,
+      "category": "sfx",
+      "duration": 4.547,
+      "samples": 200513,
+      "channels": 2,
+      "description": "Planting the seed: a soft earthy thud and crumble, then a gentle rising magical shimmer."
+    },
+    "achievement_chime": {
+      "file": "achievement_chime.mp3",
+      "loop": false,
+      "gain": 0.187,
+      "category": "ui",
+      "duration": 3.052,
+      "samples": 134606,
+      "channels": 2,
+      "description": "Achievement unlocked: a warm, short, rewarding rising arpeggio with a soft glow."
+    },
+    "ui_click": {
+      "file": "ui_click.mp3",
+      "loop": false,
+      "gain": 1.0,
+      "category": "ui",
+      "duration": 0.06,
+      "samples": 2646,
+      "channels": 1,
+      "description": "Soft UI click."
+    },
+    "ui_back": {
+      "file": "ui_back.mp3",
+      "loop": false,
+      "gain": 0.336,
+      "category": "ui",
+      "duration": 0.204,
+      "samples": 8993,
+      "channels": 1,
+      "description": "Soft UI back/cancel: two quick descending blips."
+    }
+  }
+}

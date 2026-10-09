@@ -192,9 +192,11 @@ export class Stage {
     this.sun.target.position.x = Math.round(this.sun.target.position.x / step) * step;
     this.sun.target.position.z = Math.round(this.sun.target.position.z / step) * step;
     this.sky.position.copy(this.camera.position);
+    this.sky.visible = !underground; // no daylight leaking through anything down there
+    this.scene.background = underground ? new THREE.Color(0x050403) : null;
     (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
-    this.fog.density = underground ? 0.012 : 0.00042;
-    this.fog.color.set(underground ? 0x1c2024 : 0xb9bcc4);
+    this.fog.density = underground ? 0.045 : 0.00042;
+    this.fog.color.set(underground ? 0x0d0b09 : 0xb9bcc4);
     const ug = this.grade.uniforms;
     ug.uSpeed.value += (speed - ug.uSpeed.value) * 0.08;
     ug.uTime.value = t;

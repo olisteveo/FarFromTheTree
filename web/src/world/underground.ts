@@ -16,9 +16,14 @@ export const TUNNEL = {
   stationCeiling: -2.4,
   stationHalfLength: 75,
   grateEvery: 70,
+  /** steel I-beam columns down the middle of the tunnel, between the two tracks */
+  columnEvery: 5,
+  columnRadius: 0.22,
 };
 
-export interface Shaft { x: number; z: number; r: number; tx: number; tz: number; kind: "stairs" | "grate"; ss: number; name: string; relief?: boolean }
+export interface Shaft { x: number; z: number; r: number; tx: number; tz: number; kind: "stairs" | "grate"; ss: number; name: string; relief?: boolean;
+  /** stairs that breathe warm station air up and out (ways out); the others draw air down (ways in) */
+  out?: boolean }
 
 export interface Blocked { ss0: number; ss1: number; kind: "flood" | "end"; name: string }
 
@@ -31,6 +36,7 @@ export class Underground {
   readonly end: number;
   private hint = -1;
   private near = { s: 0, off: 0, d: 0 };
+  rats: Rat[] = [];
 
   constructor(readonly city: CityData) {
     const sub = city.subway;
@@ -43,16 +49,23 @@ export class Underground {
       { ss0: prince - 150, ss1: prince + 140, kind: "flood", name: "Prince St is flooded" },
       { ss0: this.end, ss1: sub.length + 1000, kind: "end", name: "End of the line" },
     ];
-    // real entrance stairs
-    for (const e of city.raw.entrances) {
-      const n = sub.nearest(e.x, e.z);
-      const p = sub.at(n.s);
-      this.addShaft({ x: e.x, z: e.z, r: 2.1, tx: p.x - e.x, tz: p.z - e.z, kind: "stairs", ss: n.s, name: e.n });
+    // real entrance stairs: at every station some are ways in (air drawn down) and some ways
+    // out (warm station air rising into the cold street, steaming)
+    const byStation = new Map<string, typeof city.raw.entrances>();
+    for (const e of city.raw.entrances) (byStation.get(e.n) ?? byStation.set(e.n, []).get(e.n)!).push(e);
+    for (const list of byStation.values()) {
+      const sorted = list.map((e) => ({ e, s: sub.nearest(e.x, e.z).s })).sort((a, b) => a.s - b.s);
+      sorted.forEach(({ e, s }, i) => {
+        const p = sub.at(s);
+        this.addShaft({ x: e.x, z: e.z, r: 2.1, tx: p.x - e.x, tz: p.z - e.z, kind: "stairs", ss: s, name: e.n, out: i % 2 === 1 });
+      });
     }
     // relief vents just before the flood and the end of the line: the tunnel air (and you) escape up them
-    for (const ss of [this.blocked[0].ss0 - 22, this.end - 30]) {
+    for (const ss of [this.blocked[0].ss0 - 7, this.end - 7]) {
       const p = sub.at(ss);
-      this.addShaft({ x: p.x, z: p.z, r: 2.4, tx: 0, tz: 0, kind: "grate", ss, name: "relief vent", relief: true });
+      const s: Shaft = { x: p.x, z: p.z, r: 3.4, tx: 0, tz: 0, kind: "grate", ss, name: "relief vent", relief: true };
+      this.shafts.push(s);
+      this.shaftGrid.add(s, p.x - 16, p.z - 16, p.x + 16, p.z + 16); // its pull reaches right across the tunnel
     }
     // grates over the tunnel between stations
     for (let s = 40; s < this.end - 20; s += TUNNEL.grateEvery) {
@@ -61,6 +74,7 @@ export class Underground {
       const p = sub.at(s);
       this.addShaft({ x: p.x - p.tz * 4.5, z: p.z + p.tx * 4.5, r: 1.3, tx: 0, tz: 0, kind: "grate", ss: s, name: "" });
     }
+    this.rats = makeRats(this);
   }
 
   private addShaft(s: Shaft) {
@@ -104,6 +118,12 @@ export class Underground {
       const b = this.blocked[0];
       const flood = Math.min(Math.abs(n.s - b.ss0), Math.abs(n.s - b.ss1));
       best = Math.min(best, endWall, n.s < b.ss0 || n.s > b.ss1 ? flood + 0.0 : -flood);
+      // the row of columns between the tracks (not in the stations, where the platforms are)
+      if (k < 0.3) {
+        const ds = Math.abs(((n.s % TUNNEL.columnEvery) + TUNNEL.columnEvery) % TUNNEL.columnEvery - TUNNEL.columnEvery / 2);
+        const dc = Math.hypot(TUNNEL.columnEvery / 2 - ds, n.off) - TUNNEL.columnRadius;
+        best = Math.min(best, dc);
+      }
     }
     for (const s of this.shaftGrid.at(x, z)) {
       // vertical shaft from the street down to the passage level
@@ -158,4 +178,29 @@ export function trainsAt(t: number, length: number, out: Train[] = [], closed?: 
     }
   }
   return out;
+}
+
+// ------------------------------------------------------------------ rats on the track bed
+
+export interface Rat { home: number; side: number; range: number; speed: number; phase: number }
+
+/** Rats scurry back and forth along the track bed near the walls. Deterministic. */
+export function makeRats(u: Underground): Rat[] {
+  const rats: Rat[] = [];
+  let k = 1;
+  for (let s = 30; s < u.end; s += 26) {
+    if (u.isBlocked(s)) continue;
+    const h = (n: number) => { let x = Math.imul((k * 9973 + n) | 0, 0x9e3779b1) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d) >>> 0; return (x >>> 0) / 4294967296; };
+    k++;
+    if (h(1) < 0.35) continue;
+    rats.push({ home: s + h(2) * 20, side: h(3) < 0.5 ? -1 : 1, range: 6 + h(4) * 14, speed: 0.6 + h(5) * 0.8, phase: h(6) * 20 });
+  }
+  return rats;
+}
+
+/** A rat's position along the tunnel (ss) and lateral offset at time t. */
+export function ratAt(r: Rat, t: number): { ss: number; off: number; dir: number } {
+  const x = Math.sin(t * r.speed + r.phase);
+  const dir = Math.cos(t * r.speed + r.phase) >= 0 ? 1 : -1;
+  return { ss: r.home + x * r.range, off: r.side * (TUNNEL.halfWidth - 0.8 - Math.abs(Math.sin(t * 2.3 + r.phase)) * 0.6), dir };
 }

@@ -197,6 +197,18 @@ export class SteamView {
         this.age[j] = 0;
       }
     }
+    // warm station air steaming out of the "way out" stairs into the cold
+    for (const sh of this.flow.under.shaftGrid.around(focus.x, focus.z, 120, [])) {
+      if (sh.kind !== "stairs" || !sh.out || seen.has(sh)) continue;
+      seen.add(sh);
+      let k = 14 * dt + Math.random();
+      while (k-- >= 1) {
+        const j = this.next++ % this.n;
+        this.p.set([sh.x + (Math.random() - 0.5) * 3, 0.4, sh.z + (Math.random() - 0.5) * 3], j * 3);
+        this.v.set([0, 2.5 + Math.random() * 2, 0], j * 3);
+        this.age[j] = 0;
+      }
+    }
     for (let j = 0; j < this.n; j++) {
       const a = (this.age[j] += dt);
       if (a > 5) { this.alpha[j] = 0; continue; }

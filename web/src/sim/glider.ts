@@ -17,6 +17,7 @@ import { Euler, Quaternion, Vector3 } from "three";
 import { clamp, noise1 } from "../core/rng";
 import { inPoly, nearestEdge, type Building, type CityData } from "../world/data";
 import { Airflow, type AirSample, type Lane } from "../world/airflow";
+import { ratAt } from "../world/underground";
 
 export const FLIGHT = {
   wingLoad: 0.3,      // area / mass (m^2/kg): bigger floats more; sets the glide speed (~8.5 m/s)
@@ -293,7 +294,8 @@ export class Glider {
     if (this.trick) { this.trick = null; this.spin = 0; this.flip = 0; }
     const impact = -vn;
     // settling onto the ground is gentle; walls and ceilings are what tear a leaf
-    const safe = ny > 0.7 ? 14 : FLIGHT.safeImpact; // settling onto the ground barely hurts
+    // settling onto the ground barely hurts; glancing off a tunnel wall hurts less than a building
+    const safe = ny > 0.7 ? 14 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;
     if (impact > safe && this.clock - this.lastHit > 0.15) {
       this.lastHit = this.clock;
       const dmg = (impact - safe) * FLIGHT.damage;
@@ -313,6 +315,7 @@ export class Glider {
     this.grounded = false;
     // buildings: push out through the nearest wall, or up onto the roof
     for (const b of this.city.bgrid.around(p.x, p.z, 1, this.bl)) {
+      if (p.y < 0) break; // buildings stand on the street; the tunnels run beneath them
       if (p.y > b.h + r || p.x < b.x0 - r || p.x > b.x1 + r || p.z < b.z0 - r || p.z > b.z1 + r) continue;
       const inside = inPoly(b.poly, p.x, p.z);
       const ed = nearestEdge(b.poly, p.x, p.z);
@@ -347,11 +350,20 @@ export class Glider {
     const p = this.pos;
     const life = this.flow.life;
     if (p.y < 0.35 && p.y > -0.2) {
-      if (life.puddleAt(p.x, p.z)) this.fail("Soaked in a puddle");
+      if (this.grounded && life.puddleAt(p.x, p.z)) this.fail("Soaked in a puddle");
       else if (life.manholeAt(p.x, p.z)) this.fail("Lost down a manhole");
     }
     if (p.y < -1.2 && p.y > -3 && !this.flow.under.openingAt(p.x, p.z) && !this.city.onLand(p.x, p.z)) this.fail("Swallowed by the harbour");
     if (p.y < -12) this.fail("Lost in the dark");
+    // down on the track bed the rats find you
+    if (p.y < -8.9 && this.grounded) {
+      const u = this.flow.under, n = this.city.subway.nearest(p.x, p.z);
+      for (const r of u.rats) {
+        if (Math.abs(r.home - n.s) > r.range + 4) continue;
+        const ra = ratAt(r, this.clock);
+        if (Math.abs(ra.ss - n.s) < 1.2 && Math.abs(ra.off - n.off) < 1.2) { this.fail("Eaten by a rat"); break; }
+      }
+    }
   }
 
   fail(reason: string) {
