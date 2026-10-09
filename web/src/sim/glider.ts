@@ -20,6 +20,8 @@ import { Airflow, type AirSample, type Lane } from "../world/airflow";
 import { ratAt } from "../world/underground";
 import { Facades } from "../world/facades";
 import { BARRIER_NAME } from "../world/blockers";
+import { PARK } from "../world/park";
+import { collideParkColliders, type ParkCollider } from "../render/centralPark";
 
 const PROP_NAME: Record<string, string> = { ac: "an AC unit", balcony: "a balcony", solid: "a monument", cat: "a cat", line: "a washing line" };
 
@@ -94,6 +96,7 @@ export class Glider {
   private lastBump = -99;
   private lastHit = -99;
   private lastBoing = -99;
+  private parkScratch: ParkCollider[] = [];
   private bl: Building[] = [];
 
   constructor(readonly city: CityData, readonly flow: Airflow, readonly start: { x: number; y: number; z: number; heading: number }) {
@@ -269,6 +272,18 @@ export class Glider {
         this.events.push(`t${this.time.toFixed(1)} bumped into someone -> ${this.integrity.toFixed(2)}`);
       }
     }
+    // the kids in Central Park try to catch you
+    {
+      const kid = this.flow.park.step(dt, this.clock, this.pos.x, this.pos.y, this.pos.z, this.state === "flying");
+      if (kid) {
+        this.lastHit = this.clock;
+        this.vel.x += kid.tx * 4; this.vel.z += kid.tz * 4; this.vel.y += 5; // they fumble it and it flutters up
+        this.integrity -= PARK.damage;
+        this.maxIntegrity -= PARK.damage * FLIGHT.scar;
+        this.events.push(`t${this.time.toFixed(1)} caught by a kid in Central Park -> ${this.integrity.toFixed(2)}`);
+        if (this.integrity <= 0) this.fail("Caught by a kid in Central Park");
+      }
+    }
     if (this.clock - this.lastHit > T.healDelay && this.integrity < this.maxIntegrity) this.integrity = Math.min(this.maxIntegrity, this.integrity + T.heal * dt);
     if (this.air.train) this.fail(this.air.trainDir! > 0 ? "Caught by the uptown train" : "Hit head-on by a downtown train");
     this.fate();
@@ -313,7 +328,8 @@ export class Glider {
     const impact = -vn;
     // settling onto the ground is gentle; walls and ceilings are what tear a leaf
     // settling onto the ground barely hurts; glancing off a tunnel wall hurts less than a building
-    const safe = ny > 0.7 ? 14 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;
+    // the water main's spray shoves you back but it's only water: it never tears the leaf
+    const safe = what === BARRIER_NAME.water ? Infinity : ny > 0.7 ? 14 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;
     if (impact > safe && this.clock - this.lastHit > 0.15) {
       this.lastHit = this.clock;
       const dmg = (impact - safe) * FLIGHT.damage;
@@ -388,6 +404,8 @@ export class Glider {
         }
       }
     }
+    // Central Park: rocks, lamps, benches, trunks, the bridge, the rink boards
+    if (p.y < 30) collideParkColliders(this.flow.parkSolids, p.x, p.y, p.z, r, (nx, ny, nz, d, name) => this.contact(nx, ny, nz, d, name), this.parkScratch);
     // parade balloons: soft and bouncy, they don't hurt, they boing
     for (const b of this.flow.blockers.balloons) {
       const dx = p.x - b.x, dy = p.y - b.y, dz = p.z - b.z, d = Math.hypot(dx, dy, dz);

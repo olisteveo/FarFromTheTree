@@ -8,3 +8,6 @@ recordings
 .wrangler/
 tools/people/previews/*.blend
 __pycache__/
+.tesseract-work/
+*.blend
+*.blend1

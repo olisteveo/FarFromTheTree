@@ -15,6 +15,9 @@ import { StreetLife } from "./streetlife";
 import { Facades } from "./facades";
 import { Crowd } from "./crowd";
 import { Blockers } from "./blockers";
+import { Park } from "./park";
+import { Grid } from "./data";
+import { colliderGrid, parkLayout, type ParkCollider, type ParkLayout } from "../render/centralPark";
 import { Traffic } from "./traffic";
 import { TRAIN, trainsAt, TUNNEL, Underground, type Train } from "./underground";
 
@@ -29,6 +32,8 @@ export const AIR = {
   tunnel: 11,         // the tunnel's standing draught
   station: 7,
   canyonLift: 1.5,    // mean updraft in the street canyons (m/s)
+  cushion: 2.4,       // tunnel walls: how far out (m) the air starts turning along them
+  cushionPush: 7,     // ...and how hard it pushes a leaf off them (m/s, right at the wall)
   trainPush: 20,      // extra ahead of an uptown train
   corridor: 340,      // how far either side of the route before the wind turns you back
 };
@@ -55,6 +60,10 @@ export class Airflow {
   readonly life: StreetLife;
   readonly facades: Facades;
   readonly crowd: Crowd;
+  readonly park: Park;
+  /** Central Park's features (pond, rocks, lamps, benches, trees...) and what the leaf can hit there */
+  readonly parkLayout: ParkLayout;
+  readonly parkSolids: Grid<ParkCollider>;
   readonly blockers: Blockers;
   private trains: Train[] = [];
   private trainT = -1;
@@ -74,6 +83,9 @@ export class Airflow {
     this.crowd = new Crowd(this.traffic);
     this.blockers = new Blockers(city);
     this.traffic.closed = this.blockers.list;
+    this.parkLayout = parkLayout(city);
+    this.parkSolids = colliderGrid(this.parkLayout.colliders);
+    this.park = new Park(city, city.raw.districts.find((d) => d.id === "park")?.s0 ?? city.route.length - 700, this.parkLayout.keepClear);
   }
 
   trainsAt(t: number): Train[] {
@@ -102,11 +114,16 @@ export class Airflow {
     if (y < -0.4) {
       out.lane = "subway";
       const u = this.under;
-      u.sdf(x, y, z, this.uinfo as never);
+      const wallD = u.sdf(x, y, z, this.uinfo as never);
       const ss = this.uinfo.ss, off = this.uinfo.off;
       const sp = city.subway.at(ss);
       const st = u.stationAt(ss);
       let along = st ? AIR.station : AIR.tunnel;
+      // the draught slows as the tunnel nears the flood or the end of the line (it escapes up
+      // the relief vent), but a train's own piston of air doesn't: it shoves you ahead of it
+      const blockAhead = Math.min(...u.blocked.map((b) => (b.ss0 > ss ? b.ss0 - ss : 1e9)));
+      if (blockAhead < 260) along *= 0.2 + 0.8 * (blockAhead / 260);
+      let spill = 0;
       for (const tr of this.trainsAt(t)) {
         const ahead = (ss - tr.head) * tr.dir; // > 0 in front of the train
         const behind = (tr.tail - ss) * tr.dir;
@@ -118,20 +135,35 @@ export class Airflow {
         } else if (ahead > 0 && ahead < 220) {
           along -= (AIR.tunnel + 14) * (1 - ahead / 220) * sameTrack; // the downtown train's wall of air
         }
+        // right in front of a train on your track, its air spills up and over its roof: ride it up
+        // and the train passes underneath (the gap above a train is about 2.5 m)
+        if (sameTrack === 1 && ahead > 0 && ahead < 45) spill = Math.max(spill, 7 * (1 - ahead / 45));
         // inside a train?
         const inBody = tr.dir > 0 ? ss < tr.head && ss > tr.tail : ss > tr.head && ss < tr.tail;
-        if (inBody && Math.abs(off - tr.off) < TRAIN.width / 2 + 0.15 && y < TUNNEL.floor + 0.6 + TRAIN.height) { out.train = true; out.trainDir = tr.dir; }
+        if (inBody && Math.abs(off - tr.off) < TRAIN.width / 2 + 0.15 && y < TUNNEL.floor + 0.35 + TRAIN.height) { out.train = true; out.trainDir = tr.dir; }
       }
-      // the air slows as the tunnel nears the flood or the end of the line and escapes up the relief vent
-      const blockAhead = Math.min(...u.blocked.map((b) => (b.ss0 > ss ? b.ss0 - ss : 1e9)));
-      if (blockAhead < 260) along *= 0.2 + 0.8 * (blockAhead / 260);
       wx = sp.tx * along; wz = sp.tz * along;
       // pull toward the middle of the tunnel and a little turbulence
       // the tunnel air hugs the curves: it holds you in the middle of whichever track you're over
       // (not the middle of the tunnel, where the column row is)
       const lane = (off >= 0 ? 1 : -1) * TRAIN.track, dl = off - lane;
       wx += sp.tz * -dl * 1.1; wz += -sp.tx * -dl * 1.1;
-      wy = 0.8 * noise3(x / 8, y / 4, z / 8 + t, 41);
+      wy = 0.8 * noise3(x / 8, y / 4, z / 8 + t, 41) + spill;
+      // an air cushion off the walls: near a wall the air turns along it and pushes you off it,
+      // so a leaf riding the draught round a bend skims the outer wall instead of slamming into it
+      if (wallD < AIR.cushion) {
+        const e = 0.3;
+        const nx = u.sdf(x + e, y, z) - u.sdf(x - e, y, z), nz = u.sdf(x, y, z + e) - u.sdf(x, y, z - e);
+        const ny = u.sdf(x, y + e, z) - u.sdf(x, y - e, z);
+        const nl = Math.hypot(nx, ny, nz);
+        if (nl > 1e-4) {
+          const ux = nx / nl, uy = ny / nl, uz = nz / nl, k = 1 - Math.max(0, wallD) / AIR.cushion;
+          const into = Math.min(0, wx * ux + wy * uy + wz * uz); // the part of the air heading into the wall
+          wx += ux * (-into * k + AIR.cushionPush * k * k);
+          wy += uy * (-into * k + AIR.cushionPush * k * k);
+          wz += uz * (-into * k + AIR.cushionPush * k * k);
+        }
+      }
       // vents overhead draw the tunnel air up into them: the relief vents always, the grates
       // when a train pushes the air ahead of it. Stand under one and you're fired up to the street.
       for (const g of u.shaftGrid.at(x, z)) {

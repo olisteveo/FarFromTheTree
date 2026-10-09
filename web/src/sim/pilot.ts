@@ -131,11 +131,15 @@ export class Pilot {
         // good players keep to the uptown track (the downtown one has trains coming at you), and
         // anyone sees headlights coming and swerves to the other track
         let side = p.skill > 0.5 ? 3.0 : this.trackSide;
+        // headlights coming: get over to the uptown track, wherever you've drifted to
+        let coming = false;
         for (const tr of this.flow.trainsAt(L.clock)) {
           if (tr.dir > 0) continue;
           const ahead = tr.head - sub.s;
-          if (ahead > 0 && ahead < 90 + 160 * p.skill && Math.sign(sub.off || -1) === Math.sign(tr.off)) side = 3.0;
+          if (ahead > -10 && ahead < 90 + 160 * p.skill) { side = 3.0; coming = true; }
         }
+        // drifted way off the line (stations, junctions): steer back hard toward it
+        if (coming && sub.off < 1.5) side = 4.5;
         this.trackSide = side;
         tx = a.x + a.tz * side; tz = a.z - a.tx * side;
         // good players hug the ceiling: a train can pass underneath
@@ -148,11 +152,13 @@ export class Pilot {
       if (d < 5) input.curl = true;
       if (d > 160 || L.clock - this.targetSince > 25) { this.mode = "street"; this.target = null; this.giveUpUntil = L.clock + 30; this.log.push(`s${route.s.toFixed(0)}: gave up on the stairs`); }
     } else if (this.flow.blockers.near(pos.x, pos.z) && !under) {
-      // a closed street: up over the roofs
+      // a closed street: hop the barrier (it's only so high), or over the roofs if they're low
       const look = 22 + p.skill * 18;
       const a = city.route.at(route.s + look);
       tx = a.x; tz = a.z;
-      wantY = city.canopy(pos.x, pos.z, 30) + 8;
+      const bl = this.flow.blockers.near(pos.x, pos.z)!;
+      const roofs = city.canopy(pos.x, pos.z, 30);
+      wantY = roofs < 25 ? roofs + 8 : bl.height + 4;
     } else {
       const look = 22 + p.skill * 18;
       const a = city.route.at(route.s + look);

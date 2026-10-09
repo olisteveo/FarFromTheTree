@@ -79,6 +79,8 @@ function nameTablet(name: string) {
 
 export class SubwayMesh {
   readonly root = new THREE.Group();
+  /** the simple versions of what render/subwayArt.ts models properly: hidden once that loads */
+  readonly legacy = new THREE.Group();
   readonly flood: THREE.Mesh | null = null;
   /** every light fitting, for placing the real point lights near the camera */
   readonly lamps: { x: number; y: number; z: number; station: boolean }[] = [];
@@ -143,11 +145,13 @@ export class SubwayMesh {
       const m = new THREE.Mesh(g, mat);
       m.receiveShadow = true;
       this.root.add(m);
+      return m;
     };
-    mk(wall, wallUv, tileMat);
-    mk(twallP, twallUv, tunnelWallMat);
-    mk(floor, floorUv, floorMat);
-    mk(ceil, null, ceilMat);
+    mk(wall, wallUv, tileMat).name = "wall";
+    mk(twallP, twallUv, tunnelWallMat).name = "twall";
+    mk(floor, floorUv, floorMat).name = "floor";
+    mk(ceil, null, ceilMat).name = "ceil";
+    this.root.add(this.legacy);
 
     // track: two pairs of rails and the ties, work lights along both walls
     const stripLights: THREE.BufferGeometry[] = [];
@@ -180,16 +184,16 @@ export class SubwayMesh {
       }
     }
     const steel = new THREE.MeshStandardMaterial({ color: 0x6d6a66, metalness: 0.8, roughness: 0.4 });
-    this.root.add(new THREE.Mesh(mergeGeometries(rails)!, steel));
+    this.legacy.add(new THREE.Mesh(mergeGeometries(rails)!, steel));
     const lm = new THREE.MeshBasicMaterial({ toneMapped: false });
     lm.color.setRGB(2.2, 1.5, 0.55); // old tungsten work lights: dim and yellow
-    this.root.add(new THREE.Mesh(mergeGeometries(lights)!, lm));
+    this.legacy.add(new THREE.Mesh(mergeGeometries(lights)!, lm));
     const fm = new THREE.MeshBasicMaterial({ toneMapped: false });
     fm.color.setRGB(1.6, 1.7, 1.55); // station fluorescents
-    if (stripLights.length) this.root.add(new THREE.Mesh(mergeGeometries(stripLights)!, fm));
+    if (stripLights.length) this.legacy.add(new THREE.Mesh(mergeGeometries(stripLights)!, fm));
     for (const l of this.lamps) this.lampGrid.add(l, l.x - 1, l.z - 1, l.x + 1, l.z + 1);
-    if (plats.length) this.root.add(new THREE.Mesh(mergeGeometries(plats)!, floorMat));
-    if (cols.length) this.root.add(new THREE.Mesh(mergeGeometries(cols)!, new THREE.MeshStandardMaterial({ color: 0x2d4a6a, metalness: 0.5, roughness: 0.5 })));
+    if (plats.length) this.legacy.add(new THREE.Mesh(mergeGeometries(plats)!, floorMat));
+    if (cols.length) this.legacy.add(new THREE.Mesh(mergeGeometries(cols)!, new THREE.MeshStandardMaterial({ color: 0x2d4a6a, metalness: 0.5, roughness: 0.5 })));
 
     // the details that make it the New York subway
     const ibeams: THREE.BufferGeometry[] = [], trays: THREE.BufferGeometry[] = [], pipes: THREE.BufferGeometry[] = [];
@@ -239,16 +243,16 @@ export class SubwayMesh {
       }
     }
     const beamSteel = new THREE.MeshStandardMaterial({ color: 0x2a2d30, metalness: 0.7, roughness: 0.6 });
-    if (ibeams.length) this.root.add(new THREE.Mesh(mergeGeometries(ibeams)!, beamSteel));
-    this.root.add(new THREE.Mesh(mergeGeometries(trays)!, new THREE.MeshStandardMaterial({ color: 0x4a4a46, metalness: 0.6, roughness: 0.6 })));
-    this.root.add(new THREE.Mesh(mergeGeometries(pipes)!, new THREE.MeshStandardMaterial({ color: 0x5a3a26, metalness: 0.5, roughness: 0.7 })));
+    if (ibeams.length) this.legacy.add(new THREE.Mesh(mergeGeometries(ibeams)!, beamSteel));
+    this.legacy.add(new THREE.Mesh(mergeGeometries(trays)!, new THREE.MeshStandardMaterial({ color: 0x4a4a46, metalness: 0.6, roughness: 0.6 })));
+    this.legacy.add(new THREE.Mesh(mergeGeometries(pipes)!, new THREE.MeshStandardMaterial({ color: 0x5a3a26, metalness: 0.5, roughness: 0.7 })));
     const sr = new THREE.MeshBasicMaterial({ toneMapped: false }); sr.color.setRGB(4, 0.25, 0.15);
     const sg = new THREE.MeshBasicMaterial({ toneMapped: false }); sg.color.setRGB(0.2, 3.2, 0.8);
-    if (sigRed.length) this.root.add(new THREE.Mesh(mergeGeometries(sigRed)!, sr));
-    if (sigGreen.length) this.root.add(new THREE.Mesh(mergeGeometries(sigGreen)!, sg));
-    if (edges.length) this.root.add(new THREE.Mesh(mergeGeometries(edges)!, new THREE.MeshStandardMaterial({ color: 0xe0b423, roughness: 0.7 })));
-    if (benches.length) this.root.add(new THREE.Mesh(mergeGeometries(benches)!, new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.8 })));
-    if (trash.length) this.root.add(new THREE.Mesh(mergeGeometries(trash.map((g) => g.toNonIndexed()))!, new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.35, metalness: 0.1 })));
+    if (sigRed.length) this.legacy.add(new THREE.Mesh(mergeGeometries(sigRed)!, sr));
+    if (sigGreen.length) this.legacy.add(new THREE.Mesh(mergeGeometries(sigGreen)!, sg));
+    if (edges.length) this.legacy.add(new THREE.Mesh(mergeGeometries(edges)!, new THREE.MeshStandardMaterial({ color: 0xe0b423, roughness: 0.7 })));
+    if (benches.length) this.legacy.add(new THREE.Mesh(mergeGeometries(benches)!, new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.8 })));
+    if (trash.length) this.legacy.add(new THREE.Mesh(mergeGeometries(trash.map((g) => g.toNonIndexed()))!, new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.35, metalness: 0.1 })));
     // people waiting on the platforms: simple winter-coated figures
     if (people.length) {
       const body = mergeGeometries([
@@ -274,7 +278,7 @@ export class SubwayMesh {
         const m = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshStandardMaterial({ map, roughness: 0.6 }));
         m.position.set(a.x + a.tz * (w.hw - 0.05) * side, TUNNEL.floor + 3.4, a.z - a.tx * (w.hw - 0.05) * side);
         m.rotation.y = Math.atan2(a.tx, a.tz) + (side > 0 ? -Math.PI / 2 : Math.PI / 2);
-        this.root.add(m);
+        this.legacy.add(m);
       }
     }
 
@@ -282,9 +286,18 @@ export class SubwayMesh {
     const shaftParts: THREE.BufferGeometry[] = [], rail: THREE.BufferGeometry[] = [], globes: THREE.BufferGeometry[] = [], grates: THREE.BufferGeometry[] = [];
     for (const s of u.shafts) {
       if (s.kind === "stairs") {
-        shaftParts.push(new THREE.BoxGeometry(s.r * 2, 5.8, s.r * 2).translate(s.x, -2.3, s.z));
-        const L = Math.hypot(s.tx, s.tz) || 1;
-        shaftParts.push(new THREE.BoxGeometry(3.8, 2.8, L).rotateY(Math.atan2(s.tx, s.tz)).translate(s.x + s.tx / 2, -4, s.z + s.tz / 2));
+        // the stairwell down from the street, as far as the station ceiling (the platform stairs below are subwayArt's)
+        const top = 0.6, bot = TUNNEL.ceiling + 0.1;
+        shaftParts.push(new THREE.BoxGeometry(s.r * 2, top - bot, s.r * 2).translate(s.x, (top + bot) / 2, s.z));
+        // the passage from the stairs to the platform: stop it at the station wall, or its inside
+        // shows as a box hanging in the station
+        const full = Math.hypot(s.tx, s.tz) || 1, ux = s.tx / full, uz = s.tz / full;
+        let L = full;
+        for (let t = 0; t <= full; t += 0.25) {
+          const n = sub.nearest(s.x + ux * t, s.z + uz * t);
+          if (Math.abs(n.off) < width(n.s).hw + 0.1) { L = Math.max(0.5, t); break; }
+        }
+        shaftParts.push(new THREE.BoxGeometry(3.8, 2.8, L).rotateY(Math.atan2(s.tx, s.tz)).translate(s.x + ux * L / 2, -4, s.z + uz * L / 2));
         for (const [dx, dz, w, d] of [[0, s.r + 0.05, s.r * 2 + 0.2, 0.06], [0, -s.r - 0.05, s.r * 2 + 0.2, 0.06], [s.r + 0.05, 0, 0.06, s.r * 2 + 0.2]] as const) rail.push(new THREE.BoxGeometry(w, 1.0, d).translate(s.x + dx, 0.6, s.z + dz));
         globes.push(new THREE.SphereGeometry(0.22, 12, 8).translate(s.x + s.r, 2.3, s.z + s.r));
         globes.push(new THREE.SphereGeometry(0.22, 12, 8).translate(s.x + s.r, 2.3, s.z - s.r));
@@ -309,10 +322,10 @@ export class SubwayMesh {
     this.root.add(new THREE.Mesh(mergeGeometries(beams)!, beamMat));
     const shaftMat = new THREE.MeshStandardMaterial({ map: tile, roughness: 0.6, side: THREE.BackSide });
     this.root.add(new THREE.Mesh(mergeGeometries(shaftParts.map((g) => g.toNonIndexed()))!, shaftMat));
-    this.root.add(new THREE.Mesh(mergeGeometries(rail)!, new THREE.MeshStandardMaterial({ color: 0x1f2a22, metalness: 0.6, roughness: 0.5 })));
+    this.legacy.add(new THREE.Mesh(mergeGeometries(rail)!, new THREE.MeshStandardMaterial({ color: 0x1f2a22, metalness: 0.6, roughness: 0.5 })));
     const gm = new THREE.MeshBasicMaterial({ toneMapped: false });
     gm.color.setRGB(0.6, 2.4, 1.0);
-    this.root.add(new THREE.Mesh(mergeGeometries(globes)!, gm));
+    this.legacy.add(new THREE.Mesh(mergeGeometries(globes)!, gm));
     const grille = tex(128, 128, (c) => { c.clearRect(0, 0, 128, 128); c.fillStyle = "#1a1a1a"; for (let i = 0; i < 128; i += 16) { c.fillRect(i, 0, 5, 128); c.fillRect(0, i, 128, 3); } }, false);
     this.root.add(new THREE.Mesh(mergeGeometries(grates)!, new THREE.MeshStandardMaterial({ map: grille, transparent: true, alphaTest: 0.3, metalness: 0.6, roughness: 0.5 })));
 

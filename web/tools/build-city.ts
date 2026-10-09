@@ -276,6 +276,18 @@ const plaza = grab("nyc_plaza.json");
 const GREEN = /^(Battery Park|Central Park|Sheep Meadow)$/;
 const parkRows = load("nyc_parks.json").flatMap((r: any) => polys(r.the_geom, 0.6, 20).map((p) => ({ n: r.park_name as string, p })));
 const parks = parkRows.filter((p: any) => GREEN.test(p.n));
+// The open data only gives Central Park in fragments near the corridor. Add its real southern
+// end (59th St to about 72nd, Fifth Ave to Central Park West) as one lawn, inset off the
+// surrounding roads, so the finale is a park and not a car park. x is -east, +z is uptown.
+{
+  const sw = proj(-73.9819, 40.7681), se = proj(-73.9730, 40.7644); // CPW & 59th, Fifth & 59th
+  const z0 = Math.max(sw[1], se[1]) + 22, z1 = z0 + 1100;
+  const xw = sw[0] - 18, xe = se[0] + 18; // inset east of CPW, west of Fifth
+  let ring = [xw, z0, xe, z0, xe, z1, xw, z1];
+  const sign = (r: number[]) => { let a = 0; for (let i = 0; i < r.length; i += 2) { const j = (i + 2) % r.length; a += r[i] * r[j + 1] - r[j] * r[i + 1]; } return Math.sign(a); };
+  if (parks.length && sign(ring) !== sign(parks[0].p[0])) ring = [xw, z0, xw, z1, xe, z1, xe, z0];
+  parks.push({ n: "Central Park", p: [ring] });
+}
 const sites = parkRows.filter((p: any) => !GREEN.test(p.n) && Math.abs(ringAreaFlat(p.p[0])) > 120).map((p: any) => ({ n: p.n, p: p.p }));
 const open = grab("nyc_openspace.json", 0.6, 20).filter(() => false); // open space becomes concrete too
 const land = load("nyc_manhattan_land.json").flatMap((r: any) => polys(r.the_geom, 1.5, 500));

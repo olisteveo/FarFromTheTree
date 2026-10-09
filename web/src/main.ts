@@ -11,6 +11,8 @@
 import * as THREE from "three";
 import GUI from "lil-gui";
 import { Leaderboard } from "./game/leaderboard";
+import { SubwayArt } from "./render/subwayArt";
+import { CentralPark } from "./render/centralPark";
 import { PeopleView, type PeopleWalker } from "./render/people";
 import { CityData } from "./world/data";
 import { makeCourse } from "./world/course";
@@ -64,6 +66,13 @@ const subway = new SubwayMesh(flow.under);
 const leafView = new LeafView();
 const traffic = new TrafficView(flow);
 const trains = new TrainsView(flow);
+// the modelled subway: trains, track, stations, fare control (the simple versions show until it loads)
+const subwayArt = new SubwayArt(flow.under);
+// Central Park: the Pond, Gapstow Bridge, Wollman Rink, rocks, lamps, benches, bare elms and planes
+const centralPark = new CentralPark(city, { layout: flow.parkLayout });
+let subwayArtReady = false;
+subwayArt.load().then(() => { subwayArtReady = true; subwayArt.retexture(subway.root); subway.legacy.visible = false; trains.root.visible = false; })
+  .catch((e) => console.warn("subway art didn't load", e));
 const steam = new SteamView(flow);
 const streaks = new WindStreaks(flow);
 const facadeProps = new FacadePropsView(flow.facades);
@@ -78,7 +87,7 @@ const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
 const blockerView = blockerMeshes(flow.blockers);
-stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, people.root, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, people.root, facadeProps.root, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree
 const course = makeCourse(city);
@@ -319,7 +328,7 @@ function tick(dt: number, render: boolean) {
   streaks.update(dt, freeCam ? freePos : cam.position.clone().lerp(leaf.pos, 0.6), leaf.clock);
   steam.update(dt, focus, leaf.clock, window.innerHeight);
   traffic.update(focus);
-  trains.update(leaf.clock, focus);
+  if (!subwayArtReady) trains.update(leaf.clock, focus);
   buildings.update(focus);
   facadeProps.update(focus);
   if (freeCam) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, 400); }
@@ -338,10 +347,16 @@ function tick(dt: number, render: boolean) {
       peopleList.push({ x: w.x, z: w.z, tx: w.tx, tz: w.tz, phase: w.phase, speed: w.w.speed, seed: w.w.seed, h: w.w.h, pet: w.w.pet, flinch: f === undefined ? undefined : leaf.clock - f });
     }
     if (flinchAt.size > 400) for (const [k, t] of flinchAt) if (leaf.clock - t > 5) flinchAt.delete(k);
+    for (const k of flow.park.kids) {
+      const dx = k.x - focus.x, dz = k.z - focus.z;
+      if (dx * dx + dz * dz > 170 * 170) continue;
+      peopleList.push({ x: k.x, z: k.z, tx: k.tx, tz: k.tz, phase: 0, speed: Math.max(0.3, k.speed), seed: k.seed, h: k.h, idle: k.speed < 0.25 });
+    }
     people.update(peopleList, freeCam ? leaf.clock + wall : leaf.clock);
   } else crowdView.update();
   pigeons.update(dt, leaf.pos, wall);
   blockerView.userData.update(wall);
+  centralPark.update(cam.position, wall);
   ground.update(wall);
   ground.updateFocus(focus);
   // light: underground the sun goes and the fluorescents take over
@@ -350,6 +365,7 @@ function tick(dt: number, render: boolean) {
   stage.hemi.intensity = 0.6 * (1 - underMix) + 0.07 * underMix; // the tunnels are dark: the lamps do the lighting
   stage.hemi.color.setRGB(0.66 + underMix * 0.2, 0.7 + underMix * 0.1, 0.78 - underMix * 0.2);
   subway.update(leaf.clock, cam.position, underMix);
+  if (subwayArtReady) subwayArt.update(cam.position, underMix, flow.trainsAt(leaf.clock), focus);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
   if (leaf.state === "planted" && !replay) leaderboard.showWon(leaf.time);

@@ -18,6 +18,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "laundry", name: "Laundry Day", desc: "Get caught on a washing line." },
   { id: "gobble", name: "Gobble Gobble", desc: "Boing off the giant turkey at the Thanksgiving parade." },
   { id: "splash", name: "Making a Splash", desc: "Fly into the spray from the burst water main." },
+  { id: "kid", name: "Finders Keepers", desc: "Get caught by a kid in Central Park." },
   { id: "vent", name: "Mind the Gap", desc: "Get blown out of the subway up a vent shaft." },
   { id: "cab", name: "Cab Surfer", desc: "Ride a cab's slipstream for three seconds." },
   { id: "mole", name: "Mole Person", desc: "Spend a whole minute underground in one run." },
@@ -75,6 +76,7 @@ export class Achievements {
       if (/cat/.test(e)) this.unlock("cat");
       if (/washing line/.test(e)) this.unlock("laundry");
       if (/parade balloon/.test(e)) this.unlock("gobble");
+      if (/caught by a kid/.test(e)) this.unlock("kid");
     }
     // touching the spray curtain of the water main
     if (p.y < 8 && p.y > 0) {
