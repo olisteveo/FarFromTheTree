@@ -38,7 +38,7 @@ const GradeShader = {
       vec2 c = vUv - 0.5;
       float r = length(c);
       vec3 col = vec3(0.0);
-      float s = uSpeed * 0.012;
+      float s = max(0.0, uSpeed - 12.0) * 0.0045; // only real speed smears
       for (int i = 0; i < 6; i++) {
         float k = float(i) / 5.0;
         col += texture2D(tDiffuse, 0.5 + c * (1.0 - s * k * smoothstep(0.15, 0.65, r))).rgb;
@@ -118,7 +118,7 @@ export class Stage {
     // the low November sun, south-west (true azimuth ~235 deg, 11 deg up), which in the
     // grid frame (avenues along +z) is behind and to the left of a player heading uptown
     const az = THREE.MathUtils.degToRad(235 - 28.9), el = THREE.MathUtils.degToRad(11);
-    this.sunDir.set(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize();
+    this.sunDir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize(); // east is -x
 
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMaterial(this.sunDir));
     this.sky.frustumCulled = false;

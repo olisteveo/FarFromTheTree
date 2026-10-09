@@ -1,8 +1,7 @@
 // Procedural sound: wind roaring past the leaf (louder and brighter with
 // airspeed), the rumble of trains below, and a soft tear when the leaf hits.
 
-import type { Leaf } from "../sim/leaf";
-import { trainsAt } from "../world/wind";
+import type { Glider } from "../sim/glider";
 
 export class Audio {
   private ctx: AudioContext | null = null;
@@ -52,18 +51,22 @@ export class Audio {
     r.start();
   }
 
-  update(leaf: Leaf) {
+  update(leaf: Glider) {
     const ctx = this.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
-    const air = leaf.state === "flying" ? leaf.airRel.length() : 1;
+    const air = leaf.state === "flying" ? leaf.airspeed : 1;
     const wind = Math.min(1, air / 14);
     this.windGain.gain.setTargetAtTime(0.05 + wind * 0.55, t, 0.08);
     this.windFilter.frequency.setTargetAtTime(280 + wind * 1600, t, 0.08);
     // nearest train
     let near = 1e9;
-    for (const tr of trainsAt(leaf.clock)) near = Math.min(near, Math.hypot(Math.max(tr.z0 - leaf.pos.z, 0, leaf.pos.z - tr.z1), leaf.pos.y + 7));
-    const rumble = Math.max(0, 1 - near / 140) * (leaf.pos.y < -0.5 ? 1 : 0.45);
+    const ss = leaf.flow.city.subway.nearest(leaf.pos.x, leaf.pos.z).s;
+    for (const tr of leaf.flow.trainsAt(leaf.clock)) {
+      const lo = Math.min(tr.head, tr.tail), hi = Math.max(tr.head, tr.tail);
+      near = Math.min(near, Math.hypot(Math.max(lo - ss, 0, ss - hi), leaf.pos.y + 7));
+    }
+    const rumble = Math.max(0, 1 - near / 160) * (leaf.pos.y < -0.4 ? 1 : 0.35);
     this.rumbleGain.gain.setTargetAtTime(rumble * 0.9, t, 0.1);
     if (leaf.integrity < this.lastIntegrity - 0.02) this.tear(this.lastIntegrity - leaf.integrity);
     this.lastIntegrity = leaf.integrity;

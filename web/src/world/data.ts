@@ -31,6 +31,9 @@ export interface RawCity {
   landmarks: Record<string, [number, number]>;
 }
 
+export interface StreetHit { tx: number; tz: number; w: number; d: number; dist: number; name: string; idx: number }
+export const streetHit = (): StreetHit => ({ tx: 0, tz: 1, w: 10, d: 0, dist: Infinity, name: "", idx: -1 });
+
 export interface Building {
   id: number;
   poly: Poly;
@@ -118,8 +121,8 @@ export class Polyline {
     out.tx = dx / L; out.tz = dz / L;
     return out;
   }
-  /** Nearest point: distance along (s), signed lateral offset (+ = right of travel), distance. */
-  nearest(x: number, z: number, hint = -1, out = { s: 0, off: 0, d: 0 }) {
+  /** Nearest point: distance along (s), signed lateral offset (+ = toward +x of the tangent's left normal, i.e. west when heading uptown), distance. */
+  nearest(x: number, z: number, hint = -1, out = { s: 0, off: 0, d: 0 }): { s: number; off: number; d: number } {
     const n = this.x.length;
     let lo = 0, hi = n - 1;
     if (hint >= 0) { const i = Math.round(hint / this.step); lo = Math.max(0, i - 80); hi = Math.min(n - 1, i + 80); }
@@ -133,12 +136,13 @@ export class Polyline {
       if (d2 < best) {
         best = d2;
         bs = (i + t) * this.step;
-        // right of travel: cross(tangent, toPoint) with y up -> right is (tz, -tx) in this frame
         const L = Math.sqrt(L2);
         boff = ((x - px) * (dz / L) - (z - pz) * (dx / L));
       }
     }
     out.s = bs; out.off = boff; out.d = Math.sqrt(best);
+    // a stale hint (the point jumped) can miss the true nearest: search everything instead
+    if (hint >= 0 && (out.d > 40 || bs <= lo * this.step + 1 || bs >= hi * this.step - 1) && (lo > 0 || hi < n - 1)) return this.nearest(x, z, -1, out);
     return out;
   }
 }
@@ -162,6 +166,7 @@ export class Grid<T> {
   at(x: number, z: number): T[] {
     return this.cells.get(this.key(Math.floor(x / this.cell), Math.floor(z / this.cell))) ?? (EMPTY as T[]);
   }
+  clear() { this.cells.clear(); }
   /** Items in all cells overlapping a square around (x, z). May contain duplicates. */
   around(x: number, z: number, r: number, out: T[] = []): T[] {
     out.length = 0;
@@ -250,6 +255,29 @@ export class CityData {
     return h;
   }
   private _tmp: Building[] = [];
+
+  /** The two nearest differently-named streets (for blending wind through intersections). */
+  streets2(x: number, z: number, a: StreetHit, b: StreetHit) {
+    a.dist = b.dist = Infinity;
+    for (const i of this.streetGrid.at(x, z)) {
+      const st = this.raw.streets[i];
+      if (st.rw !== 1) continue;
+      const p = st.p;
+      for (let k = 0; k < p.length - 2; k += 2) {
+        const ax = p[k], az = p[k + 1], dx = p[k + 2] - ax, dz = p[k + 3] - az;
+        const L2 = dx * dx + dz * dz || 1e-9;
+        const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+        const d = Math.hypot(ax + dx * t - x, az + dz * t - z);
+        const L = Math.sqrt(L2);
+        if (d < a.dist) {
+          if (a.name !== st.n) Object.assign(b, a);
+          a.dist = d; a.tx = dx / L; a.tz = dz / L; a.w = st.w; a.d = st.d; a.name = st.n; a.idx = i;
+        } else if (d < b.dist && st.n !== a.name) {
+          b.dist = d; b.tx = dx / L; b.tz = dz / L; b.w = st.w; b.d = st.d; b.name = st.n; b.idx = i;
+        }
+      }
+    }
+  }
 
   /** Nearest street centreline segment: direction (unit), width, one-way sign, distance. */
   street(x: number, z: number, out = { tx: 0, tz: 1, w: 10, d: 0, dist: Infinity, name: "" }) {

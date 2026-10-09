@@ -9,7 +9,7 @@ x0 = min(p[0] for p in rp) - pad; x1 = max(p[0] for p in rp) + pad
 z0 = min(p[1] for p in rp) - pad; z1 = max(p[1] for p in rp) + pad
 H = 1600; k = H / (z1 - z0); W = int((x1 - x0) * k)
 im = Image.new("RGB", (W, H), (42, 74, 92)); d = ImageDraw.Draw(im)
-T = lambda x, z: ((x - x0) * k, (z1 - z) * k)
+T = lambda x, z: ((x1 - x) * k, (z1 - z) * k)  # game x is west-positive: flip for a north-up map
 def poly(rings, fill):
     for i, ring in enumerate(rings):
         pts = [T(ring[j], ring[j+1]) for j in range(0, len(ring), 2)]

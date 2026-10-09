@@ -35,7 +35,8 @@ type P = [number, number]; // [x, z]
 function proj(lon: number, lat: number): P {
   const e = (lon - ORIGIN.lon) * KX, n = (lat - ORIGIN.lat) * KY;
   const c = Math.cos(GRID), s = Math.sin(GRID);
-  return [e * c - n * s, e * s + n * c];
+  // three.js is right-handed with y up: with +z uptown (north-ish), east must be -x
+  return [-(e * c - n * s), e * s + n * c];
 }
 const r1 = (v: number) => Math.round(v * 10) / 10;
 

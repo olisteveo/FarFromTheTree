@@ -1,56 +1,66 @@
-// Headless test flight: generates the city, lets a simple bot fly the leaf for a
-// while and reports how far it got and what happened. The TD2099 balance sim idea,
-// for flight feel: a regression check that the world is flyable after changes.
+// Headless test flights over the real city: one bot per layer, measuring how fast each
+// layer actually carries you uptown (metres of route per second) and what kills it.
+// The design wants: roofs slowest and safest, street in the middle, subway fastest and deadliest.
 //
-//   npx tsx tools/fly.ts [seconds] [style]
-//   style: north (default) | still (no input) | dive | float
+//   npx tsx tools/fly.ts [seconds=90] [runs=6]
 
-import { performance } from "node:perf_hooks";
-import { Leaf, type LeafInput } from "../src/sim/leaf";
-import { generateCity } from "../src/world/city";
-import { WORLD } from "../src/world/spec";
+import fs from "node:fs";
+import { CityData } from "../src/world/data";
+import { Airflow } from "../src/world/airflow";
+import { Glider, type LeafInput } from "../src/sim/glider";
+import { TUNNEL } from "../src/world/underground";
 
-const seconds = Number(process.argv[2] ?? 180);
-const style = process.argv[3] ?? "north";
+const seconds = Number(process.argv[2] ?? 90), runs = Number(process.argv[3] ?? 6);
+const city = new CityData(JSON.parse(fs.readFileSync("public/city.json", "utf8")));
+const flow = new Airflow(city);
+const dt = 1 / 120;
 
-let t0 = performance.now();
-const city = generateCity();
-console.log(`city: ${city.buildings.length} buildings, ${city.props.length} props, ${city.wind.length} wind sources, ${city.roads.length} roads in ${(performance.now() - t0).toFixed(0)} ms`);
-
-const leaf = new Leaf(city);
-leaf.detach();
-const dt = 1 / 240;
-const input: LeafInput = { pitch: 0, roll: 0, spread: false, curl: false };
-const layers: Record<string, number> = {};
-let maxZ = leaf.pos.z, maxY = leaf.pos.y, maxSpeed = 0, grounded = 0;
-t0 = performance.now();
-let lastLog = 0;
-for (let i = 0; i < seconds / dt; i++) {
-  if (style !== "still") {
-    // aim north: bank toward heading 0
-    let d = -leaf.heading;
-    d = Math.atan2(Math.sin(d), Math.cos(d));
-    input.roll = Math.max(-1, Math.min(1, -d * 1.5));
-    const low = leaf.pos.y < 6;
-    input.pitch = style === "dive" ? 0.6 : style === "float" ? -0.3 : low ? -0.7 : 0.15;
-    input.spread = low || style === "float";
+type Bot = "roof" | "street" | "subway";
+function fly(bot: Bot, s0: number, seed: number) {
+  const p = bot === "subway" ? city.subway.at(s0) : city.route.at(s0);
+  const H = city.canopy(p.x, p.z, 14);
+  const y = bot === "roof" ? H + 18 : bot === "street" ? 6 : (TUNNEL.floor + TUNNEL.ceiling) / 2;
+  const g = new Glider(city, flow, { x: p.x, y, z: p.z, heading: Math.atan2(p.tx, p.tz) });
+  g.detach();
+  g.clock = seed * 37;
+  const input: LeafInput = { pitch: 0, roll: 0, spread: false, curl: false };
+  const startS = s0;
+  let maxS = s0, laneTime: Record<string, number> = {};
+  for (let i = 0; i < seconds / dt && g.state === "flying"; i++) {
+    if (i % 4 === 0) {
+      flow.traffic.update(g.clock);
+      const n = (bot === "subway" ? city.subway : city.route).nearest(g.pos.x, g.pos.z);
+      const ahead = (bot === "subway" ? city.subway : city.route).at(n.s + 25);
+      // steer for a point 25 m up the route
+      const want = Math.atan2(ahead.x - g.pos.x, ahead.z - g.pos.z);
+      let d = want - g.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
+      input.roll = Math.max(-1, Math.min(1, -d * 2.2));
+      const Hh = city.canopy(g.pos.x, g.pos.z, 14);
+      const target = bot === "roof" ? Hh + 15 : bot === "street" ? 5 : (TUNNEL.floor + TUNNEL.ceiling) / 2;
+      const err = g.pos.y - target;
+      input.pitch = Math.max(-1, Math.min(1, err * 0.25 - g.vel.y * 0.15));
+      input.spread = err < -3; input.curl = err > 6 && bot !== "roof";
+    }
+    g.step(dt, input);
+    laneTime[g.lane] = (laneTime[g.lane] ?? 0) + dt;
+    const s = (bot === "subway" ? city.subway : city.route).nearest(g.pos.x, g.pos.z).s;
+    maxS = Math.max(maxS, s);
   }
-  leaf.step(dt, input);
-  const tm = leaf.telemetry();
-  layers[tm.layer] = (layers[tm.layer] ?? 0) + dt;
-  if (leaf.grounded) grounded += dt;
-  maxZ = Math.max(maxZ, leaf.pos.z);
-  maxY = Math.max(maxY, leaf.pos.y);
-  maxSpeed = Math.max(maxSpeed, tm.speed);
-  if (leaf.time - lastLog >= 10) {
-    lastLog = leaf.time;
-    const p = leaf.pos;
-    console.log(`t=${leaf.time.toFixed(0).padStart(4)}s pos=(${p.x.toFixed(0)}, ${p.y.toFixed(1)}, ${p.z.toFixed(0)}) speed=${tm.speed.toFixed(1)} air=${tm.airspeed.toFixed(1)} ${tm.layer} ${tm.district} integrity=${leaf.integrity.toFixed(2)}`);
-  }
-  if (leaf.state !== "flying") break;
+  return { progress: maxS - startS, time: g.time, state: g.state, failure: g.failure, laneTime, integrity: g.integrity };
 }
-const ms = performance.now() - t0;
-console.log(`\nstate: ${leaf.state}${leaf.failure ? ` (${leaf.failure})` : ""} after ${leaf.time.toFixed(1)}s`);
-console.log(`north progress: ${(maxZ - WORLD.start.z).toFixed(0)} m of ${WORLD.goal.z - WORLD.start.z} m, max height ${maxY.toFixed(0)} m, max speed ${maxSpeed.toFixed(1)} m/s, grounded ${grounded.toFixed(0)}s`);
-console.log(`layers: ${Object.entries(layers).map(([k, v]) => `${k} ${v.toFixed(0)}s`).join(", ")}`);
-console.log(`sim speed: ${((leaf.time / ms) * 1000).toFixed(0)}x real time`);
+
+for (const bot of ["roof", "street", "subway"] as Bot[]) {
+  const rows = [];
+  for (let r = 0; r < runs; r++) {
+    const s0 = bot === "subway" ? 200 + r * 900 : 600 + r * 1200;
+    rows.push(fly(bot, s0, r));
+  }
+  const speed = rows.map((x) => x.progress / x.time);
+  const avg = speed.reduce((a, b) => a + b, 0) / speed.length;
+  const deaths = rows.filter((x) => x.state === "dead");
+  console.log(`${bot.padEnd(7)} avg ${avg.toFixed(1)} m/s uptown  [${speed.map((v) => v.toFixed(1)).join(", ")}]  survived ${rows.length - deaths.length}/${rows.length}  avg ${(rows.reduce((a, b) => a + b.time, 0) / rows.length).toFixed(0)}s`);
+  for (const d of deaths) console.log(`         died after ${d.time.toFixed(0)}s: ${d.failure}`);
+  const lt: Record<string, number> = {};
+  for (const x of rows) for (const [k, v] of Object.entries(x.laneTime)) lt[k] = (lt[k] ?? 0) + v;
+  console.log(`         time by lane: ${Object.entries(lt).map(([k, v]) => `${k} ${v.toFixed(0)}s`).join(", ")}`);
+}
