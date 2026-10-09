@@ -7,12 +7,24 @@
 
 import { Grid, type CityData } from "./data";
 
-export type VehicleKind = "cab" | "car" | "suv" | "van" | "bus" | "truck";
+export type VehicleKind = "cab" | "car" | "suv" | "van" | "bus" | "truck" | "police" | "ambulance" | "firetruck" | "garbage" | "schoolbus" | "tourbus" | "foodtruck" | "pickup" | "hatch" | "limo" | "sports" | "scooter";
 export const VEHICLE_SIZE: Record<VehicleKind, { l: number; w: number; h: number }> = {
   cab: { l: 4.9, w: 1.9, h: 1.55 },
   car: { l: 4.6, w: 1.85, h: 1.45 },
   suv: { l: 4.9, w: 1.95, h: 1.8 },
   van: { l: 5.5, w: 2.0, h: 2.4 },
+  police: { l: 5.0, w: 1.9, h: 1.5 },
+  ambulance: { l: 6.5, w: 2.3, h: 2.8 },
+  firetruck: { l: 10.5, w: 2.5, h: 3.3 },
+  garbage: { l: 9, w: 2.5, h: 3.4 },
+  schoolbus: { l: 11, w: 2.5, h: 3.2 },
+  tourbus: { l: 12, w: 2.6, h: 4.3 },
+  foodtruck: { l: 7, w: 2.4, h: 3.0 },
+  pickup: { l: 5.6, w: 2.0, h: 1.85 },
+  hatch: { l: 4.0, w: 1.75, h: 1.5 },
+  limo: { l: 8.5, w: 1.9, h: 1.45 },
+  sports: { l: 4.5, w: 1.9, h: 1.25 },
+  scooter: { l: 1.9, w: 0.7, h: 1.6 },
   bus: { l: 12, w: 2.6, h: 3.2 },
   truck: { l: 8.5, w: 2.5, h: 3.4 },
 };
@@ -93,13 +105,13 @@ export class Traffic {
       for (const d of dirs) {
         const nl = c.dir === 0 ? Math.max(1, Math.floor(lanes / 2)) : lanes;
         for (let l = 0; l < nl; l++) {
-          const count = Math.floor(c.length / (38 + h01(id) * 30));
+          const count = Math.floor(c.length / (19 + h01(id) * 16)); // busy Manhattan traffic
           // one speed per lane and cars spaced along it, so nobody drives through anybody
           const laneSpeed = 8.5 + h01(id * 17 + l) * 4.5, laneOffset = h01(id * 23 + l) * c.length;
           for (let k = 0; k < count; k++) {
             id++;
             const r = h01(id * 7);
-            const kind: VehicleKind = r < 0.45 ? "cab" : r < 0.65 ? "car" : r < 0.77 ? "suv" : r < 0.85 ? "van" : r < 0.93 ? "truck" : "bus";
+            const kind = pickKind(r, h01(id * 29));
             const laneW = c.width / Math.max(lanes, 1);
             const lane = c.dir === 0 ? (l + 0.5) * Math.min(3.3, laneW) : (l - (nl - 1) / 2) * Math.min(3.3, laneW);
             this.vehicles.push({ kind, chain: ci, lane, dir: d, speed: laneSpeed, s0: laneOffset + (k + (h01(id * 3) - 0.5) * 0.35) * (c.length / count), colorSeed: id });
@@ -162,6 +174,22 @@ export class Traffic {
     }
     return out;
   }
+}
+
+/** What drives Manhattan: mostly cabs, then cars of every sort, and now and then something special. */
+function pickKind(r: number, r2: number): VehicleKind {
+  if (r < 0.4) return "cab";
+  if (r < 0.52) return "car";
+  if (r < 0.6) return "suv";
+  if (r < 0.65) return "hatch";
+  if (r < 0.69) return "pickup";
+  if (r < 0.74) return "van";
+  if (r < 0.79) return "truck";
+  if (r < 0.84) return "bus";
+  if (r < 0.88) return "scooter";
+  // the specials
+  const specials: VehicleKind[] = ["police", "police", "ambulance", "firetruck", "garbage", "garbage", "schoolbus", "tourbus", "tourbus", "foodtruck", "limo", "sports", "sports"];
+  return specials[Math.floor(r2 * specials.length)];
 }
 
 function pairs(p: number[]): [number, number][] {

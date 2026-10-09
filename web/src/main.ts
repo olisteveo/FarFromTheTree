@@ -69,7 +69,7 @@ const crowdView = new CrowdView(flow);
 const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
-stage.scene.add(blockerMeshes(flow.blockers), pigeons.mesh, landmarkMeshes(landmarks), crowdView.mesh, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+stage.scene.add(blockerMeshes(flow.blockers), pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree
 const course = makeCourse(city);

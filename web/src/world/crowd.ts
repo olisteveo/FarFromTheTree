@@ -5,7 +5,7 @@
 import { Grid } from "./data";
 import type { Traffic } from "./traffic";
 
-export interface Walker { chain: number; side: 1 | -1; dir: 1 | -1; s0: number; speed: number; seed: number; h: number }
+export interface Walker { chain: number; side: 1 | -1; dir: 1 | -1; s0: number; speed: number; seed: number; h: number; /** a dog on a lead (breed index) */ pet?: number }
 export interface WalkerState { x: number; z: number; tx: number; tz: number; w: Walker; phase: number }
 
 const h01 = (n: number) => { n = (n ^ 61) ^ (n >>> 16); n = n + (n << 3); n = n ^ (n >>> 4); n = Math.imul(n, 0x27d4eb2d); n = n ^ (n >>> 15); return (n >>> 0) / 4294967296; };
@@ -20,11 +20,12 @@ export class Crowd {
     let id = 7;
     traffic.chains.forEach((c, ci) => {
       for (const side of [1, -1] as const) {
-        const n = Math.floor(c.length / 11);
+        const n = Math.floor(c.length / 5);
         for (let k = 0; k < n; k++) {
           id++;
-          if (h01(id) < 0.35) continue;
-          this.walkers.push({ chain: ci, side, dir: h01(id * 3) < 0.5 ? 1 : -1, s0: h01(id * 5) * c.length, speed: 1.1 + h01(id * 7) * 0.6, seed: id, h: 1.6 + h01(id * 11) * 0.3 });
+          if (h01(id) < 0.15) continue;
+          const kid = h01(id * 13) < 0.08;
+          this.walkers.push({ chain: ci, side, dir: h01(id * 3) < 0.5 ? 1 : -1, s0: h01(id * 5) * c.length, speed: 1.1 + h01(id * 7) * 0.6, seed: id, h: kid ? 1.15 + h01(id * 11) * 0.2 : 1.6 + h01(id * 11) * 0.3, pet: !kid && h01(id * 17) < 0.12 ? Math.floor(h01(id * 19) * 4) : undefined });
         }
       }
     });

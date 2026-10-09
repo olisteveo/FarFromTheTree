@@ -50,23 +50,47 @@ function vehicleGeo(kind: VehicleKind): THREE.BufferGeometry {
 }
 
 const CAB = 0xf2b705;
+/** Box-car shape to draw until the modelled vehicle loads. */
+const fallbackShape = (k: VehicleKind): VehicleKind => (k === "cab" || k === "bus" || k === "truck" ? k : ["tourbus", "schoolbus", "firetruck", "garbage"].includes(k) ? "bus" : ["ambulance", "foodtruck", "van"].includes(k) ? "truck" : "car");
+function paintFor(kind: VehicleKind, seed: number): number {
+  switch (kind) {
+    case "cab": return CAB;
+    case "schoolbus": return 0xf2b400;
+    case "bus": return 0xf4f4f0;
+    case "tourbus": case "firetruck": return 0xc81e1e;
+    case "police": case "ambulance": return 0xf6f6f2;
+    case "garbage": return [0xf0f0ec, 0x2a6a3a][seed % 2];
+    case "limo": return 0x111114;
+    case "sports": return [0xd8261e, 0xf2b705, 0x1e3a8a, 0x111111, 0xe8e8e8][seed % 5];
+    case "truck": case "van": case "foodtruck": return [0xf0f0ec, 0xc8382a, 0x2b5d9a, 0xe8e8e0, 0x3a7a4a][seed % 5];
+    default: return CAR_COLOURS[seed % CAR_COLOURS.length];
+  }
+}
 const CAR_COLOURS = [0x1c1c1e, 0xe8e8e8, 0x6d7278, 0x22344d, 0x7a1d1d, 0x2f4a3a, 0xb8b2a6, 0x3a3a3c];
 
 export class TrafficView {
   readonly root = new THREE.Group();
   /** per vehicle kind: one instanced mesh per material part; "paint" parts get a colour per car */
   private parts = new Map<VehicleKind, { mesh: THREE.InstancedMesh; paint: boolean }[]>();
+  /** simple box versions for the far distance (and until the models load) */
+  private far = new Map<VehicleKind, THREE.InstancedMesh>();
   constructor(private flow: Airflow) {
     // simple box cars straight away, swapped for the modelled ones when they load
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.35 });
-    for (const k of ["cab", "car", "suv", "van", "bus", "truck"] as VehicleKind[]) this.setParts(k, [{ geo: vehicleGeo(k === "suv" || k === "van" ? "car" : k), mat, paint: true }]);
+    for (const k of Object.keys(VEHICLE_SIZE) as VehicleKind[]) {
+      const far = new THREE.InstancedMesh(vehicleGeo(fallbackShape(k)), mat, 900);
+      far.frustumCulled = false; far.count = 0; far.receiveShadow = true;
+      this.far.set(k, far);
+      this.root.add(far);
+      this.parts.set(k, []);
+    }
     this.loadModels();
   }
 
   private setParts(kind: VehicleKind, list: { geo: THREE.BufferGeometry; mat: THREE.Material; paint: boolean }[]) {
     for (const old of this.parts.get(kind) ?? []) { this.root.remove(old.mesh); old.mesh.dispose(); }
     const made = list.map(({ geo, mat, paint }) => {
-      const mesh = new THREE.InstancedMesh(geo, mat, 400);
+      const mesh = new THREE.InstancedMesh(geo, mat, 700);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
@@ -82,7 +106,7 @@ export class TrafficView {
       const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
       const gltf = await new GLTFLoader().loadAsync("./models/vehicles.glb");
       // which modelled vehicle stands in for each traffic kind (cars alternate sedan / suv / van)
-      const map: Record<VehicleKind, string[]> = { cab: ["cab"], car: ["sedan"], suv: ["suv"], van: ["van"], bus: ["bus"], truck: ["truck"] };
+      const map = Object.fromEntries((Object.keys(VEHICLE_SIZE) as VehicleKind[]).map((k) => [k, [k === "car" ? "sedan" : k]])) as Record<VehicleKind, string[]>;
       for (const [kind, names] of Object.entries(map) as [VehicleKind, string[]][]) {
         const list: { geo: THREE.BufferGeometry; mat: THREE.Material; paint: boolean }[] = [];
         const obj = gltf.scene.getObjectByName(names[0]);
@@ -107,21 +131,31 @@ export class TrafficView {
 
   update(focus: THREE.Vector3) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
-    const counts = new Map<VehicleKind, number>();
+    const counts = new Map<VehicleKind, number>(), farCounts = new Map<VehicleKind, number>();
     for (const v of this.flow.traffic.now) {
-      const dx = v.x - focus.x, dz = v.z - focus.z;
-      if (dx * dx + dz * dz > 320 * 320) continue;
+      const dx = v.x - focus.x, dz = v.z - focus.z, d2 = dx * dx + dz * dz;
+      if (d2 > 320 * 320) continue;
       const kind = v.v.kind;
       const parts = this.parts.get(kind)!;
-      const i = counts.get(kind) ?? 0;
-      if (i >= 400) continue;
-      counts.set(kind, i + 1);
       q.setFromAxisAngle(Y, Math.atan2(v.tx, v.tz));
       m.compose(p.set(v.x, 0.02, v.z), q, s);
-      c.set(kind === "cab" ? CAB : kind === "bus" ? 0xf4f4f0 : kind === "truck" || kind === "van" ? [0xf0f0ec, 0xc8382a, 0x2b5d9a, 0xe8e8e0][v.v.colorSeed % 4] : CAR_COLOURS[v.v.colorSeed % CAR_COLOURS.length]);
-      for (const part of parts) {
-        part.mesh.setMatrixAt(i, m);
-        if (part.paint) part.mesh.setColorAt(i, c);
+      c.set(paintFor(kind, v.v.colorSeed));
+      // the full model up close, a simple shape in the distance (or until it loads)
+      if (d2 < 160 * 160 && parts.length) {
+        const i = counts.get(kind) ?? 0;
+        if (i >= 700) continue;
+        counts.set(kind, i + 1);
+        for (const part of parts) {
+          part.mesh.setMatrixAt(i, m);
+          if (part.paint) part.mesh.setColorAt(i, c);
+        }
+      } else {
+        const far = this.far.get(kind)!;
+        const i = farCounts.get(kind) ?? 0;
+        if (i >= 900) continue;
+        farCounts.set(kind, i + 1);
+        far.setMatrixAt(i, m);
+        far.setColorAt(i, c);
       }
     }
     for (const [k, parts] of this.parts) {
@@ -130,6 +164,11 @@ export class TrafficView {
         part.mesh.instanceMatrix.needsUpdate = true;
         if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
       }
+    }
+    for (const [k, far] of this.far) {
+      far.count = farCounts.get(k) ?? 0;
+      far.instanceMatrix.needsUpdate = true;
+      if (far.instanceColor) far.instanceColor.needsUpdate = true;
     }
   }
 }
@@ -399,6 +438,10 @@ export function lastTree(at: { x: number; z: number }, leafAt: THREE.Vector3): T
 
 export class CrowdView {
   readonly mesh: THREE.InstancedMesh;
+  readonly dogs: THREE.InstancedMesh;
+  readonly leads: THREE.LineSegments;
+  readonly root = new THREE.Group();
+  private leadPos: Float32Array;
   constructor(private flow: Airflow) {
     const body = mergeGeometries([
       coloured(new THREE.CylinderGeometry(0.19, 0.25, 1.05, 8).translate(0, 0.62, 0), 0xffffff),   // coat (tinted)
@@ -408,25 +451,63 @@ export class CrowdView {
       coloured(new THREE.CylinderGeometry(0.13, 0.13, 0.1, 8).translate(0, 1.42, 0), 0x2a2a2a),    // hat
       coloured(new THREE.BoxGeometry(0.34, 0.08, 0.2).translate(0, 1.12, 0.02), 0xb03a2a),          // scarf
     ])!;
-    this.mesh = new THREE.InstancedMesh(body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), 900);
+    this.mesh = new THREE.InstancedMesh(body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), 1800);
     this.mesh.frustumCulled = false;
     this.mesh.count = 0;
     this.mesh.castShadow = true;
+    // a dog: body, head, snout, ears, legs and a tail (breeds by scale and colour)
+    const dog = mergeGeometries([
+      coloured(new THREE.SphereGeometry(0.16, 8, 6).scale(1, 0.85, 1.9).translate(0, 0.32, 0), 0xffffff),
+      coloured(new THREE.SphereGeometry(0.11, 8, 6).translate(0, 0.46, 0.3), 0xffffff),
+      coloured(new THREE.BoxGeometry(0.08, 0.07, 0.12).translate(0, 0.43, 0.42), 0xffffff),
+      coloured(new THREE.BoxGeometry(0.05, 0.1, 0.03).translate(-0.07, 0.55, 0.28), 0xffffff),
+      coloured(new THREE.BoxGeometry(0.05, 0.1, 0.03).translate(0.07, 0.55, 0.28), 0xffffff),
+      ...[[-0.08, 0.18], [0.08, 0.18], [-0.08, -0.18], [0.08, -0.18]].map(([x, z]) => coloured(new THREE.CylinderGeometry(0.03, 0.03, 0.26, 5).translate(x, 0.13, z), 0xffffff)),
+      coloured(new THREE.CylinderGeometry(0.015, 0.025, 0.22, 4).rotateX(-0.8).translate(0, 0.42, -0.34), 0xffffff),
+    ])!;
+    this.dogs = new THREE.InstancedMesh(dog, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }), 400);
+    this.dogs.frustumCulled = false;
+    this.dogs.count = 0;
+    this.dogs.castShadow = true;
+    this.leadPos = new Float32Array(400 * 6);
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute("position", new THREE.BufferAttribute(this.leadPos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.leads = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x8a1a1a }));
+    this.leads.frustumCulled = false;
+    this.root.add(this.mesh, this.dogs, this.leads);
   }
   update() {
-    const coats = [0x2a2a30, 0x5a2a2a, 0x2a3a5a, 0x6b5a40, 0x1e1e1e, 0x3a4a3a, 0x8a7a6a, 0x4a2a4a];
+    const coats = [0x2a2a30, 0x5a2a2a, 0x2a3a5a, 0x6b5a40, 0x1e1e1e, 0x3a4a3a, 0x8a7a6a, 0x4a2a4a, 0x9a3a2a, 0x2a5a5a, 0xc8b89a, 0x3a3a50];
+    // terrier, dachshund, golden, pug: [scale x, y, z], colour
+    const breeds: [number, number, number, number][] = [[0.8, 0.85, 0.8, 0xe8e2d6], [0.75, 0.6, 1.25, 0x6a3a1a], [1.35, 1.35, 1.3, 0xd8a050], [0.85, 0.8, 0.75, 0xd8c8a8]];
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
-    let n = 0;
+    let n = 0, d = 0;
     for (const w of this.flow.crowd.now) {
-      if (n >= 900) break;
+      if (n >= 1800) break;
       q.setFromAxisAngle(Y, Math.atan2(w.tx, w.tz));
       const k = w.w.h / 1.55;
       this.mesh.setMatrixAt(n, m.compose(p.set(w.x, 0.15 + Math.abs(Math.sin(w.phase * 2)) * 0.04, w.z), q, s.set(1, k, 1)));
       this.mesh.setColorAt(n, c.set(coats[w.w.seed % coats.length]));
       n++;
+      if (w.w.pet !== undefined && d < 400) {
+        const [bx, by, bz, col] = breeds[w.w.pet];
+        // trotting beside and a little ahead, on the street side
+        const rx = -w.tz, rz = w.tx;
+        const dx = w.x + rx * 0.85 + w.tx * 0.5, dz = w.z + rz * 0.85 + w.tz * 0.5;
+        const trot = Math.abs(Math.sin(w.phase * 4)) * 0.03;
+        this.dogs.setMatrixAt(d, m.compose(p.set(dx, 0.15 + trot, dz), q, s.set(bx, by, bz)));
+        this.dogs.setColorAt(d, c.set(col));
+        this.leadPos.set([w.x + rx * 0.25, 0.15 + 0.95 * k, w.z + rz * 0.25, dx + w.tx * 0.3 * bz, 0.15 + 0.48 * by, dz + w.tz * 0.3 * bz], d * 6);
+        d++;
+      }
     }
     this.mesh.count = n;
+    this.dogs.count = d;
+    this.leads.geometry.setDrawRange(0, d * 2);
     this.mesh.instanceMatrix.needsUpdate = true;
+    this.dogs.instanceMatrix.needsUpdate = true;
+    this.leads.geometry.attributes.position.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    if (this.dogs.instanceColor) this.dogs.instanceColor.needsUpdate = true;
   }
 }
