@@ -61,7 +61,9 @@ const city = await CityData.load();
 const flow = new Airflow(city);
 const tex = buildFacadeTextures();
 const buildings = new BuildingsMesh(city, tex);
-const ground = new GroundMesh(city);
+// Central Park plants its own trees (render/centralPark.ts): the ground only does Battery Park's and the streets'
+const parkBounds = flow.parkLayout.bounds;
+const ground = new GroundMesh(city, { skipTree: (x, z) => x > parkBounds.x0 && x < parkBounds.x1 && z > parkBounds.z0 && z < parkBounds.z1 });
 const subway = new SubwayMesh(flow.under);
 const leafView = new LeafView();
 const traffic = new TrafficView(flow);

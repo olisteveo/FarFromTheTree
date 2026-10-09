@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { CityData, Poly } from "../world/data";
 import { ringArea } from "../world/data";
+import { atlasMaterial, CELL, ChunkedQuads, loadGroundTextures, PolyIndex, ringNormals, ROW, rowV, STRIP_M, surfaceMaterial, type CellName } from "./groundArt";
 
 // ------------------------------------------------------------------ canvas textures
 
@@ -31,51 +32,12 @@ function speckle(c: CanvasRenderingContext2D, s: number, n: number, dark: number
   }
 }
 
-const asphaltTex = () => canvasTex(1024, (c, s) => {
-  c.fillStyle = "#4a4846"; c.fillRect(0, 0, s, s);
-  for (let i = 0; i < 40; i++) { // patches
-    c.fillStyle = `rgba(${rnd() < 0.5 ? "20,20,22" : "70,70,72"},${0.15 + rnd() * 0.2})`;
-    c.fillRect(rnd() * s, rnd() * s, 40 + rnd() * 260, 30 + rnd() * 160);
-  }
-  speckle(c, s, 60000, 0.35, 0.18, 2.2);
-  c.strokeStyle = "rgba(15,15,15,0.55)"; c.lineWidth = 1.5;
-  for (let i = 0; i < 26; i++) { // cracks
-    let x = rnd() * s, y = rnd() * s;
-    c.beginPath(); c.moveTo(x, y);
-    for (let k = 0; k < 12; k++) { x += (rnd() - 0.5) * 40; y += (rnd() - 0.5) * 40; c.lineTo(x, y); }
-    c.stroke();
-  }
-  // tar seams
-  c.strokeStyle = "rgba(10,10,10,0.6)"; c.lineWidth = 4;
-  for (let i = 0; i < 5; i++) { c.beginPath(); const y = rnd() * s; c.moveTo(0, y); c.bezierCurveTo(s * 0.3, y + 30, s * 0.6, y - 30, s, y); c.stroke(); }
-});
-
-const concreteTex = () => canvasTex(512, (c, s) => {
-  c.fillStyle = "#9a958c"; c.fillRect(0, 0, s, s);
-  speckle(c, s, 20000, 0.18, 0.15, 1.6);
-  // 1.5 m slabs: texture covers 3 m, so 2x2 slabs
-  c.strokeStyle = "rgba(50,46,40,0.55)"; c.lineWidth = 3;
-  for (let i = 0; i <= 2; i++) { c.beginPath(); c.moveTo((i * s) / 2, 0); c.lineTo((i * s) / 2, s); c.stroke(); c.beginPath(); c.moveTo(0, (i * s) / 2); c.lineTo(s, (i * s) / 2); c.stroke(); }
-  for (let i = 0; i < 4; i++) { c.fillStyle = `rgba(60,55,50,${0.08 + rnd() * 0.1})`; c.fillRect((i % 2) * s / 2, Math.floor(i / 2) * s / 2, s / 2, s / 2); }
-  for (let i = 0; i < 18; i++) { c.fillStyle = "rgba(40,40,40,0.25)"; c.beginPath(); c.arc(rnd() * s, rnd() * s, 2 + rnd() * 5, 0, 7); c.fill(); } // gum
-});
-
 const dirtTex = () => canvasTex(512, (c, s) => {
   c.fillStyle = "#6b5a46"; c.fillRect(0, 0, s, s);
   speckle(c, s, 30000, 0.35, 0.2, 3);
   for (let i = 0; i < 30; i++) { c.fillStyle = `rgba(${rnd() < 0.5 ? "60,48,36" : "120,104,84"},0.3)`; c.beginPath(); c.arc(rnd() * s, rnd() * s, 10 + rnd() * 50, 0, 7); c.fill(); }
   c.strokeStyle = "rgba(40,30,20,0.4)"; c.lineWidth = 6; // tyre tracks
   for (let i = 0; i < 3; i++) { c.beginPath(); const x = rnd() * s; c.moveTo(x, 0); c.bezierCurveTo(x + 80, s * 0.3, x - 80, s * 0.6, x + 20, s); c.stroke(); }
-});
-
-const grassTex = () => canvasTex(512, (c, s) => {
-  c.fillStyle = "#6a6a3e"; c.fillRect(0, 0, s, s);
-  for (let i = 0; i < 40000; i++) {
-    const v = rnd();
-    c.fillStyle = v < 0.4 ? "rgba(140,128,80,0.5)" : v < 0.7 ? "rgba(80,88,48,0.5)" : "rgba(160,150,110,0.4)";
-    c.fillRect(rnd() * s, rnd() * s, 1, 2 + rnd() * 3);
-  }
-  for (let i = 0; i < 300; i++) { c.fillStyle = `rgba(${120 + rnd() * 50},${70 + rnd() * 30},30,0.7)`; c.fillRect(rnd() * s, rnd() * s, 3, 2); } // old leaves
 });
 
 const hoardingTex = () => canvasTex(1024, (c, s) => {
@@ -155,16 +117,6 @@ function merge(list: (THREE.BufferGeometry | null)[]): THREE.BufferGeometry {
   return mergeGeometries(ok)!;
 }
 
-function stripe(ax: number, az: number, bx: number, bz: number, w: number, y: number): THREE.BufferGeometry {
-  const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz) || 1, nx = (-dz / L) * w / 2, nz = (dx / L) * w / 2;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute([ax + nx, y, az + nz, bx + nx, y, bz + nz, bx - nx, y, bz - nz, ax - nx, y, az - nz], 3));
-  g.setAttribute("normal", new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
-  g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
-  g.setIndex([0, 1, 2, 0, 2, 3]);
-  return g;
-}
-
 // ------------------------------------------------------------------ bare winter trees
 
 function bareTree(seed: number): THREE.BufferGeometry {
@@ -225,9 +177,12 @@ export class GroundMesh {
   readonly root = new THREE.Group();
   readonly water: THREE.Mesh;
   private treeChunks: { g: THREE.Group; cx: number; cz: number }[] = [];
+  private dress: { mesh: THREE.Mesh; cx: number; cz: number; r: number }[] = [];
   private waterNormal: THREE.Texture;
 
-  constructor(city: CityData) {
+  /** opts.base: URL of the folder holding textures/ (default: next to the page).
+   *  opts.skipTree: spots where ground.ts must not plant a bare tree (e.g. Central Park, which plants its own). */
+  constructor(city: CityData, opts: { base?: string; skipTree?: (x: number, z: number) => boolean } = {}) {
     const raw = city.raw;
     const T = (t: THREE.Texture, metres: number) => { t.repeat.set(1 / metres, 1 / metres); return t; };
 
@@ -249,83 +204,44 @@ export class GroundMesh {
     this.water.receiveShadow = true;
     this.root.add(this.water);
 
-    // the island, its seawall, and the base of everything (lots, curbs, the gaps between polygons)
-    const baseMat = new THREE.MeshStandardMaterial({ map: T(concreteTex(), 3), color: 0x8f8a80, roughness: 0.95 });
+    // the street surfaces: Tesseract-designed tiles shaded in world space (groundArt.ts)
+    const gt = loadGroundTextures(opts.base);
+    const walk = (tint: number, wet = 1) => surfaceMaterial({ a: gt.walkA, an: gt.walkAN, b: gt.walkB, bn: gt.walkBN, scaleA: 6, scaleB: 6, macro: gt.macro, mode: 0, shareB: 0.4, wet, tint });
+    const asphalt = (tint: number, offset: number) => surfaceMaterial({ a: gt.roadA, an: gt.roadAN, b: gt.roadB, bn: gt.roadBN, scaleA: 8, scaleB: 11, macro: gt.macro, mode: 1, mask: [0, 1, 0], maskRange: [0.4, 0.62], wet: 1, tint, polygonOffset: offset, normalScale: 0.9 });
+    const kerbMat = atlasMaterial(gt.strips, gt.stripsN, {});
+    const gutterMat = atlasMaterial(gt.strips, gt.stripsN, { transparent: true, offset: -2 });
+    const paintMat = atlasMaterial(gt.paint, gt.paintN, { transparent: true, offset: -3, vertexColors: true, normalScale: 0.6 });
+    const decalMat = atlasMaterial(gt.decals, gt.decalsN, { transparent: true, offset: -4, vertexColors: true });
+
+    // the island, its seawall, and the base of everything (lots, the gaps between polygons)
     const land = merge(raw.land.map((p) => flatPoly(p, 0)));
-    const landMesh = new THREE.Mesh(land, baseMat);
+    const landMesh = new THREE.Mesh(land, walk(0x9a968f));
     landMesh.receiveShadow = true;
     const seawall = new THREE.Mesh(merge(raw.land.map((p) => wallRing(p[0], -1.8, 0))), new THREE.MeshStandardMaterial({ color: 0x5d5952, roughness: 0.9 }));
     this.root.add(landMesh, seawall);
 
     // asphalt
-    const asphalt = new THREE.MeshStandardMaterial({ map: T(asphaltTex(), 14), roughness: 0.9, color: 0xffffff, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-    const road = new THREE.Mesh(merge(raw.roadbed.map((p) => flatPoly(p, 0.02))), asphalt);
+    const roadMat = asphalt(0xffffff, -1);
+    const road = new THREE.Mesh(merge(raw.roadbed.map((p) => flatPoly(p, 0.02))), roadMat);
     road.receiveShadow = true;
     this.root.add(road);
 
-    // lane markings and crosswalks from the centrelines
-    const white: THREE.BufferGeometry[] = [], yellow: THREE.BufferGeometry[] = [];
-    for (const st of raw.streets) {
-      if (st.rw !== 1) continue; // roads only
-      const p = st.p;
-      const segs: [number, number, number, number][] = [];
-      for (let i = 0; i < p.length - 2; i += 2) segs.push([p[i], p[i + 1], p[i + 2], p[i + 3]]);
-      let total = 0;
-      for (const [ax, az, bx, bz] of segs) total += Math.hypot(bx - ax, bz - az);
-      if (total < 14) continue;
-      // centre line: double yellow on two-way streets
-      let run = 0;
-      for (const [ax, az, bx, bz] of segs) {
-        const L = Math.hypot(bx - ax, bz - az), tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx;
-        const t0 = Math.max(0, 9 - run), t1 = Math.min(L, total - 9 - run);
-        if (t1 > t0) {
-          const sx = ax + tx * t0, sz = az + tz * t0, ex = ax + tx * t1, ez = az + tz * t1;
-          if (st.d === 0) {
-            yellow.push(stripe(sx + nx * 0.12, sz + nz * 0.12, ex + nx * 0.12, ez + nz * 0.12, 0.11, 0.04));
-            yellow.push(stripe(sx - nx * 0.12, sz - nz * 0.12, ex - nx * 0.12, ez - nz * 0.12, 0.11, 0.04));
-          } else if (st.l >= 2) {
-            // dashed lane lines
-            const lanes = Math.min(st.l, 5), lw = st.w / Math.max(lanes + 1, 2);
-            for (let k = 1; k < lanes; k++) {
-              const o = (k - lanes / 2) * lw;
-              for (let t = t0; t < t1 - 3; t += 9) white.push(stripe(ax + tx * t + nx * o, az + tz * t + nz * o, ax + tx * (t + 3) + nx * o, az + tz * (t + 3) + nz * o, 0.12, 0.04));
-            }
-          }
-        }
-        run += L;
-      }
-      // zebra crossings at both ends
-      for (const end of [0, 1]) {
-        const [ax, az, bx, bz] = end === 0 ? segs[0] : segs[segs.length - 1];
-        const L = Math.hypot(bx - ax, bz - az), tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx;
-        const ox = end === 0 ? ax + tx * 7.5 : bx - tx * 7.5, oz = end === 0 ? az + tz * 7.5 : bz - tz * 7.5;
-        const half = st.w / 2 - 0.4;
-        for (let o = -half; o < half; o += 1.1) white.push(stripe(ox + nx * o - tx * 1.6, oz + nz * o - tz * 1.6, ox + nx * o + tx * 1.6, oz + nz * o + tz * 1.6, 0.55, 0.045));
-      }
-    }
-    const paint = (list: THREE.BufferGeometry[], col: number) => {
-      if (!list.length) return;
-      const m = new THREE.Mesh(merge(list), new THREE.MeshStandardMaterial({ color: col, roughness: 0.75, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-      m.receiveShadow = true;
-      this.root.add(m);
-    };
-    paint(white, 0xd9d6cc);
-    paint(yellow, 0xd8a530);
-
-    // sidewalks, raised with curbs
-    const walkMat = new THREE.MeshStandardMaterial({ map: T(concreteTex(), 3), roughness: 0.92 });
-    const walks = new THREE.Mesh(merge(raw.sidewalk.map((p) => flatPoly(p, 0.15))), walkMat);
+    // sidewalks, raised, with steel-edged kerbs, granite caps and grimy gutters full of dead leaves
+    const walks = new THREE.Mesh(merge(raw.sidewalk.map((p) => flatPoly(p, 0.15))), walk(0xffffff));
     walks.receiveShadow = true;
-    const curbs = new THREE.Mesh(merge(raw.sidewalk.map((p) => wallRing(p[0], 0, 0.15))), new THREE.MeshStandardMaterial({ color: 0x8c877e, roughness: 0.8 }));
-    this.root.add(walks, curbs);
+    this.root.add(walks);
 
     // medians and plazas
-    const med = new THREE.Mesh(merge([...raw.median.map((p) => flatPoly(p, 0.22)), ...raw.median.map((p) => wallRing(p[0], 0, 0.22))]), new THREE.MeshStandardMaterial({ color: 0x7d786f, roughness: 0.9 }));
+    const med = new THREE.Mesh(merge(raw.median.map((p) => flatPoly(p, 0.22))), walk(0xb0aca4, 0.6));
     med.receiveShadow = true;
-    const plazaMat = new THREE.MeshStandardMaterial({ map: T(concreteTex(), 1.6), color: 0xb9ad98, roughness: 0.85 });
-    const plz = new THREE.Mesh(merge(raw.plaza.map((p) => flatPoly(p, 0.08))), plazaMat);
+    const plz = new THREE.Mesh(merge(raw.plaza.map((p) => flatPoly(p, 0.08))), walk(0xd6ccbc));
     plz.receiveShadow = true;
     this.root.add(med, plz);
+
+    // park paths: paler, weathered asphalt with no utility cuts (both tiles are the plain one)
+    const pathMat = surfaceMaterial({ a: gt.roadA, an: gt.roadAN, b: gt.roadA, bn: gt.roadAN, scaleA: 7, scaleB: 9, macro: gt.macro, mode: 1, mask: [0, 1, 0], maskRange: [0.3, 0.7], wet: 0.7, polygonOffset: -1, normalScale: 0.8 });
+    pathMat.color.setRGB(1.3, 1.29, 1.24);
+    this.streetDressing(city, { kerbMat, gutterMat, paintMat, decalMat, driveMat: asphalt(0xffffff, -1), pathMat });
 
     // building sites: dirt, hoardings, cranes on the big ones
     const dirt = new THREE.Mesh(merge(raw.sites.map((s) => flatPoly(s.p, 0.1))), new THREE.MeshStandardMaterial({ map: T(dirtTex(), 8), roughness: 1 }));
@@ -348,14 +264,263 @@ export class GroundMesh {
       this.root.add(c);
     });
 
-    // winter lawns (Battery Park, Central Park) and bare trees
-    const lawn = new THREE.Mesh(merge(raw.parks.map((p) => flatPoly(p.p, 0.12))), new THREE.MeshStandardMaterial({ map: T(grassTex(), 5), roughness: 1 }));
+    // winter lawns (Battery Park, Central Park): tired November turf with drifts of the
+    // city's fallen leaves raked into it, and bare trees
+    const lawnMat = surfaceMaterial({ a: gt.lawnA, an: gt.lawnAN, b: gt.lawnB, bn: gt.lawnBN, scaleA: 5, scaleB: 4, macro: gt.macro, mode: 1, mask: [0, 0, 1], maskRange: [0.5, 0.76], wet: 0, normalScale: 0.8 });
+    const lawn = new THREE.Mesh(merge(raw.parks.map((p) => flatPoly(p.p, 0.12))), lawnMat);
     lawn.receiveShadow = true;
     this.root.add(lawn);
-    this.trees(city);
+    this.trees(city, opts.skipTree);
   }
 
-  private trees(city: CityData) {
+  /** Kerbs, gutters, paint, park drives and paths, and the decals that make it New York. */
+  private streetDressing(city: CityData, m: { kerbMat: THREE.Material; gutterMat: THREE.Material; paintMat: THREE.Material; decalMat: THREE.Material; driveMat: THREE.MeshStandardMaterial; pathMat: THREE.MeshStandardMaterial }) {
+    const raw = city.raw;
+    const roadIdx = new PolyIndex(raw.roadbed);
+    const walkIdx = new PolyIndex(raw.sidewalk);
+    const parkIdx = new PolyIndex(raw.parks.map((p) => p.p));
+    const meadowIdx = new PolyIndex(raw.parks.filter((p) => /Sheep Meadow/.test(p.n)).map((p) => p.p));
+    const inMeadow = (x: number, z: number) => (x > 430 && x < 730 && z > 8290 && z < 8565) || meadowIdx.has(x, z);
+    const kerbs = new ChunkedQuads(false, 600), gutters = new ChunkedQuads(false, 600), paint = new ChunkedQuads(true, 600);
+    const drives = new ChunkedQuads(false, 600), paths = new ChunkedQuads(false, 600);
+    const decals = new ChunkedQuads(true, 300), text = new ChunkedQuads(true, 300);
+    const h = (a: number, b: number) => { let n = (Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca77)) >>> 0; n ^= n >>> 15; n = Math.imul(n, 0x2c1b3c6d); n ^= n >>> 12; return (n >>> 0) / 4294967296; };
+    const cell = (c: CellName) => CELL[c];
+
+    const WHITE = [0.86, 0.85, 0.81, 1], YELLOW = [0.88, 0.62, 0.16, 1], BUSRED = [0.64, 0.25, 0.17, 0.95];
+    const stripe = (q: ChunkedQuads, ax: number, az: number, bx: number, bz: number, w: number, y: number, col: number[], u0 = 0, uLen = 3) => {
+      const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz) || 1, nx = (-dz / L) * w / 2, nz = (dx / L) * w / 2;
+      q.quad([ax + nx, y, az + nz, bx + nx, y, bz + nz, bx - nx, y, bz - nz, ax - nx, y, az - nz], [u0, 1, u0 + L / uLen, 1, u0 + L / uLen, 0, u0, 0], col);
+    };
+    /** A ribbon along a segment (world-shaded materials ignore its uvs; hex edges use the strips atlas). */
+    const ribbon = (q: ChunkedQuads, ax: number, az: number, bx: number, bz: number, o0: number, o1: number, y: number, ext: number, uv?: [number, number, number, number]) => {
+      const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz) || 1, tx = dx / L, tz = dz / L, nx = -tz, nz = tx;
+      const sx = ax - tx * ext, sz = az - tz * ext, ex = bx + tx * ext, ez = bz + tz * ext;
+      const [u0, u1, v0, v1] = uv ?? [0, 1, 0, 1];
+      q.quad([sx + nx * o0, y, sz + nz * o0, ex + nx * o0, y, ez + nz * o0, ex + nx * o1, y, ez + nz * o1, sx + nx * o1, y, sz + nz * o1], [u0, v0, u1, v0, u1, v1, u0, v1]);
+    };
+
+    // ---- kerbs: a steel-angled face all round, a cap and a gutter where the kerb meets a road
+    raw.sidewalk.forEach((p, pi) => {
+      const r = p[0], n = r.length / 2;
+      if (n < 3) return;
+      const { nx, nz, L } = ringNormals(r);
+      const road: boolean[] = [];
+      for (let i = 0; i < n; i++) {
+        const mx = (r[i * 2] + r[((i + 1) % n) * 2]) / 2, mz = (r[i * 2 + 1] + r[((i + 1) % n) * 2 + 1]) / 2;
+        road.push(L[i] > 0.05 && (roadIdx.has(mx + nx[i] * 1.0, mz + nz[i] * 1.0) || roadIdx.has(mx + nx[i] * 2.5, mz + nz[i] * 2.5)));
+      }
+      // mitred offsets at each vertex
+      const mxv: number[] = [], mzv: number[] = [];
+      for (let i = 0; i < n; i++) {
+        const j = (i + n - 1) % n;
+        let ax = nx[j] + nx[i], az = nz[j] + nz[i];
+        const l = Math.hypot(ax, az) || 1;
+        ax /= l; az /= l;
+        const k = 1 / Math.max(0.4, ax * nx[i] + az * nz[i]);
+        mxv.push(ax * k); mzv.push(az * k);
+      }
+      let u = h(pi, 1) * 40;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const ax = r[i * 2], az = r[i * 2 + 1], bx = r[j * 2], bz = r[j * 2 + 1];
+        const u0 = u / STRIP_M, u1 = (u + L[i]) / STRIP_M;
+        u += L[i];
+        kerbs.quad([ax, 0, az, bx, 0, bz, bx, 0.15, bz, ax, 0.15, az],
+          [u0, rowV(ROW.face, 1), u1, rowV(ROW.face, 1), u1, rowV(ROW.face, 0), u0, rowV(ROW.face, 0)], undefined, [nx[i], 0, nz[i]]);
+        if (!road[i]) continue;
+        const CAP = 0.3, GUT = 0.6;
+        kerbs.quad([ax, 0.151, az, bx, 0.151, bz, bx - mxv[j] * CAP, 0.151, bz - mzv[j] * CAP, ax - mxv[i] * CAP, 0.151, az - mzv[i] * CAP],
+          [u0, rowV(ROW.cap, 0), u1, rowV(ROW.cap, 0), u1, rowV(ROW.cap, 1), u0, rowV(ROW.cap, 1)]);
+        gutters.quad([ax, 0.028, az, bx, 0.028, bz, bx + mxv[j] * GUT, 0.028, bz + mzv[j] * GUT, ax + mxv[i] * GUT, 0.028, az + mzv[i] * GUT],
+          [u0, rowV(ROW.gutter, 0), u1, rowV(ROW.gutter, 0), u1, rowV(ROW.gutter, 1), u0, rowV(ROW.gutter, 1)]);
+        // sidewalk furniture along the kerb: subway vent grates, cellar doors, vault covers, leaves
+        if (L[i] < 9) continue;
+        const tx = (bx - ax) / L[i], tz = (bz - az) / L[i];
+        for (let d = 4, k = 0; d < L[i] - 4; d += 7, k++) {
+          const rr = h(pi * 131 + i, k);
+          const px = ax + tx * d, pz = az + tz * d;
+          const at = (o: number): [number, number] => [px - nx[i] * o, pz - nz[i] * o];
+          const ok = (...pts: [number, number][]) => pts.every(([x, z]) => walkIdx.has(x, z));
+          if (rr < 0.05) {
+            const [cx, cz] = at(1.1);
+            if (ok([cx + tx * 2, cz + tz * 2], [cx - tx * 2, cz - tz * 2], at(1.8))) decals.decal(cx, 0.153, cz, -nx[i], -nz[i], 1.9, 0.62, cell("grate"));
+          } else if (rr < 0.11) {
+            const [cx, cz] = at(3.3);
+            if (ok(at(2.4), at(4.6), [cx + tx, cz + tz], [cx - tx, cz - tz])) decals.decal(cx, 0.153, cz, -nx[i], -nz[i], 0.8, 0.8, cell("cellar"));
+          } else if (rr < 0.14) {
+            const [cx, cz] = at(0.9 + h(k, pi) * 1.5);
+            if (ok([cx, cz])) decals.decal(cx, 0.153, cz, tx, tz, 0.3, 0.3, cell("valves"), undefined, [(k % 2) * 0.5, 0.5, (k % 2) * 0.5 + 0.5, 1]);
+          } else if (rr < 0.2) {
+            const [cx, cz] = at(0.5 + h(k, pi + 7) * 2.5);
+            const a = h(k, pi + 9) * 6.28;
+            if (ok([cx, cz])) decals.decal(cx, 0.154, cz, Math.cos(a), Math.sin(a), 0.6, 0.6, cell("leaves"), [1, 1, 1, 0.9]);
+          }
+        }
+      }
+    });
+    // median sides
+    for (const p of raw.median) {
+      const r = p[0], n = r.length / 2;
+      const { nx, nz, L } = ringNormals(r);
+      let u = 0;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const u0 = u / STRIP_M, u1 = (u + L[i]) / STRIP_M;
+        u += L[i];
+        kerbs.quad([r[i * 2], 0, r[i * 2 + 1], r[j * 2], 0, r[j * 2 + 1], r[j * 2], 0.22, r[j * 2 + 1], r[i * 2], 0.22, r[i * 2 + 1]],
+          [u0, rowV(ROW.face, 1), u1, rowV(ROW.face, 1), u1, rowV(ROW.face, 0), u0, rowV(ROW.face, 0)], undefined, [nx[i], 0, nz[i]]);
+      }
+    }
+
+    // ---- the roads: paint, tyre polish, oil, ironwork
+    const BUS = /^(1|2|5|7|8) AVE$|^AVE OF THE AMERICAS$|^6 AVE$|^MADISON AVE$|^LEXINGTON AVE$|^CHURCH ST$|^(E|W) {2}(14|23|34|42) ST$/;
+    raw.streets.forEach((st, si) => {
+      if (st.rw !== 1) return;
+      const p = st.p;
+      const segs: [number, number, number, number][] = [];
+      for (let i = 0; i < p.length - 2; i += 2) segs.push([p[i], p[i + 1], p[i + 2], p[i + 3]]);
+      let total = 0;
+      for (const [ax, az, bx, bz] of segs) total += Math.hypot(bx - ax, bz - az);
+      if (!segs.length) return;
+      const [sx, sz, ex, ez] = segs[Math.floor(segs.length / 2)];
+      const park = parkIdx.has((sx + ex) / 2, (sz + ez) / 2);
+      const y = park ? 0.15 : 0.04;
+      if (park) {
+        // park drives: asphalt over the lawn
+        const w = Math.max(7, st.w);
+        for (const [ax, az, bx, bz] of segs) ribbon(drives, ax, az, bx, bz, -w / 2, w / 2, 0.13, w * 0.35);
+      }
+      if (total < 14) return;
+      const bus = !park && st.w >= 15 && BUS.test(st.n);
+      const lanes = Math.max(1, Math.min(st.l, 6)), lw = st.w / lanes;
+      let run = 0;
+      for (const [si2, [ax, az, bx, bz]] of segs.entries()) {
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 0.01) continue;
+        const tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx;
+        const t0 = Math.max(0, 9 - run), t1 = Math.min(L, total - 9 - run);
+        const P = (t: number, o: number): [number, number] => [ax + tx * t + nx * o, az + tz * t + nz * o];
+        if (t1 > t0) {
+          const [qx, qz] = P(t0, 0), [rx, rz] = P(t1, 0);
+          if (st.d === 0) {
+            stripe(paint, qx + nx * 0.12, qz + nz * 0.12, rx + nx * 0.12, rz + nz * 0.12, 0.11, y, YELLOW, h(si, 2) * 7);
+            stripe(paint, qx - nx * 0.12, qz - nz * 0.12, rx - nx * 0.12, rz - nz * 0.12, 0.11, y, YELLOW, h(si, 3) * 7);
+          } else if (st.l >= 2) {
+            const nl = Math.min(st.l, 5), lw2 = st.w / Math.max(nl + 1, 2);
+            for (let k = 1; k < nl; k++) {
+              const o = (k - nl / 2) * lw2;
+              for (let t = t0; t < t1 - 3; t += 9) stripe(paint, ...P(t, o), ...P(t + 3, o), 0.12, y, WHITE, h(si, k) * 5 + t / 9);
+            }
+          }
+          if (bus) {
+            // NYC red bus lanes, offset one lane from the kerb (parking at the kerb)
+            for (const side of st.d === 0 ? [1, -1] : [st.d]) {
+              const o = side * (st.w / 2 - 4.15);
+              stripe(paint, ...P(t0, o), ...P(t1, o), 3.3, y + 0.001, BUSRED, h(si, 11) * 9, 8);
+              stripe(paint, ...P(t0, o - side * 1.75), ...P(t1, o - side * 1.75), 0.15, y + 0.002, WHITE, h(si, 12) * 9);
+              for (let t = t0 + 12; t < t1 - 6; t += 55) {
+                const [cx, cz] = P(t, o);
+                text.decal(cx, y + 0.004, cz, tx * side, tz * side, 1.25, 2.6, cell("busonly"), [1, 1, 1, 0.92]);
+              }
+            }
+          }
+        }
+        if (!park) {
+          // tyre-polished wheel paths, darker and smoother
+          for (let k = 0; k < lanes; k++) {
+            const oc = -st.w / 2 + lw * (k + 0.5);
+            for (const wo of [-0.85, 0.85]) {
+              const [cx, cz] = P(L / 2, oc + wo);
+              decals.decal(cx, 0.033, cz, nx, nz, L / 2, 0.4, cell("polish"), [1, 1, 1, 0.28]);
+            }
+          }
+          // ironwork and patches, half-way between the gameplay hazards (StreetLife puts those at 8 + 9k)
+          for (let d = 3.5, k = 0; d < L - 3; d += 9, k++) {
+            const rr = h(si * 977 + si2 * 31 + k, 21);
+            const lane = Math.floor(h(si + k, 22) * lanes);
+            const o = -st.w / 2 + lw * (lane + 0.5) + (h(si + k, 23) - 0.5) * 1.2;
+            const [cx, cz] = P(d, o);
+            if (rr < 0.07) decals.decal(cx, 0.036, cz, tx, tz, 0.56, 0.56, cell("sewer"));
+            else if (rr < 0.11) decals.decal(cx, 0.036, cz, tx, tz, 0.56, 0.56, cell("coned"));
+            else if (rr < 0.15) { const q = k % 4; decals.decal(cx, 0.036, cz, tx, tz, 0.26, 0.26, cell("valves"), undefined, [(q % 2) * 0.5, Math.floor(q / 2) * 0.5, (q % 2) * 0.5 + 0.5, Math.floor(q / 2) * 0.5 + 0.5]); }
+            else if (rr < 0.17) decals.decal(cx, 0.037, cz, tx, tz, 1.25, 1.6, cell("plate"));
+            else if (rr < 0.19) { const s = 1.1 + h(k, si) * 1.4; decals.decal(cx, 0.031, cz, tx, tz, s, s * (0.7 + h(si, k) * 0.8), cell("cut")); }
+            else if (rr < 0.33) { const s = 0.6 + h(k, si + 1) * 0.7; decals.decal(cx, 0.034, cz, tx, tz, s, s * 1.3, cell(rr < 0.27 ? "oil_a" : "oil_b"), [1, 1, 1, 0.75]); }
+            else if (rr < 0.37) {
+              const side = h(si, k + 5) < 0.5 ? -1 : 1;
+              const [lx, lz] = P(d, side * (st.w / 2 - 0.9 - h(k, si + 2) * 1.2));
+              const a = h(k, si + 3) * 6.28;
+              decals.decal(lx, 0.035, lz, Math.cos(a), Math.sin(a), 0.65, 0.65, cell("leaves"), [1, 1, 1, 0.9]);
+            }
+          }
+        }
+        run += L;
+      }
+      // crossings at both ends: ladder bars, stop lines, storm drains and tactile pads at the ramps
+      for (const end of [0, 1]) {
+        const [ax, az, bx, bz] = end === 0 ? segs[0] : segs[segs.length - 1];
+        const L = Math.hypot(bx - ax, bz - az) || 1, tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx;
+        const ox = end === 0 ? ax + tx * 7.5 : bx - tx * 7.5, oz = end === 0 ? az + tz * 7.5 : bz - tz * 7.5;
+        const half = st.w / 2 - 0.4;
+        for (let o = -half; o < half; o += 1.1) stripe(paint, ox + nx * o - tx * 1.6, oz + nz * o - tz * 1.6, ox + nx * o + tx * 1.6, oz + nz * o + tz * 1.6, 0.55, y + 0.005, WHITE, h(si, end * 7 + Math.round(o)) * 3);
+        // traffic arriving at this end: end 1 is reached moving +t (lanes on +n), end 0 moving -t (lanes on -n)
+        const arrive = st.d === 0 || (st.d > 0) === (end === 1);
+        const up = end === 1 ? -1 : 1;
+        if (arrive) {
+          const lo = st.d === 0 ? (end === 1 ? 0 : -half) : -half, hi = st.d === 0 ? (end === 1 ? half : 0) : half;
+          const cx = ox + tx * up * 2.6, cz = oz + tz * up * 2.6;
+          stripe(paint, cx + nx * lo, cz + nz * lo, cx + nx * hi, cz + nz * hi, 0.6, y + 0.005, WHITE, h(si, end + 40));
+          if (!park) {
+            // cars wait here: drips
+            const o = (lo + hi) / 2 + (h(si, end + 41) - 0.5) * (hi - lo) * 0.6;
+            decals.decal(cx + tx * up * 3 + nx * o, 0.034, cz + tz * up * 3 + nz * o, tx, tz, 0.7, 1.1, cell("oil_b"), [1, 1, 1, 0.7]);
+          }
+        }
+        if (park) continue;
+        for (const side of [-1, 1]) {
+          if (h(si * 3 + end, side + 50) < 0.55) {
+            const dx = ox + tx * up * 3.4 + nx * side * (st.w / 2 - 0.32), dz = oz + tz * up * 3.4 + nz * side * (st.w / 2 - 0.32);
+            decals.decal(dx, 0.035, dz, nx * side, nz * side, 0.55, 0.55, cell("drain"));
+          }
+          const px = ox + nx * side * (st.w / 2 + 0.45), pz = oz + nz * side * (st.w / 2 + 0.45);
+          if (walkIdx.has(px, pz) && walkIdx.has(px + tx * 0.8, pz + tz * 0.8) && walkIdx.has(px - tx * 0.8, pz - tz * 0.8))
+            decals.decal(px, 0.153, pz, -nx * side, -nz * side, 0.8, 0.3, cell("tactile"));
+        }
+      }
+    });
+
+    // ---- park footpaths: grey asphalt edged with hexagonal pavers, never across Sheep Meadow
+    for (const st of raw.streets) {
+      if (st.rw !== 3 && st.rw !== 6) continue;
+      const p = st.p;
+      const w = Math.max(3, Math.min(st.w, 8));
+      for (let i = 0; i + 3 < p.length; i += 2) {
+        const ax = p[i], az = p[i + 1], bx = p[i + 2], bz = p[i + 3];
+        const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+        if (!parkIdx.has(mx, mz) || inMeadow(mx, mz) || inMeadow(ax, az) || inMeadow(bx, bz)) continue;
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 0.3) continue;
+        ribbon(paths, ax, az, bx, bz, -w / 2, w / 2, 0.128, w * 0.3);
+        const u1 = (L + w * 0.6) / STRIP_M;
+        ribbon(kerbs, ax, az, bx, bz, w / 2, w / 2 + 0.5, 0.133, 0.1, [0, u1, rowV(ROW.hex, 0), rowV(ROW.hex, 0.5)]);
+        ribbon(kerbs, ax, az, bx, bz, -w / 2, -w / 2 - 0.5, 0.133, 0.1, [0, u1, rowV(ROW.hex, 0), rowV(ROW.hex, 0.5)]);
+      }
+    }
+
+    const add = (list: { mesh: THREE.Mesh; cx: number; cz: number }[], r: number) => {
+      for (const c of list) { this.root.add(c.mesh); this.dress.push({ ...c, r }); }
+    };
+    add(kerbs.build(m.kerbMat, { shadow: true }), 900);
+    add(drives.build(m.driveMat, { shadow: true }), 1100);
+    add(paths.build(m.pathMat, { shadow: true }), 1100);
+    add(gutters.build(m.gutterMat, { shadow: true, order: 1 }), 700);
+    add(paint.build(m.paintMat, { shadow: true, order: 2 }), 900);
+    add(decals.build(m.decalMat, { shadow: true, order: 3 }), 450);
+    add(text.build(m.decalMat, { shadow: true, order: 4 }), 600);
+  }
+
+  private trees(city: CityData, skip?: (x: number, z: number) => boolean) {
     const variants = [11, 23, 37, 51].map((s) => bareTree(s));
     const bark = new THREE.MeshStandardMaterial({ color: 0x3e342c, roughness: 1 });
     const spots: [number, number, number][] = [];
@@ -378,6 +543,7 @@ export class GroundMesh {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     const chunks = new Map<string, [number, number, number][]>();
     for (const sp of spots) {
+      if (skip?.(sp[0], sp[1])) continue;
       const k = `${Math.floor(sp[0] / 300)},${Math.floor(sp[1] / 300)}`;
       (chunks.get(k) ?? chunks.set(k, []).get(k)!).push(sp);
     }
@@ -399,9 +565,10 @@ export class GroundMesh {
     }
   }
 
-  /** Trees only near the player. */
+  /** Trees and street dressing only near the player. */
   updateFocus(focus: THREE.Vector3) {
     for (const c of this.treeChunks) c.g.visible = Math.hypot(c.cx - focus.x, c.cz - focus.z) < 520;
+    for (const c of this.dress) c.mesh.visible = Math.hypot(c.cx - focus.x, c.cz - focus.z) < c.r;
   }
 
   update(t: number) {
