@@ -169,32 +169,33 @@ def wheel(R, tw, segs=15, rim_frac=0.64, style="alloy"):
     T = Builder()
     rr = R * rim_frac
 
+    def ang(i):
+        return 2 * math.pi * i / segs - math.pi / 2   # a vertex sits exactly at the contact patch
+
     def lathe(profile, outward_sign, mat_fn):
         rings = []
         for (r, y) in profile:
             if r < 1e-6:
                 rings.append([T.v((0, y, 0))] * segs)
             else:
-                rings.append([T.v((r * math.cos(2 * math.pi * i / segs), y, r * math.sin(2 * math.pi * i / segs)))
-                              for i in range(segs)])
+                rings.append([T.v((r * math.cos(ang(i)), y, r * math.sin(ang(i)))) for i in range(segs)])
         for k in range(len(profile) - 1):
             (r0, y0), (r1, y1) = profile[k], profile[k + 1]
             dr, dy = r1 - r0, y1 - y0
             nr, ny = (-dy * outward_sign, dr * outward_sign)
             for i in range(segs):
                 j = (i + 1) % segs
-                a = 2 * math.pi * (i + 0.5) / segs
+                a = ang(i + 0.5)
                 out = Vector((nr * math.cos(a), ny, nr * math.sin(a)))
                 T.face([rings[k][i], rings[k][j], rings[k + 1][j], rings[k + 1][i]], mat_fn(k, i), out=out)
         return rings
 
-    tyre = [(rr + 0.004, -0.022), (R * 0.82, -0.002), (R * 0.965, -0.014), (R, -0.05),
-            (R, -(tw - 0.05)), (R * 0.965, -(tw - 0.014)), (R * 0.82, -(tw - 0.002)), (rr + 0.004, -(tw - 0.022))]
+    tyre = [(rr + 0.004, -0.022), (R * 0.87, -0.003), (R, -0.032),
+            (R, -(tw - 0.032)), (R * 0.87, -(tw - 0.003)), (rr + 0.004, -(tw - 0.022))]
     lathe(tyre, 1, lambda k, i: "tyre")
 
     if style == "alloy":
-        rim = [(rr, -0.024), (rr * 0.95, -0.014), (rr * 0.86, -0.04), (rr * 0.36, -0.052),
-               (rr * 0.24, -0.03), (0.0, -0.028)]
+        rim = [(rr, -0.024), (rr * 0.93, -0.012), (rr * 0.82, -0.04), (rr * 0.3, -0.05), (0.0, -0.03)]
 
         def rim_mat(k, i):
             if k == 2 and i % 3 != 0:
@@ -446,6 +447,16 @@ class Body:
                     k += 1
                 c = sum((v.co for v in vs), Vector()) / len(vs)
                 B.face(vs, mat_fn(c.y, c.z), out=out, uvfn=uvfn)
+
+    def end_x(self, z, end):
+        """Fascia x at height z on the end cap ('f' or 'r'), plus the fascia slope dx/dz there."""
+        xs_, xe, rc, rk, rtab, sgn = self.zones[end]
+        half = self.ring((xe, end, 1.0))
+        for (x0, y0, z0), (x1, y1, z1) in zip(half[2:], half[3:]):
+            if z0 <= z <= z1 and z1 > z0:
+                t = (z - z0) / (z1 - z0)
+                return lerp(x0, x1, t), (x1 - x0) / (z1 - z0)
+        return xe, 0.0
 
     def side_y(self, x, z):
         """Outer surface y (left side) at x, z, from the ring polyline."""
@@ -711,10 +722,50 @@ def shut_strip(B, body, xs, y, width=0.012, lift=0.003, mat="trim"):
             prev = (a, b)
 
 
+def seam_strip(B, body, x, sides=(1, -1), z_lo=None, z_hi=None, width=0.012):
+    """Dark door shut-line lying on the body side at x (follows the ring from sill to shoulder)."""
+    half = body.ring((x, None, 0.0))
+    nb = len(body.P["breaks"])
+    side_pts = half[2:2 + nb + 2]
+    if z_lo is not None:
+        side_pts = [p for p in side_pts if p[2] >= z_lo - 1e-4]
+    if z_hi is not None:
+        side_pts = [p for p in side_pts if p[2] <= z_hi + 1e-4]
+    for s in sides:
+        prev = None
+        for (_, y, z) in side_pts:
+            a = B.v((x - width / 2, s * (y + 0.0025), z))
+            b = B.v((x + width / 2, s * (y + 0.0025), z))
+            if prev:
+                B.face([prev[0], prev[1], b, a], "trim", out=(0, s, 0))
+            prev = (a, b)
+
+
+def grille(B, body, z0, z1, w, bars=1, depth=0.05, bevel=0.022):
+    """Grille plate on the front fascia: dark face, chrome (rim) bevelled surround and slats."""
+    zm = (z0 + z1) / 2
+    x, slope = body.end_x(zm, "f")
+    ang = math.atan(slope)
+    M = Matrix.Rotation(ang, 4, "Y")
+    rbox(B, (x - depth / 2 + 0.02, 0, zm), (depth, 2 * w, z1 - z0), "trim", bevel=bevel,
+         mat_fn=lambda n: "trim" if n.x > 0.85 else "rim", M=M)
+    for i in range(bars):
+        zb = z0 + (z1 - z0) * (i + 1) / (bars + 1)
+        xb, _ = body.end_x(zb, "f")
+        rbox(B, (xb + 0.022, 0, zb), (0.02, 2 * w - 0.05, 0.022), "rim", bevel=0.0, M=M)
+
+
+def lamp(B, x, y, z, size, lens="light_front", housing="trim", facing=1):
+    """Separate lamp unit: dark housing with a lens sitting proud of it."""
+    hx, hy, hz = size
+    rbox(B, (x, y, z), (hx, hy + 0.04, hz + 0.04), housing, bevel=0.015)
+    rbox(B, (x + facing * hx / 2, y, z), (0.02, hy, hz), lens, bevel=0.006)
+
+
 def door_handle(B, body, x, z, w=0.13):
     for s in (1, -1):
         y = body.side_y(x, z)
-        rbox(B, (x, s * (y + 0.008), z), (w, 0.03, 0.03), "trim", bevel=0.008)
+        rbox(B, (x, s * (y + 0.008), z), (w, 0.03, 0.03), "trim", bevel=0.0)
 
 
 def mirror(B, x, y, z, s, size=(0.09, 0.2, 0.12), arm=0.08):
@@ -777,6 +828,8 @@ def car(name, P, G, extras=None):
     bps = {"f": sorted(set([b for b in bps_f] + [-b for b in bps_f])),
            "r": sorted(set([b for b in bps_r] + [-b for b in bps_r]))}
     body.build(B, mat_fn, cap_fn, bps)
+    print(f"[vehicles]   {name} body loft: {B.tris()}")
+    t0 = B.tris()
 
     if G:
         greenhouse(B, body, G)
@@ -786,12 +839,18 @@ def car(name, P, G, extras=None):
             mirror(B, mx, body.hw(mx) - G["inset"] + 0.01, mz, s)
     for (x, z) in P.get("handles", []):
         door_handle(B, body, x, z)
+    for sx in P.get("seam_strips", []):
+        seam_strip(B, body, sx)
+    if P.get("grille_bars") is not None:
+        grille(B, body, gr["z0"] + 0.015, gr["z1"] - 0.015, gr["w"] - 0.01, bars=P["grille_bars"])
     if P.get("hood_lines"):
         x0, x1 = P["hood_lines"]
         xs = [lerp(x0, x1, i / 6) for i in range(7)]
         shut_strip(B, body, xs, body.w - 0.13)
 
+    print(f"[vehicles]   {name} greenhouse+details: {B.tris() - t0}")
     W = wheel(P["R"], P["tw"], segs=P.get("wheel_segs", 15), style=P.get("wheel_style", "alloy"))
+    print(f"[vehicles]   {name} wheel: {W.tris()} each")
     yo = body.w + 0.01
     for (xa, _) in P["arches"]:
         for s in (1, -1):
@@ -815,18 +874,18 @@ def sedan_params(L=4.6, W=1.85, belt=0.96, R=0.33):
         bulge_tab=[(0.2, -0.03), (0.42, 0.0), (0.64, 0.016), (0.84, 0.012), (1.0, -0.012)],
         bulge_max=0.016,
         rb=0.07, rt=0.06, crown=0.035,
-        breaks=[0.40, 0.48, 0.62, 0.74, 0.86],
+        breaks=[0.40, 0.48, 0.62, 0.74],
         corner_f=(0.32, 0.16, [(0.0, 0.07), (0.25, 0.0), (0.55, 0.03), (1.0, 0.16)]),
         corner_r=(0.30, 0.08, [(0.0, 0.07), (0.3, 0.0), (0.75, 0.0), (1.0, 0.08)]),
         head=dict(z0=0.62, z1=0.74, y_in=0.40, u=0.6),
-        tail=dict(z0=0.74, z1=0.86, y_in=0.36, u=0.6),
+        tail=dict(z0=0.74, z1=0.92, y_in=0.36, u=0.6),
         grille=dict(z0=0.48, z1=0.74, w=0.34),
         intake=dict(z0=0.30, z1=0.40, w=0.62),
         valance=0.30, plate=(0.48, 0.62),
-        seams=[0.93, -0.02, -0.98],
+        seam_strips=[0.93, -0.02, -0.98], grille_bars=1, arch_steps=6,
         handles=[(0.62, 0.86), (-0.38, 0.86)],
         hood_lines=(0.98, xf - 0.30),
-        max_step=0.35,
+        max_step=0.5,
     )
 
 
@@ -854,7 +913,7 @@ def build_cab():
     P["arches"] = [(ax_f, 0.41), (ax_r, 0.41)]
     P["zt_tab"] = [(-xf, 0.92), (-xf + 0.22, 1.01), (-1.75, 1.02), (-1.42, belt), (0.95, belt), (1.6, 0.90),
                    (xf - 0.25, 0.84), (xf, 0.77)]
-    P["seams"] = [0.98, -0.05, -1.08]
+    P["seam_strips"] = [0.98, -0.05, -1.08]
     P["handles"] = [(0.66, 0.88), (-0.42, 0.88)]
     P["hood_lines"] = (1.05, xf - 0.30)
     G = sedan_gh(belt=belt, top=1.50, ws=(1.05, 0.16), rear=(-1.02, -1.70))
@@ -903,10 +962,10 @@ def build_suv():
         intake=dict(z0=0.42, z1=0.50, w=0.66),
         valance=0.50, plate=(0.58, 0.76),
         cladding=0.10,
-        seams=[1.00, 0.0, -1.03],
+        seam_strips=[1.00, 0.0, -1.03], grille_bars=2, arch_steps=6,
         handles=[(0.70, 1.03), (-0.36, 1.03)],
         hood_lines=(1.12, xf - 0.30),
-        max_step=0.35,
+        max_step=0.5,
     )
     G = dict(
         ctrl=[(1.12, belt - 0.01), (0.30, 1.735), (-1.95, 1.745), (-2.30, belt + 0.02)],
@@ -934,7 +993,7 @@ def build_van():
     roof = 2.34
     P = dict(
         L=L, W=W, R=R, tw=0.235, belt=belt,
-        arches=[(ax_f, R + 0.08), (ax_r, R + 0.08)],
+        arches=[(ax_f, R + 0.08), (ax_r, R + 0.08)], arch_steps=6,
         zb_tab=[(-xf, 0.40), (-xf + 0.4, 0.34), (xf - 0.4, 0.34), (xf, 0.40)],
         zt_tab=[(-xf, roof - 0.04), (-xf + 0.15, roof), (0.55, roof), (0.95, 2.12), (1.62, 1.20),
                 (2.30, 1.06), (xf, 0.95)],
@@ -951,7 +1010,6 @@ def build_van():
         intake=dict(z0=0.40, z1=0.52, w=0.70),
         valance=0.52,
         cladding=0.10,
-        seams=[1.55, 0.62, -0.95],
         handles=[(1.05, 1.08), (0.40, 1.08)],
         max_step=0.45,
     )
@@ -979,11 +1037,6 @@ def build_van():
         # cab door glass
         if sw[0] < xm < sw[1] and belt + 0.02 < c.z < 1.96 and abs(c.y) > body.w - 0.2:
             return "glass"
-        for sx in P["seams"]:
-            if abs(xm - sx) < 0.004 and abs(c.y) > body.w - 0.15 and info["zb"] + 0.03 < c.z < 2.2:
-                if sx == -0.95 and c.y > 0:
-                    continue   # sliding door only on the kerb side
-                return "trim"
         return "paint"
 
     def cap_fn(end, y, z):
@@ -1009,12 +1062,21 @@ def build_van():
     body.build(B, mat_fn, cap_fn, bps, extra_stations=[0.95, 1.62, 0.60, 1.52])
     for (x, z) in P["handles"]:
         door_handle(B, body, x, z)
+    seam_strip(B, body, 1.56, z_hi=1.3)
+    seam_strip(B, body, 0.60, z_hi=2.0)
+    seam_strip(B, body, -0.95, sides=(-1,), z_hi=2.0)
+    grille(B, body, 0.64, 0.94, 0.43, bars=2)
     # sliding door rail
     y = body.side_y(-0.4, 1.96)
     rbox(B, (-1.5, -(y + 0.006), 1.97), (1.1, 0.025, 0.03), "trim", bevel=0.008)
     # mirrors (big commercial ones)
     for s in (1, -1):
-        mirror(B, 1.55, body.w - 0.02, 1.62, s, size=(0.08, 0.16, 0.26), arm=0.12)
+        mirror(B, 1.30, body.w - 0.04, 1.42, s, size=(0.08, 0.16, 0.26), arm=0.12)
+    # protective side mouldings between the arches
+    xa0, xa1 = P["arches"][1][0] + 0.5, P["arches"][0][0] - 0.5
+    for s in (1, -1):
+        y = body.side_y((xa0 + xa1) / 2, 0.72)
+        rbox(B, ((xa0 + xa1) / 2, s * (y + 0.006), 0.72), (xa1 - xa0, 0.03, 0.09), "trim", bevel=0.012)
     # rear step bumper
     rbox(B, (-L / 2 + 0.05, 0, 0.42), (0.18, 1.6, 0.10), "trim", bevel=0.02)
     Wh = wheel(R, 0.235, segs=15, style="steel")
@@ -1040,7 +1102,7 @@ def build_bus():
         bulge_tab=[(0.3, -0.01), (0.6, 0.0), (1.2, 0.012), (2.5, 0.0), (3.0, -0.03)],
         bulge_max=0.012,
         rb=0.06, rt=0.16, crown=0.03,
-        breaks=[0.62, 0.80, win[0], win[1], 2.62, 2.80],
+        breaks=[0.62, 0.95, win[0], win[1], 2.62, 2.80],
         corner_f=(0.22, 0.14, [(0.0, 0.05), (0.12, 0.0), (0.4, 0.0), (0.8, 0.10), (1.0, 0.14)]),
         corner_r=(0.22, 0.03, [(0.0, 0.03), (0.15, 0.0), (1.0, 0.02)]),
         corner_us=[1.0, 0.7, 0.4],
@@ -1071,27 +1133,25 @@ def build_bus():
         if seg <= 1:
             return "trim"
         side = abs(c.y) > body.w - 0.12
-        if zone == "f" and u >= 0.65 and 0.62 <= c.z <= 0.80:
-            return "light_front"
-        if zone == "r" and u >= 0.6 and 0.80 <= c.z <= win[0]:
+        if zone == "r" and u >= 0.6 and 0.95 <= c.z <= win[0]:
             return "light_rear"
-        if c.z < 0.62 and (zone or side):
-            return "trim" if c.z < info["zb"] + 0.2 or zone else "paint"
+        if c.z < 0.62 and zone:
+            return "trim"
         d = in_door(xm, c)
         if d and side and c.z < 2.62:
             if abs(xm - d[0]) < 0.02 or abs(xm - d[1]) < 0.02 or abs(xm - (d[0] + d[1]) / 2) < 0.012:
                 return "trim"
-            return "glass" if c.z > 0.80 else "trim"
+            return "glass" if c.z > 0.95 else "trim"
         if side and win[0] <= c.z <= win[1]:
             for p in pillars:
                 if abs(xm - p) < 0.065:
-                    return "trim"
+                    return "paint"
             if zone == "f" and u > 0.3:
                 return "glass"
             if xm < -xf + 0.3:
                 return "paint"
             return "glass"
-        if zone == "f" and u >= 0.7 and win[0] - 0.4 < c.z < 2.62:
+        if zone == "f" and u >= 0.7 and 0.95 < c.z < 2.62:
             return "glass"
         return "paint"
 
@@ -1102,20 +1162,18 @@ def build_bus():
         if end == "f":
             if 2.62 <= z <= 2.80 and ay < sign_w:
                 return "sign"
-            if 0.80 <= z <= 2.62 and ay < body.w - 0.14:
-                return "glass" if z > win[0] else "paint"
-            if 0.62 <= z <= 0.80 and ay > 0.84:
-                return "light_front"
+            if 0.95 <= z <= 2.62 and ay < body.w - 0.14:
+                return "glass"
             if z < 0.62:
                 return "trim"
             return "paint"
         if z < 0.62:
             return "trim"
-        if 0.80 <= z <= win[0] and ay > 0.9:
+        if 0.95 <= z <= win[0] and ay > 0.9:
             return "light_rear"
         if 1.80 <= z <= win[1] and ay < 0.95:
             return "glass"
-        if 0.80 <= z <= win[0] and ay < 0.75:
+        if 0.62 <= z <= win[0] and ay < 0.75:
             return "trim"   # engine grille
         return "paint"
 
@@ -1129,6 +1187,12 @@ def build_bus():
     bps = {"f": [-1.16, -sign_w, -0.84, 0.84, sign_w, 1.16], "r": [-0.95, -0.9, -0.75, 0.75, 0.9, 0.95]}
     body.build(B, mat_fn, cap_fn, bps, cap_uv=cap_uv, extra_stations=extra)
 
+    # headlight clusters either side of the front, below the windscreen
+    for s in (1, -1):
+        x, _ = body.end_x(0.78, "f")
+        rbox(B, (x - 0.01, s * 0.86, 0.78), (0.06, 0.40, 0.24), "trim", bevel=0.03)
+        for dy in (-0.09, 0.09):
+            rbox(B, (x + 0.02, s * (0.86 + dy), 0.79), (0.03, 0.15, 0.13), "light_front", bevel=0.02)
     # roof AC pod
     rbox(B, (-3.2, 0, roof + 0.14), (2.6, 1.7, 0.26), "paint", bevel=0.08, segs=2)
     rbox(B, (2.6, 0, roof + 0.06), (0.9, 0.9, 0.1), "trim", bevel=0.03)   # roof hatch
@@ -1193,8 +1257,6 @@ def build_truck():
         if seg <= 1:
             return "trim"
         side = abs(c.y) > cab.w - 0.12
-        if zone == "f" and u >= 0.6 and 0.84 <= c.z <= 1.0:
-            return "light_front"
         if zone == "f" and u >= 0.7 and 1.50 <= c.z <= 2.32:
             return "glass"
         if c.z < 0.84 and (zone or side):
@@ -1210,8 +1272,6 @@ def build_truck():
         if end == "f":
             if 1.50 <= z <= 2.32 and ay < cab.w - 0.16:
                 return "glass"
-            if 0.84 <= z <= 1.00 and ay > 0.62:
-                return "light_front"
             if 0.84 <= z <= 1.42 and ay < 0.55:
                 return "trim"
             if z < 0.84:
@@ -1226,6 +1286,11 @@ def build_truck():
         rbox(B, (c2 - 0.1, s * (cab.w + 0.24), 1.78), (0.07, 0.18, 0.40), "trim", bevel=0.025,
              mat_fn=lambda n: "glass" if n.x < -0.8 else "trim")
     door_handle(B, cab, -0.5, 1.38)
+    for s in (1, -1):
+        x, _ = cab.end_x(0.92, "f")
+        rbox(B, (x - 0.01, s * 0.74, 0.92), (0.06, 0.30, 0.18), "trim", bevel=0.025)
+        rbox(B, (x + 0.02, s * 0.74, 0.92), (0.03, 0.24, 0.12), "light_front", bevel=0.02)
+    grille(B, cab, 1.06, 1.40, 0.53, bars=3)
     # front bumper + step
     rbox(B, (c2 + 0.02, 0, 0.62), (0.18, cab_w + 0.04, 0.24), "trim", bevel=0.05, segs=2)
     for s in (1, -1):
@@ -1423,8 +1488,8 @@ def previews(objs, only=None):
         tgt = Vector((0, 0, dims.z * 0.42))
         if only and ob.name not in only:
             continue
-        shoot(os.path.join(PREV_DIR, f"{ob.name}.png"), tgt, size * 1.75 + 1.5, 140, 14)
-        shoot(os.path.join(PREV_DIR, f"{ob.name}_rear.png"), tgt, size * 1.75 + 1.5, -30, 16)
+        shoot(os.path.join(PREV_DIR, f"{ob.name}.png"), tgt, size * 1.75 + 1.5, 35, 14)
+        shoot(os.path.join(PREV_DIR, f"{ob.name}_rear.png"), tgt, size * 1.75 + 1.5, 150, 16)
         shoot(os.path.join(PREV_DIR, f"{ob.name}_side.png"), tgt, size * 1.6 + 1.5, 90, 2, lens=50)
     if only:
         return
@@ -1437,7 +1502,7 @@ def previews(objs, only=None):
         x += w + 1.2
     total = x - 1.2
     tgt = Vector((total / 2, 0, 1.2))
-    shoot(os.path.join(PREV_DIR, "lineup.png"), tgt, total * 1.25, 150, 12, res=(1800, 700), lens=50)
+    shoot(os.path.join(PREV_DIR, "lineup.png"), tgt, total * 1.5, 12, 16, res=(1800, 700), lens=50)
     for ob in objs:
         ob.location = (0, 0, 0)
 

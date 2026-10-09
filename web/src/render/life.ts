@@ -97,6 +97,7 @@ export class TrafficView {
           const name = (m.material as THREE.Material).name;
           const paint = name === "paint";
           if (paint) mat.color.set(0xffffff);
+          if (name === "light_front" || name === "light_rear" || name === "sign") mat.emissiveIntensity = name === "sign" ? 2 : 2.6; // so they glow and bloom
           list.push({ geo, mat, paint });
         });
         if (list.length) this.setParts(kind, list);

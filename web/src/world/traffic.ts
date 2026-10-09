@@ -94,13 +94,15 @@ export class Traffic {
         const nl = c.dir === 0 ? Math.max(1, Math.floor(lanes / 2)) : lanes;
         for (let l = 0; l < nl; l++) {
           const count = Math.floor(c.length / (38 + h01(id) * 30));
+          // one speed per lane and cars spaced along it, so nobody drives through anybody
+          const laneSpeed = 8.5 + h01(id * 17 + l) * 4.5, laneOffset = h01(id * 23 + l) * c.length;
           for (let k = 0; k < count; k++) {
             id++;
             const r = h01(id * 7);
             const kind: VehicleKind = r < 0.45 ? "cab" : r < 0.65 ? "car" : r < 0.77 ? "suv" : r < 0.85 ? "van" : r < 0.93 ? "truck" : "bus";
             const laneW = c.width / Math.max(lanes, 1);
             const lane = c.dir === 0 ? (l + 0.5) * Math.min(3.3, laneW) : (l - (nl - 1) / 2) * Math.min(3.3, laneW);
-            this.vehicles.push({ kind, chain: ci, lane, dir: d, speed: (kind === "bus" ? 7 : 9) + h01(id * 13) * 5, s0: h01(id * 3) * c.length, colorSeed: id });
+            this.vehicles.push({ kind, chain: ci, lane, dir: d, speed: laneSpeed, s0: laneOffset + (k + (h01(id * 3) - 0.5) * 0.35) * (c.length / count), colorSeed: id });
           }
         }
       }

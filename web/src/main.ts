@@ -308,7 +308,7 @@ function tick(dt: number, render: boolean) {
   trains.update(leaf.clock, focus);
   buildings.update(focus);
   facadeProps.update(focus);
-  if (freeCam) flow.crowd.update(leaf.clock + wall, focus.x, focus.z);
+  if (freeCam) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, 400); }
   crowdView.update();
   pigeons.update(dt, leaf.pos, wall);
   ground.update(wall);
