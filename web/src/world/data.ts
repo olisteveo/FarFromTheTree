@@ -31,8 +31,9 @@ export interface RawCity {
   landmarks: Record<string, [number, number]>;
 }
 
-export interface StreetHit { tx: number; tz: number; w: number; d: number; dist: number; name: string; idx: number }
-export const streetHit = (): StreetHit => ({ tx: 0, tz: 1, w: 10, d: 0, dist: Infinity, name: "", idx: -1 });
+/** cx, cz: from the query point to the nearest point on the centreline */
+export interface StreetHit { tx: number; tz: number; w: number; d: number; dist: number; name: string; idx: number; cx: number; cz: number }
+export const streetHit = (): StreetHit => ({ tx: 0, tz: 1, w: 10, d: 0, dist: Infinity, name: "", idx: -1, cx: 0, cz: 0 });
 
 export interface Building {
   id: number;
@@ -121,9 +122,28 @@ export class Polyline {
     out.tx = dx / L; out.tz = dz / L;
     return out;
   }
+  // segments bucketed in a coarse grid, for an exact nearest search that doesn't scan the whole line
+  private segCell = 64;
+  private segGrid: Map<number, number[]> | null = null;
+  private segKey(ix: number, iz: number) { return (ix + 4096) * 8192 + (iz + 4096); }
+  private buildSegGrid() {
+    const g = new Map<number, number[]>(), c = this.segCell, n = this.x.length;
+    for (let i = 0; i < n - 1; i++) {
+      const x0 = Math.min(this.x[i], this.x[i + 1]), x1 = Math.max(this.x[i], this.x[i + 1]);
+      const z0 = Math.min(this.z[i], this.z[i + 1]), z1 = Math.max(this.z[i], this.z[i + 1]);
+      for (let ix = Math.floor(x0 / c); ix <= Math.floor(x1 / c); ix++)
+        for (let iz = Math.floor(z0 / c); iz <= Math.floor(z1 / c); iz++) {
+          const k = this.segKey(ix, iz);
+          (g.get(k) ?? g.set(k, []).get(k)!).push(i);
+        }
+    }
+    this.segGrid = g;
+  }
+
   /** Nearest point: distance along (s), signed lateral offset (+ = toward +x of the tangent's left normal, i.e. west when heading uptown), distance. */
   nearest(x: number, z: number, hint = -1, out = { s: 0, off: 0, d: 0 }): { s: number; off: number; d: number } {
     const n = this.x.length;
+    if (hint < 0) return this.nearestIndexed(x, z, out);
     let lo = 0, hi = n - 1;
     if (hint >= 0) { const i = Math.round(hint / this.step); lo = Math.max(0, i - 80); hi = Math.min(n - 1, i + 80); }
     let best = Infinity, bs = 0, boff = 0;
@@ -142,7 +162,36 @@ export class Polyline {
     }
     out.s = bs; out.off = boff; out.d = Math.sqrt(best);
     // a stale hint (the point jumped) can miss the true nearest: search everything instead
-    if (hint >= 0 && (out.d > 40 || bs <= lo * this.step + 1 || bs >= hi * this.step - 1) && (lo > 0 || hi < n - 1)) return this.nearest(x, z, -1, out);
+    if (hint >= 0 && (out.d > 40 || bs <= lo * this.step + 1 || bs >= hi * this.step - 1) && (lo > 0 || hi < n - 1)) return this.nearestIndexed(x, z, out);
+    return out;
+  }
+
+  /** The exact nearest point, searching the segment grid in growing rings. */
+  private nearestIndexed(x: number, z: number, out: { s: number; off: number; d: number }) {
+    if (!this.segGrid) this.buildSegGrid();
+    const c = this.segCell, cx = Math.floor(x / c), cz = Math.floor(z / c);
+    let best = Infinity, bi = -1, bt = 0;
+    const test = (i: number) => {
+      const ax = this.x[i], az = this.z[i], dx = this.x[i + 1] - ax, dz = this.z[i + 1] - az;
+      const L2 = dx * dx + dz * dz || 1e-9;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+      const d2 = (x - ax - dx * t) ** 2 + (z - az - dz * t) ** 2;
+      if (d2 < best || (d2 === best && i < bi)) { best = d2; bi = i; bt = t; }
+    };
+    for (let ring = 0; ring < 400; ring++) {
+      // everything within ring cells is searched: stop once the best beats the ring's inner edge
+      if (bi >= 0 && Math.sqrt(best) <= (ring - 1) * c) break;
+      for (let ix = cx - ring; ix <= cx + ring; ix++)
+        for (let iz = cz - ring; iz <= cz + ring; iz++) {
+          if (Math.max(Math.abs(ix - cx), Math.abs(iz - cz)) !== ring) continue;
+          const list = this.segGrid!.get(this.segKey(ix, iz));
+          if (list) for (const i of list) test(i);
+        }
+    }
+    if (bi < 0) { out.s = 0; out.off = 0; out.d = Infinity; return out; }
+    const ax = this.x[bi], az = this.z[bi], dx = this.x[bi + 1] - ax, dz = this.z[bi + 1] - az, L = Math.hypot(dx, dz) || 1e-9;
+    const px = ax + dx * bt, pz = az + dz * bt;
+    out.s = (bi + bt) * this.step; out.off = (x - px) * (dz / L) - (z - pz) * (dx / L); out.d = Math.sqrt(best);
     return out;
   }
 }
@@ -271,9 +320,9 @@ export class CityData {
         const L = Math.sqrt(L2);
         if (d < a.dist) {
           if (a.name !== st.n) Object.assign(b, a);
-          a.dist = d; a.tx = dx / L; a.tz = dz / L; a.w = st.w; a.d = st.d; a.name = st.n; a.idx = i;
+          a.dist = d; a.tx = dx / L; a.tz = dz / L; a.w = st.w; a.d = st.d; a.name = st.n; a.idx = i; a.cx = ax + dx * t - x; a.cz = az + dz * t - z;
         } else if (d < b.dist && st.n !== a.name) {
-          b.dist = d; b.tx = dx / L; b.tz = dz / L; b.w = st.w; b.d = st.d; b.name = st.n; b.idx = i;
+          b.dist = d; b.tx = dx / L; b.tz = dz / L; b.w = st.w; b.d = st.d; b.name = st.n; b.idx = i; b.cx = ax + dx * t - x; b.cz = az + dz * t - z;
         }
       }
     }

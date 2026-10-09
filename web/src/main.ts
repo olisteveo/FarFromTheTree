@@ -14,6 +14,7 @@ import { Leaderboard } from "./game/leaderboard";
 import { SubwayArt } from "./render/subwayArt";
 import { CentralPark } from "./render/centralPark";
 import { SubwaySigns } from "./render/subwaySigns";
+import { WindDebris } from "./render/windDebris";
 import { TouchControls, isTouchDevice } from "./game/touch";
 import { useTouchWording } from "./game/tutorial";
 import { PeopleView, type PeopleWalker } from "./render/people";
@@ -130,6 +131,10 @@ const touch = isTouchDevice() ? new TouchControls(document.body, input) : null;
 if (touch) document.body.classList.add("is-touch");
 // finding the subway: big signs at every way in, and a beam + pointer to the next one ahead
 const subwaySigns = new SubwaySigns(city, flow.under, hudEl);
+// litter riding the wind: makes the air readable
+const debris = new WindDebris(flow);
+stage.scene.add(debris.mesh);
+let lastGust = -1;
 stage.scene.add(subwaySigns.root);
 const audio = new Audio(city);
 const leafMeter = new LeafMeter(hudEl);
@@ -230,6 +235,11 @@ function updateCamera(dt: number, t: number) {
   cam.position.copy(camPos);
   look.set(p.x + fx * 1.8 + v.x * 0.06, p.y + 0.2 + v.y * 0.03, p.z + fz * 1.8 + v.z * 0.06);
   cam.lookAt(look);
+  // inside a gust front the air buffets the camera a little
+  if (leaf.state === "flying" && leaf.lane !== "subway") {
+    const g = flow.gustAt(city.route.nearest(p.x, p.z).s, leaf.clock);
+    if (g > 0.05) cam.rotateZ(Math.sin(t * 23) * 0.006 * g + Math.sin(t * 13.7) * 0.004 * g);
+  }
   // speed widens the view; a layer drop kicks it
   const kick = Math.max(0, 1 - (leaf.clock - leaf.boost.t) / 0.6) * 12;
   cam.fov += (clamp(66 + speed * 0.75, 66, 100) + kick - cam.fov) * (1 - Math.exp(-dt * 4));
@@ -340,6 +350,13 @@ function tick(dt: number, render: boolean) {
   const focus = freeCam ? freePos : leaf.pos;
   leafView.update(leaf.pos, leaf.q, wall, leaf.airspeed, leaf.integrity);
   streaks.update(dt, freeCam ? freePos : cam.position.clone().lerp(leaf.pos, 0.6), leaf.clock);
+  debris.update(dt, freeCam ? freePos : leaf.pos, freeCam ? leaf.clock + wall : leaf.clock);
+  // a gust front coming up behind you: you hear it first
+  if (leaf.state === "flying" && leaf.lane !== "subway") {
+    const s = city.route.nearest(leaf.pos.x, leaf.pos.z).s;
+    const id = Math.floor((leaf.clock * AIR.gustSpeed - s) / (AIR.gustSpeed * AIR.gustEvery));
+    if (flow.gustEta(s, leaf.clock) < 1.4 && id !== lastGust) { lastGust = id; audio.play("gust_blast", { vol: 0.8 }); }
+  }
   steam.update(dt, focus, leaf.clock, window.innerHeight);
   traffic.update(focus);
   if (!subwayArtReady) trains.update(leaf.clock, focus);

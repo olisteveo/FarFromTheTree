@@ -32,6 +32,9 @@ export const AIR = {
   tunnel: 11,         // the tunnel's standing draught
   station: 7,
   canyonLift: 1.5,    // mean updraft in the street canyons (m/s)
+  gust: 9,            // gust fronts: extra tailwind at the front (m/s)
+  gustSpeed: 15,      // ...how fast they sweep uptown
+  gustEvery: 30,      // ...seconds between them at any one spot
   cushion: 2.4,       // tunnel walls: how far out (m) the air starts turning along them
   cushionPush: 7,     // ...and how hard it pushes a leaf off them (m/s, right at the wall)
   trainPush: 20,      // extra ahead of an uptown train
@@ -100,6 +103,25 @@ export class Airflow {
     if (H > 6 && y < H * 0.88) return "street";
     if (H <= 6 && y < 14) return "street"; // open ground: parks, squares, sites
     return "roof";
+  }
+
+  /** How much of a gust front is at route position s at time t (0..1): a sharp leading edge
+   *  sweeping uptown at AIR.gustSpeed, a long churning tail behind it. */
+  gustAt(s: number, t: number): number {
+    const gap = AIR.gustSpeed * AIR.gustEvery;
+    // fronts are evenly spaced in time; how far behind the nearest front ahead of s are we?
+    const behind = ((t * AIR.gustSpeed - s) % gap + gap) % gap; // 0 right at a front
+    const lead = gap - behind; // distance to the next front coming up from downtown
+    const tail = Math.exp(-behind / 38) * Math.min(1, behind / 3 + 0.35);
+    const edge = lead < 8 ? (1 - lead / 8) * 0.5 : 0;
+    return Math.min(1, tail + edge);
+  }
+
+  /** Seconds until the next gust front reaches route position s (for the warning whoosh). */
+  gustEta(s: number, t: number): number {
+    const gap = AIR.gustSpeed * AIR.gustEvery;
+    const behind = ((t * AIR.gustSpeed - s) % gap + gap) % gap;
+    return (gap - behind) / AIR.gustSpeed;
   }
 
   sample(x: number, y: number, z: number, t: number, out: AirSample): AirSample {
@@ -247,16 +269,8 @@ export class Airflow {
           sign = Math.sign(align); // route-aligned: always a tailwind uptown
           speed = AIR.avenue * clamp(22 / Math.max(6, h.w), 0.85, 1.4);
           // like a river current, the canyon keeps you in its middle
-          const p = city.raw.streets[h.idx].p;
-          let best = Infinity, cx = 0, cz = 0;
-          for (let k = 0; k < p.length - 2; k += 2) {
-            const ax = p[k], az = p[k + 1], dx = p[k + 2] - ax, dz = p[k + 3] - az, L2 = dx * dx + dz * dz || 1e-9;
-            const tt = clamp(((x - ax) * dx + (z - az) * dz) / L2, 0, 1), px = ax + dx * tt, pz = az + dz * tt;
-            const dd = (px - x) ** 2 + (pz - z) ** 2;
-            if (dd < best) { best = dd; cx = px - x; cz = pz - z; }
-          }
-          sx += cx * AIR.channel * tWeight * 2;
-          sz += cz * AIR.channel * tWeight * 2;
+          sx += h.cx * AIR.channel * tWeight * 2;
+          sz += h.cz * AIR.channel * tWeight * 2;
         } else {
           // cross streets gust across in their traffic direction, in pulses
           sign = h.d !== 0 ? h.d : (h.idx % 2 ? 1 : -1);
@@ -362,6 +376,22 @@ export class Airflow {
         if (side > 0.9 || Math.abs(ry) > 0.8) continue;
         const k = (1 - out / 4.5) * (1 - side / 0.9);
         wx += p.nx * 7 * k; wz += p.nz * 7 * k; wy += 1.5 * k;
+      }
+    }
+
+    // ---------------------------------------------------------------- gust fronts
+    // waves of wind sweeping uptown, street and roofs: you hear one coming, the litter kicks
+    // up, and if you're in it you're flung along. Catch the front edge and surf it.
+    {
+      const g = this.gustAt(n.s, t);
+      if (g > 0.01) {
+        const k = g * (y > -0.4 ? 1 : 0);
+        wx += rt.tx * AIR.gust * k; wz += rt.tz * AIR.gust * k;
+        wy += 1.2 * k;
+        // churning inside it
+        wx += 2.5 * k * noise3(x / 9, y / 6, z / 9 + t * 2.2, 61);
+        wz += 2.5 * k * noise3(x / 9, y / 6, z / 9 + t * 2.2, 62);
+        wy += 1.5 * k * noise3(x / 9, y / 6, z / 9 + t * 2.2, 63);
       }
     }
 

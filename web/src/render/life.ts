@@ -347,6 +347,7 @@ export class WindStreaks {
   private flip = 0;
   private p: Float32Array; private age: Float32Array; private life: Float32Array;
   private pos: Float32Array; private col: Float32Array;
+  private wv = new Float32Array(560 * 3).fill(1e9);
   private s: AirSample = { x: 0, y: 0, z: 0, lane: "street", vehicle: false, train: false };
   enabled = true;
   constructor(private flow: Airflow) {
@@ -367,10 +368,10 @@ export class WindStreaks {
     const R = 28, under = focus.y < -0.4;
     const route = this.flow.city.route;
     const rt = route.at(route.nearest(focus.x, focus.z).s);
-    // half the streaks each frame (each moves two frames' worth): the same look for half the wind samples
-    this.flip ^= 1;
-    dt *= 2;
-    for (let i = this.flip; i < this.n; i += 2) {
+    // every streak moves every frame on the wind it last sampled; a quarter of them re-sample
+    // each frame (the wind field is smooth, so this looks the same for a quarter of the cost)
+    this.flip = (this.flip + 1) & 3;
+    for (let i = 0; i < this.n; i++) {
       let x = this.p[i * 3], y = this.p[i * 3 + 1], z = this.p[i * 3 + 2];
       if (this.age[i] > this.life[i] || Math.abs(x - focus.x) > R || Math.abs(z - focus.z) > R || Math.abs(y - focus.y) > 14 || (under !== y < -0.4)) {
         x = focus.x + (Math.random() * 2 - 1) * R;
@@ -378,8 +379,13 @@ export class WindStreaks {
         y = under ? TUNNEL.floor + 0.6 + Math.random() * 5.5 : Math.max(0.3, focus.y + (Math.random() * 2 - 1) * 12);
         this.age[i] = 0;
         this.life[i] = 0.8 + Math.random() * 1.4;
+        this.wv[i * 3 + 1] = 1e9; // force a sample
       }
-      const w = this.flow.sample(x, y, z, t, this.s);
+      if ((i & 3) === this.flip || this.wv[i * 3 + 1] === 1e9) {
+        const s = this.flow.sample(x, y, z, t, this.s);
+        this.wv[i * 3] = s.x; this.wv[i * 3 + 1] = s.y; this.wv[i * 3 + 2] = s.z;
+      }
+      const w = { x: this.wv[i * 3], y: this.wv[i * 3 + 1], z: this.wv[i * 3 + 2] };
       x += w.x * dt; y += w.y * dt; z += w.z * dt;
       this.age[i] += dt;
       this.p[i * 3] = x; this.p[i * 3 + 1] = y; this.p[i * 3 + 2] = z;
