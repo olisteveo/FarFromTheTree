@@ -60,7 +60,7 @@ export class FacadePropsView {
     const catMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, emissive: 0x000000 });
     catMat.onBeforeCompile = (sh) => {
       // the room behind the cat glows (its vertex colour is the warm one)
-      sh.fragmentShader = sh.fragmentShader.replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n totalEmissiveRadiance += vColor * step(0.7, vColor.r) * step(0.4, vColor.g) * 0.9;");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n totalEmissiveRadiance += vColor.rgb * step(0.7, vColor.r) * step(0.4, vColor.g) * 0.9;");
     };
     const by = new Map<string, FacadeProp[]>();
     for (const p of f.props) {

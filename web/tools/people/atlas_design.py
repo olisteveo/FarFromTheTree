@@ -13,11 +13,11 @@ per-instance coat / accessory colour (mask comes from the mesh's vertex colour).
 """
 import json, math, random
 
-W = H = 1024
+W, H = 1024, 1280
 FACE_W, FACE_H = 256, 128
 CELL = 128
 
-# name -> (col, row) in the 8x4 fabric grid (row 0 starts at y=512)
+# name -> (col, row) in the 8x6 fabric grid (row 0 starts at y=512)
 FABRICS = {
     "wool": (0, 0), "puffer": (1, 0), "parka": (2, 0), "knit": (3, 0),
     "fleece": (4, 0), "denim": (5, 0), "charcoal": (6, 0), "khaki": (7, 0),
@@ -27,8 +27,13 @@ FABRICS = {
     "misc": (4, 2), "hair_black": (5, 2), "hair_brown": (6, 2), "hair_blonde": (7, 2),
     "hair_grey": (0, 3), "hair_red": (1, 3), "fur": (2, 3), "camel": (3, 3),
     "houndstooth": (4, 3), "flannel": (5, 3), "hivis": (6, 3), "boot_tan": (7, 3),
+    "trench": (0, 4), "stroller": (1, 4), "gear": (2, 4), "windbreaker": (3, 4),
+    "dog_golden": (4, 4), "dog_golden_head": (5, 4), "dog_doxie": (6, 4), "dog_doxie_head": (7, 4),
+    "dog_white": (0, 5), "dog_white_head": (1, 5), "dog_fawn": (2, 5), "dog_fawn_head": (3, 5),
+    "dog_coat": (4, 5), "hairlight": (5, 5), "spare1": (6, 5), "spare2": (7, 5),
 }
-TINTABLE = {"wool", "puffer", "parka", "knit", "fleece", "nylon", "houndstooth"}
+TINTABLE = {"wool", "puffer", "parka", "knit", "fleece", "nylon", "houndstooth", "windbreaker", "dog_coat", "hairlight",
+            "dog_golden"}
 
 # faces: index -> spec. skin, hair colour, hair style, extras
 FACES = [
@@ -46,7 +51,18 @@ FACES = [
     dict(name="arjun",  skin=(0.62, 0.43, 0.30), hair=(0.06, 0.05, 0.05), style="short", brow=(0.06, 0.05, 0.04), extras=["mustache"]),
     dict(name="kenji",  skin=(0.92, 0.77, 0.62), hair=(0.08, 0.07, 0.07), style="short", brow=(0.09, 0.07, 0.06), extras=["glasses"]),
     dict(name="rosa",   skin=(0.85, 0.64, 0.50), hair=(0.18, 0.11, 0.07), style="bun",   brow=(0.16, 0.10, 0.07), extras=["lashes"]),
+    dict(name="harold", skin=(0.48, 0.32, 0.22), hair=(0.86, 0.85, 0.83), style="balding", brow=(0.75, 0.74, 0.72), extras=["wrinkles", "beard"]),
+    dict(name="mae",    skin=(0.96, 0.80, 0.70), hair=(0.92, 0.91, 0.90), style="bun",   brow=(0.62, 0.60, 0.58), extras=["wrinkles", "glasses", "lashes"]),
 ]
+# face groups used for per-instance face swaps (m/f adults, older m/f, kids)
+GROUPS = {"ben": "m", "marcus": "m", "omar": "m", "arjun": "m", "kenji": "m", "priya": "f", "mei": "f", "siobhan": "f",
+          "nia": "f", "rosa": "f", "walter": "om", "harold": "om", "gloria": "of", "mae": "of", "leo": "kid", "ava": "kid"}
+
+
+def half(name, top):
+    """dog fur cells: top half for the body, bottom half for legs / tail / ears / neck"""
+    x, y, w, h = fabric_rect(name)
+    return (x, y + (0 if top else h // 2), w, h // 2)
 
 
 def face_rect(i):
@@ -74,7 +90,8 @@ def misc_rect(name):
 def layout_json():
     return {
         "size": [W, H],
-        "faces": {f["name"]: face_rect(i) for i, f in enumerate(FACES)},
+        "faces": [{"name": f["name"], "rect": face_rect(i), "group": GROUPS[f["name"]], "hair": f["hair"], "skin": f["skin"]}
+                  for i, f in enumerate(FACES)],
         "fabrics": {k: fabric_rect(k) for k in FABRICS},
         "misc": {k: misc_rect(k) for k in MISC},
         "tintable": sorted(TINTABLE),
@@ -438,6 +455,98 @@ def fabric_layers(d, name, w=CELL, h=CELL):
             L.append(d.rect(0, y, w, 9, (0.80, 0.82, 0.84)))
             L.append(d.rect(0, y + 3, w, 3, (0.95, 0.96, 0.97)))
         L.append(d.rect(62, 0, 4, h, (0.2, 0.2, 0.2)))
+    elif name == "trench":
+        base = (0.72, 0.62, 0.45)
+        L += twill(d, w, h, base, step=2, op=35)
+        L.append(d.noise(w, h, op=12, scale=30))
+        L.append(d.rect(0, 50, w, 8, mul(base, 0.8)))                       # belt
+        L.append(d.rect(56, 48, 16, 12, (0.30, 0.22, 0.14), round_=2))      # buckle
+        L.append(d.rect(60, 51, 8, 6, mul(base, 0.8)))
+        for by in (16, 32, 72, 90):                                         # double-breasted buttons
+            for bx in (52, 76):
+                L.append(d.ellipse(bx, by, 6, 6, (0.22, 0.16, 0.10)))
+        L.append(d.line([(66, 0), (60, 128)], mul(base, 0.75), 1.2, op=70))
+        L.append(d.rect(14, 0, 24, 20, mul(base, 0.92), op=80))             # storm flap
+    elif name == "stroller":
+        base = (0.16, 0.18, 0.22)
+        L.append(d.rect(0, 0, w, h, base, grad=d.lin(0, 0, 0, h, [(0, mul(base, 1.3)), (1, mul(base, 0.8))])))
+        L += [d.line([(0, y), (w, y)], mul(base, 1.6), 1.0, op=40) for y in range(8, h, 16)]
+        L.append(d.rect(0, 0, w, 10, (0.75, 0.76, 0.78)))                   # piping
+        L.append(d.ellipse(64, 52, 22, 22, (0.85, 0.55, 0.35)))            # invented brand dot
+    elif name == "gear":
+        # quarters: camera body (TL), lens (TR), hard hat (BL), rubber (BR)
+        L.append(d.rect(0, 0, 64, 64, (0.08, 0.08, 0.09)))
+        L.append(d.rect(0, 20, 64, 22, (0.20, 0.20, 0.22)))
+        L.append(d.rect(6, 6, 12, 8, (0.75, 0.75, 0.78)))
+        L.append(d.rect(64, 0, 64, 64, (0.05, 0.05, 0.06)))
+        L.append(d.ellipse(96, 32, 40, 40, (0.20, 0.22, 0.28)))
+        L.append(d.ellipse(96, 32, 22, 22, (0.35, 0.45, 0.65)))
+        L.append(d.ellipse(92, 28, 7, 7, (0.9, 0.95, 1.0)))
+        L.append(d.rect(0, 64, 64, 64, (0.95, 0.94, 0.90), grad=d.lin(0, 64, 0, 128, [(0, (1, 1, 0.97)), (1, (0.82, 0.82, 0.78))])))
+        L.append(d.rect(0, 100, 64, 4, (0.85, 0.40, 0.12)))
+        L.append(d.rect(64, 64, 64, 64, (0.10, 0.10, 0.10)))
+    elif name == "windbreaker":
+        base = (0.84, 0.84, 0.84)
+        L.append(d.rect(0, 0, w, h, base, grad=d.lin(0, 0, w, 0, [(0, mul(base, 0.9)), (0.5, mul(base, 1.08)), (1, mul(base, 0.9))])))
+        L.append(d.rect(0, 34, w, 14, mul(base, 0.62)))                     # colour-block band
+        L.append(d.rect(62, 0, 4, h, (0.22, 0.22, 0.24)))
+        for px in (24, 86):
+            L.append(d.line([(px, 70), (px + 14, 96)], (0.25, 0.25, 0.25), 1.6))
+    elif name in ("dog_golden", "dog_doxie", "dog_white", "dog_fawn"):
+        base = {"dog_golden": (0.86, 0.80, 0.70), "dog_doxie": (0.07, 0.06, 0.05), "dog_white": (0.93, 0.92, 0.88),
+                "dog_fawn": (0.80, 0.64, 0.42)}[name]
+        L.append(d.rect(0, 0, w, h, base, grad=d.lin(0, 0, w, 0, [(0, mul(base, 0.85)), (0.5, mul(base, 1.08)), (1, mul(base, 0.85))])))
+        r = d.rng
+        for i in range(90):
+            x, y = r.uniform(0, w), r.uniform(0, h)
+            L.append(d.line([(x, y), (x + r.uniform(-2, 2), y + r.uniform(4, 9))], mul(base, 0.75) if base[0] > 0.2 else (0.22, 0.2, 0.18), 1.0, op=45))
+        if name == "dog_doxie":   # tan belly (u=0 edges of the body half) and tan paws (bottom of the leg half)
+            tan = (0.62, 0.36, 0.16)
+            L.append(d.rect(0, 0, 18, 64, tan, op=90))
+            L.append(d.rect(w - 18, 0, 18, 64, tan, op=90))
+            L.append(d.rect(0, 104, w, 24, tan))
+        if name == "dog_white":
+            L.append(d.rect(0, 116, w, 12, mul(base, 0.85)))
+    elif name.endswith("_head") and name.startswith("dog_"):
+        kind = name[4:-5]
+        base = {"golden": (0.86, 0.80, 0.70), "doxie": (0.07, 0.06, 0.05), "white": (0.93, 0.92, 0.88), "fawn": (0.80, 0.64, 0.42)}[kind]
+        # head loft: u=0 under the jaw, u=.5 on top; v=0 back of skull (y=128), v=1 nose (y=0)
+        L.append(d.rect(0, 0, w, h, base, grad=d.lin(0, 0, w, 0, [(0, mul(base, 0.85)), (0.5, mul(base, 1.05)), (1, mul(base, 0.85))])))
+        if kind == "doxie":
+            L.append(d.rect(0, 0, 26, 70, (0.62, 0.36, 0.16)))
+            L.append(d.rect(w - 26, 0, 26, 70, (0.62, 0.36, 0.16)))
+            for s_ in (-1, 1):
+                L.append(d.ellipse(64 + s_ * 20, 58, 8, 6, (0.62, 0.36, 0.16)))
+        if kind == "fawn":
+            L.append(d.rect(0, 0, w, 60, (0.10, 0.08, 0.07)))             # black muzzle mask
+            for y in (50, 56):
+                L.append(d.line([(40, y), (64, y - 4), (88, y)], (0.04, 0.03, 0.03), 1.4))
+        for s_ in (-1, 1):                                                 # eyes
+            ex = 64 + s_ * 17
+            L.append(d.ellipse(ex, 66, 11, 10, (0.04, 0.03, 0.03)))
+            L.append(d.ellipse(ex + 2, 63, 3, 3, (1, 1, 1)))
+            L.append(d.line([(ex - 6, 57), (ex + 5, 58)], mul(base, 0.6) if base[0] > 0.2 else (0.5, 0.3, 0.15), 2.0))
+        L.append(d.rect(0, 0, w, 14, (0.05, 0.04, 0.04)))                    # nose (tip rows)
+        L.append(d.rect(30, 14, 68, 8, (0.08, 0.06, 0.06), round_=4))
+        for x in (0, w - 6):                                               # mouth line under the snout
+            L.append(d.rect(x, 0, 6, 46, (0.10, 0.06, 0.06)))
+    elif name == "dog_coat":
+        base = (0.82, 0.82, 0.82)
+        L.append(d.rect(0, 0, w, h, base))
+        for i in range(8):
+            y0 = i * 16
+            L.append(d.rect(0, y0, w, 16, base, grad=d.lin(0, y0, 0, y0 + 16, [(0, mul(base, 0.65)), (0.45, mul(base, 1.15)), (1, mul(base, 0.65))])))
+        L.append(d.rect(0, 0, w, 8, (0.15, 0.15, 0.15)))
+    elif name == "hairlight":
+        # neutral strands for tinted hair meshes (the renderer multiplies in the hair colour)
+        base = (0.80, 0.80, 0.80)
+        L.append(d.rect(0, 0, w, h, base, grad=d.lin(0, 0, 0, h, [(0, mul(base, 1.1)), (1, mul(base, 0.8))])))
+        r = d.rng
+        for i in range(80):
+            x = r.uniform(0, w)
+            L.append(d.line([(x, 0), (x + r.uniform(-6, 6), h)], mul(base, r.choice((0.6, 0.75, 1.2))), r.uniform(0.6, 1.6), op=55))
+    elif name.startswith("spare"):
+        L.append(d.rect(0, 0, w, h, (0.5, 0.5, 0.5)))
     return L
 
 
@@ -563,10 +672,10 @@ def build_doc():
     layers = []
     for i, f in enumerate(FACES):
         x, y, w, h = face_rect(i)
-        layers.append(d.group("face_" + f["name"], x, y, w, h, face_layers(d, f), effects=[d.grain(3, 1.0)]))
+        layers.append(d.group("face_" + f["name"], x, y, w, h, face_layers(d, f)))
     for name in FABRICS:
         x, y, w, h = fabric_rect(name)
-        layers.append(d.group("fabric_" + name, x, y, w, h, fabric_layers(d, name), effects=[d.grain(4, 1.0)]))
+        layers.append(d.group("fabric_" + name, x, y, w, h, fabric_layers(d, name)))
     layers.reverse()   # layers[0] is frontmost; order is irrelevant (cells don't overlap) but keep faces on top
     return {"$schema": "https://jerboa.dev/schemas/fx-composition/editable/v1/document.schema.json", "formatVersion": 1,
             "dimensions": {"width": W, "height": H}, "duration": 3.0, "backgroundColor": [0.5, 0.5, 0.5, 1.0],

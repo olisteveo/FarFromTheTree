@@ -11,6 +11,7 @@
 import * as THREE from "three";
 import GUI from "lil-gui";
 import { Leaderboard } from "./game/leaderboard";
+import { PeopleView, type PeopleWalker } from "./render/people";
 import { CityData } from "./world/data";
 import { makeCourse } from "./world/course";
 import { Landmarks } from "./world/landmarks";
@@ -67,11 +68,17 @@ const steam = new SteamView(flow);
 const streaks = new WindStreaks(flow);
 const facadeProps = new FacadePropsView(flow.facades);
 const crowdView = new CrowdView(flow);
+// modelled, animated people and dogs (the simple crowd shows until they've loaded)
+const people = new PeopleView(900);
+let peopleReady = false;
+people.load().then(() => { peopleReady = true; crowdView.root.visible = false; }).catch((e) => console.warn("people didn't load", e));
+const flinchAt = new Map<number, number>();
+const peopleList: PeopleWalker[] = [];
 const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
 const blockerView = blockerMeshes(flow.blockers);
-stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, people.root, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree
 const course = makeCourse(city);
@@ -316,7 +323,23 @@ function tick(dt: number, render: boolean) {
   buildings.update(focus);
   facadeProps.update(focus);
   if (freeCam) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, 400); }
-  crowdView.update();
+  if (peopleReady) {
+    // the people near the camera; anyone the leaf whooshes past flinches and looks up
+    peopleList.length = 0;
+    const lp = leaf.pos, flying = leaf.state === "flying";
+    for (const w of flow.crowd.now) {
+      const dx = w.x - focus.x, dz = w.z - focus.z;
+      if (dx * dx + dz * dz > 170 * 170) continue;
+      if (flying && lp.y < 3.5 && Math.abs(w.x - lp.x) < 2.5 && Math.abs(w.z - lp.z) < 2.5 && leaf.vel.length() > 4) {
+        const last = flinchAt.get(w.w.seed);
+        if (last === undefined || leaf.clock - last > 4) flinchAt.set(w.w.seed, leaf.clock);
+      }
+      const f = flinchAt.get(w.w.seed);
+      peopleList.push({ x: w.x, z: w.z, tx: w.tx, tz: w.tz, phase: w.phase, speed: w.w.speed, seed: w.w.seed, h: w.w.h, pet: w.w.pet, flinch: f === undefined ? undefined : leaf.clock - f });
+    }
+    if (flinchAt.size > 400) for (const [k, t] of flinchAt) if (leaf.clock - t > 5) flinchAt.delete(k);
+    people.update(peopleList, freeCam ? leaf.clock + wall : leaf.clock);
+  } else crowdView.update();
   pigeons.update(dt, leaf.pos, wall);
   blockerView.userData.update(wall);
   ground.update(wall);

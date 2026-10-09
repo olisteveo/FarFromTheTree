@@ -1,0 +1,2310 @@
+{
+ "version": 2,
+ "glb": "people.glb",
+ "vat": "people_vat.bin",
+ "atlas": "people_atlas.png",
+ "vatTexture": {
+  "width": 2048,
+  "height": 711,
+  "format": "RGBA16UI",
+  "posBits": 12,
+  "texel": "x,y,z = position quantised to the mesh's bounds (0..2^posBits-1); w = octahedral normal (x low byte, y high byte)",
+  "file": "gzip; blocks in order (base texel, frames, verts); each block is 5 planes [x,y,z,nx,ny][frames][verts] of uint16 zigzag second-order frame deltas (mod 2^16), stored as a low-byte plane then a high-byte plane",
+  "blocks": [
+   [
+    0,
+    24,
+    845
+   ],
+   [
+    20280,
+    24,
+    845
+   ],
+   [
+    40560,
+    16,
+    845
+   ],
+   [
+    54080,
+    16,
+    845
+   ],
+   [
+    67600,
+    24,
+    1158
+   ],
+   [
+    95392,
+    24,
+    1158
+   ],
+   [
+    123184,
+    16,
+    1158
+   ],
+   [
+    141712,
+    16,
+    1158
+   ],
+   [
+    160240,
+    24,
+    876
+   ],
+   [
+    181264,
+    24,
+    876
+   ],
+   [
+    202288,
+    16,
+    876
+   ],
+   [
+    216304,
+    16,
+    876
+   ],
+   [
+    230320,
+    24,
+    1029
+   ],
+   [
+    255016,
+    24,
+    1029
+   ],
+   [
+    279712,
+    16,
+    1029
+   ],
+   [
+    296176,
+    16,
+    1029
+   ],
+   [
+    312640,
+    24,
+    1078
+   ],
+   [
+    338512,
+    24,
+    1078
+   ],
+   [
+    364384,
+    16,
+    1078
+   ],
+   [
+    381632,
+    16,
+    1078
+   ],
+   [
+    398880,
+    24,
+    940
+   ],
+   [
+    421440,
+    24,
+    940
+   ],
+   [
+    444000,
+    16,
+    940
+   ],
+   [
+    459040,
+    16,
+    940
+   ],
+   [
+    474080,
+    24,
+    857
+   ],
+   [
+    494648,
+    24,
+    857
+   ],
+   [
+    515216,
+    16,
+    857
+   ],
+   [
+    528928,
+    16,
+    857
+   ],
+   [
+    542640,
+    24,
+    886
+   ],
+   [
+    563904,
+    24,
+    886
+   ],
+   [
+    585168,
+    16,
+    886
+   ],
+   [
+    599344,
+    16,
+    886
+   ],
+   [
+    613520,
+    24,
+    1000
+   ],
+   [
+    637520,
+    24,
+    1000
+   ],
+   [
+    661520,
+    16,
+    1000
+   ],
+   [
+    677520,
+    16,
+    1000
+   ],
+   [
+    693520,
+    24,
+    861
+   ],
+   [
+    714184,
+    24,
+    861
+   ],
+   [
+    734848,
+    16,
+    861
+   ],
+   [
+    748624,
+    16,
+    861
+   ],
+   [
+    762400,
+    24,
+    943
+   ],
+   [
+    785032,
+    24,
+    943
+   ],
+   [
+    807664,
+    16,
+    943
+   ],
+   [
+    822752,
+    16,
+    943
+   ],
+   [
+    837840,
+    24,
+    1694
+   ],
+   [
+    878496,
+    24,
+    1694
+   ],
+   [
+    919152,
+    16,
+    1694
+   ],
+   [
+    946256,
+    16,
+    1694
+   ],
+   [
+    973360,
+    24,
+    1186
+   ],
+   [
+    1001824,
+    24,
+    1186
+   ],
+   [
+    1030288,
+    16,
+    1186
+   ],
+   [
+    1049264,
+    16,
+    1186
+   ],
+   [
+    1068240,
+    24,
+    1123
+   ],
+   [
+    1095192,
+    24,
+    1123
+   ],
+   [
+    1122144,
+    16,
+    1123
+   ],
+   [
+    1140112,
+    16,
+    1123
+   ],
+   [
+    1158080,
+    24,
+    896
+   ],
+   [
+    1179584,
+    24,
+    896
+   ],
+   [
+    1201088,
+    16,
+    896
+   ],
+   [
+    1215424,
+    16,
+    896
+   ],
+   [
+    1229760,
+    24,
+    917
+   ],
+   [
+    1251768,
+    24,
+    917
+   ],
+   [
+    1273776,
+    16,
+    917
+   ],
+   [
+    1288448,
+    16,
+    917
+   ],
+   [
+    1303120,
+    24,
+    1171
+   ],
+   [
+    1331224,
+    24,
+    1171
+   ],
+   [
+    1359328,
+    16,
+    1171
+   ],
+   [
+    1378064,
+    16,
+    1171
+   ],
+   [
+    1396800,
+    24,
+    351
+   ],
+   [
+    1405224,
+    16,
+    351
+   ],
+   [
+    1410840,
+    24,
+    351
+   ],
+   [
+    1419264,
+    16,
+    351
+   ],
+   [
+    1424880,
+    24,
+    351
+   ],
+   [
+    1433304,
+    16,
+    351
+   ],
+   [
+    1438920,
+    24,
+    423
+   ],
+   [
+    1449072,
+    16,
+    423
+   ]
+  ]
+ },
+ "space": "three.js, metres, characters face +Z, feet at y=0",
+ "mask": "COLOR_0: r = coat tint, g = accessory tint, b = hair tint, a*8 = flag (1 face, 2 optional hat, 3 scarf hue, 4 child face)",
+ "tintGain": 1.65,
+ "clips": {
+  "walk": {
+   "frames": 24,
+   "seconds": 1.1,
+   "loop": true
+  },
+  "stroll": {
+   "frames": 24,
+   "seconds": 1.35,
+   "loop": true
+  },
+  "idle": {
+   "frames": 16,
+   "seconds": 3.6,
+   "loop": true
+  },
+  "flinch": {
+   "frames": 16,
+   "seconds": 1.1,
+   "loop": false
+  }
+ },
+ "dogClips": {
+  "walk": {
+   "frames": 24,
+   "seconds": 0.55,
+   "loop": true
+  },
+  "idle": {
+   "frames": 16,
+   "seconds": 3.0,
+   "loop": true
+  }
+ },
+ "strideNote": "stride = metres covered by one full walk cycle (two steps) at the mesh's native size",
+ "characters": [
+  {
+   "name": "commuter",
+   "height": 1.8,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 0,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": true,
+   "coatTint": true,
+   "props": [
+    "cup.R"
+   ],
+   "leadSide": 1,
+   "verts": 845,
+   "boundsMin": [
+    -0.4404832422733307,
+    -0.11654718220233917,
+    -0.5513752102851868
+   ],
+   "boundsMax": [
+    0.4335300028324127,
+    1.8007874488830566,
+    0.62857586145401
+   ],
+   "anchors": {
+    "handL": 460,
+    "handR": 548
+   },
+   "clips": {
+    "walk": {
+     "base": 0,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3371
+    },
+    "stroll": {
+     "base": 20280,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0491
+    },
+    "idle": {
+     "base": 40560,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 54080,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "puffer",
+   "height": 1.68,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 2,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "tote.L"
+   ],
+   "leadSide": -1,
+   "verts": 1158,
+   "boundsMin": [
+    -0.38998401165008545,
+    -0.10843075811862946,
+    -0.5126091241836548
+   ],
+   "boundsMax": [
+    0.4265011250972748,
+    1.77099609375,
+    0.5842065811157227
+   ],
+   "anchors": {
+    "handL": 512,
+    "handR": 616
+   },
+   "clips": {
+    "walk": {
+     "base": 67600,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.248
+    },
+    "stroll": {
+     "base": 95392,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.9792
+    },
+    "idle": {
+     "base": 123184,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 141712,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "parka",
+   "height": 1.84,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 1,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "backpack"
+   ],
+   "leadSide": 1,
+   "verts": 876,
+   "boundsMin": [
+    -0.45558813214302063,
+    -0.11925500631332397,
+    -0.6048667430877686
+   ],
+   "boundsMax": [
+    0.45558813214302063,
+    1.8753962516784668,
+    0.643179714679718
+   ],
+   "anchors": {
+    "handL": 526,
+    "handR": 614
+   },
+   "clips": {
+    "walk": {
+     "base": 160240,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3669
+    },
+    "stroll": {
+     "base": 181264,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0725
+    },
+    "idle": {
+     "base": 202288,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 216304,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "texter",
+   "height": 1.64,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 3,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": true,
+   "coatTint": true,
+   "props": [
+    "phone.R"
+   ],
+   "leadSide": 1,
+   "verts": 1029,
+   "boundsMin": [
+    -0.3849047124385834,
+    -0.10572656989097595,
+    -0.5028323531150818
+   ],
+   "boundsMax": [
+    0.38055190443992615,
+    1.6406413316726685,
+    0.5696122646331787
+   ],
+   "anchors": {
+    "handL": 512,
+    "handR": 616
+   },
+   "clips": {
+    "walk": {
+     "base": 230320,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2183
+    },
+    "stroll": {
+     "base": 255016,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.9559
+    },
+    "idle": {
+     "base": 279712,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 296176,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "shopper",
+   "height": 1.71,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 4,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": false,
+   "coatTint": false,
+   "props": [
+    "bag.L",
+    "bag.R"
+   ],
+   "leadSide": -1,
+   "verts": 1078,
+   "boundsMin": [
+    -0.6451588869094849,
+    -0.11045879870653152,
+    -0.5625805854797363
+   ],
+   "boundsMax": [
+    0.6560162901878357,
+    1.9551841020584106,
+    0.9409416317939758
+   ],
+   "anchors": {
+    "handL": 872,
+    "handR": 910
+   },
+   "clips": {
+    "walk": {
+     "base": 312640,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2703
+    },
+    "stroll": {
+     "base": 338512,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.9967
+    },
+    "idle": {
+     "base": 364384,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 381632,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "courier",
+   "height": 1.78,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 5,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "cube"
+   ],
+   "leadSide": 1,
+   "verts": 940,
+   "boundsMin": [
+    -0.4457733631134033,
+    -0.11519350856542587,
+    -0.5533884167671204
+   ],
+   "boundsMax": [
+    0.4457733631134033,
+    1.7888795137405396,
+    0.6212731003761292
+   ],
+   "anchors": {
+    "handL": 512,
+    "handR": 616
+   },
+   "clips": {
+    "walk": {
+     "base": 398880,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3223
+    },
+    "stroll": {
+     "base": 421440,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0375
+    },
+    "idle": {
+     "base": 444000,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 459040,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "gent",
+   "height": 1.72,
+   "kid": false,
+   "pair": false,
+   "old": true,
+   "stroller": false,
+   "face": 6,
+   "faceGroup": "om",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": true,
+   "coatTint": true,
+   "props": [],
+   "leadSide": 1,
+   "verts": 857,
+   "boundsMin": [
+    -0.4079160690307617,
+    -0.11113490909337997,
+    -0.47274187207221985
+   ],
+   "boundsMax": [
+    0.4079160690307617,
+    1.7458964586257935,
+    0.6030610203742981
+   ],
+   "anchors": {
+    "handL": 460,
+    "handR": 548
+   },
+   "clips": {
+    "walk": {
+     "base": 474080,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.1244
+    },
+    "stroll": {
+     "base": 494648,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.8822
+    },
+    "idle": {
+     "base": 515216,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 528928,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "nana",
+   "height": 1.6,
+   "kid": false,
+   "pair": false,
+   "old": true,
+   "stroller": false,
+   "face": 7,
+   "faceGroup": "of",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "bag.R"
+   ],
+   "leadSide": 1,
+   "verts": 886,
+   "boundsMin": [
+    -0.6016239523887634,
+    -0.1030225083231926,
+    -0.473389595746994
+   ],
+   "boundsMax": [
+    0.37004539370536804,
+    1.7954908609390259,
+    0.8787417411804199
+   ],
+   "anchors": {
+    "handL": 508,
+    "handR": 878
+   },
+   "clips": {
+    "walk": {
+     "base": 542640,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.0459
+    },
+    "stroll": {
+     "base": 563904,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.8207
+    },
+    "idle": {
+     "base": 585168,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 599344,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "student",
+   "height": 1.66,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 10,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "backpack"
+   ],
+   "leadSide": 1,
+   "verts": 1000,
+   "boundsMin": [
+    -0.3808007538318634,
+    -0.10707871615886688,
+    -0.5088668465614319
+   ],
+   "boundsMax": [
+    0.3808007538318634,
+    1.6607412099838257,
+    0.5769091248512268
+   ],
+   "anchors": {
+    "handL": 448,
+    "handR": 536
+   },
+   "clips": {
+    "walk": {
+     "base": 613520,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2331
+    },
+    "stroll": {
+     "base": 637520,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.9675
+    },
+    "idle": {
+     "base": 661520,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 677520,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "banker",
+   "height": 1.86,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 11,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": true,
+   "coatTint": true,
+   "props": [
+    "messenger"
+   ],
+   "leadSide": 1,
+   "verts": 861,
+   "boundsMin": [
+    -0.45797833800315857,
+    -0.12060925364494324,
+    -0.5695633292198181
+   ],
+   "boundsMax": [
+    0.45797833800315857,
+    1.8608170747756958,
+    0.6504818201065063
+   ],
+   "anchors": {
+    "handL": 448,
+    "handR": 536
+   },
+   "clips": {
+    "walk": {
+     "base": 693520,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3817
+    },
+    "stroll": {
+     "base": 714184,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0841
+    },
+    "idle": {
+     "base": 734848,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 748624,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "hoodie",
+   "height": 1.76,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 12,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": false,
+   "coatTint": true,
+   "props": [],
+   "leadSide": 1,
+   "verts": 943,
+   "boundsMin": [
+    -0.4193219542503357,
+    -0.11383970081806183,
+    -0.5392547249794006
+   ],
+   "boundsMax": [
+    0.4193219542503357,
+    1.7737125158309937,
+    0.6139706969261169
+   ],
+   "anchors": {
+    "handL": 448,
+    "handR": 536
+   },
+   "clips": {
+    "walk": {
+     "base": 762400,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3074
+    },
+    "stroll": {
+     "base": 785032,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0258
+    },
+    "idle": {
+     "base": 807664,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 822752,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "parent_kid",
+   "height": 1.7,
+   "kid": false,
+   "pair": true,
+   "old": false,
+   "stroller": false,
+   "face": 13,
+   "faceGroup": "f",
+   "kidFace": 8,
+   "hat": false,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "hold.R"
+   ],
+   "leadSide": 1,
+   "verts": 1694,
+   "boundsMin": [
+    -0.6917213201522827,
+    -0.10978272557258606,
+    -0.5593279600143433
+   ],
+   "boundsMax": [
+    0.3901840150356293,
+    1.7199146747589111,
+    0.5915030837059021
+   ],
+   "anchors": {
+    "handL": 526,
+    "handR": 614
+   },
+   "clips": {
+    "walk": {
+     "base": 837840,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2629
+    },
+    "stroll": {
+     "base": 878496,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.9909
+    },
+    "idle": {
+     "base": 919152,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 946256,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "kid",
+   "height": 1.22,
+   "kid": true,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 9,
+   "faceGroup": "kid",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "backpack"
+   ],
+   "leadSide": 1,
+   "verts": 1186,
+   "boundsMin": [
+    -0.30882495641708374,
+    -0.08751627057790756,
+    -0.4541274905204773
+   ],
+   "boundsMax": [
+    0.31801334023475647,
+    1.32047438621521,
+    0.3951917290687561
+   ],
+   "anchors": {
+    "handL": 524,
+    "handR": 628
+   },
+   "clips": {
+    "walk": {
+     "base": 973360,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 0.9963
+    },
+    "stroll": {
+     "base": 1001824,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.8133
+    },
+    "idle": {
+     "base": 1030288,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 1049264,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "trench",
+   "height": 1.72,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 4,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": true,
+   "coatTint": false,
+   "props": [
+    "tote.R"
+   ],
+   "leadSide": 1,
+   "verts": 1123,
+   "boundsMin": [
+    -0.4148082733154297,
+    -0.11113515496253967,
+    -0.5658329725265503
+   ],
+   "boundsMax": [
+    0.39485740661621094,
+    1.7207722663879395,
+    0.5987997651100159
+   ],
+   "anchors": {
+    "handL": 508,
+    "handR": 596
+   },
+   "clips": {
+    "walk": {
+     "base": 1068240,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2777
+    },
+    "stroll": {
+     "base": 1095192,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0025
+    },
+    "idle": {
+     "base": 1122144,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 1140112,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "hivis",
+   "height": 1.81,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 1,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": false,
+   "props": [],
+   "leadSide": 1,
+   "verts": 896,
+   "boundsMin": [
+    -0.4393085837364197,
+    -0.11722402274608612,
+    -0.5951095819473267
+   ],
+   "boundsMax": [
+    0.4393085837364197,
+    1.8499598503112793,
+    0.6322265863418579
+   ],
+   "anchors": {
+    "handL": 496,
+    "handR": 584
+   },
+   "clips": {
+    "walk": {
+     "base": 1158080,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3446
+    },
+    "stroll": {
+     "base": 1179584,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.055
+    },
+    "idle": {
+     "base": 1201088,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 1215424,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "tourist",
+   "height": 1.77,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 12,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [
+    "camera",
+    "backpack"
+   ],
+   "leadSide": 1,
+   "verts": 917,
+   "boundsMin": [
+    -0.42000919580459595,
+    -0.11451660841703415,
+    -0.5422312617301941
+   ],
+   "boundsMax": [
+    0.42000919580459595,
+    1.7786040306091309,
+    0.6176216006278992
+   ],
+   "anchors": {
+    "handL": 448,
+    "handR": 536
+   },
+   "clips": {
+    "walk": {
+     "base": 1229760,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3149
+    },
+    "stroll": {
+     "base": 1251768,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0317
+    },
+    "idle": {
+     "base": 1273776,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 1288448,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "stroller",
+   "height": 1.69,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": true,
+   "face": 10,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": true,
+   "coatTint": true,
+   "props": [
+    "stroller"
+   ],
+   "leadSide": 1,
+   "verts": 1171,
+   "boundsMin": [
+    -0.42850354313850403,
+    -0.10910683870315552,
+    -0.5178271532058716
+   ],
+   "boundsMax": [
+    0.42850354313850403,
+    1.7098052501678467,
+    1.1758570671081543
+   ],
+   "anchors": {
+    "handL": 512,
+    "handR": 616
+   },
+   "clips": {
+    "walk": {
+     "base": 1303120,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2554
+    },
+    "stroll": {
+     "base": 1331224,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.985
+    },
+    "idle": {
+     "base": 1359328,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 1378064,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  }
+ ],
+ "dogs": [
+  {
+   "name": "dog_lab",
+   "breed": "labrador",
+   "withers": 0.55,
+   "furTint": true,
+   "coat": false,
+   "verts": 351,
+   "boundsMin": [
+    -0.16163329780101776,
+    -0.0011118483962491155,
+    -0.6339532136917114
+   ],
+   "boundsMax": [
+    0.16163329780101776,
+    0.7026382088661194,
+    0.6317111253738403
+   ],
+   "anchors": {
+    "collar": 101
+   },
+   "clips": {
+    "walk": {
+     "base": 1396800,
+     "frames": 24,
+     "loop": true,
+     "seconds": 0.55,
+     "stride": 0.8
+    },
+    "idle": {
+     "base": 1405224,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "dog_terrier",
+   "breed": "terrier",
+   "withers": 0.28,
+   "furTint": false,
+   "coat": false,
+   "verts": 351,
+   "boundsMin": [
+    -0.11092132329940796,
+    -0.0009986815275624394,
+    -0.2744239866733551
+   ],
+   "boundsMax": [
+    0.11093099415302277,
+    0.4126216471195221,
+    0.352781742811203
+   ],
+   "anchors": {
+    "collar": 101
+   },
+   "clips": {
+    "walk": {
+     "base": 1410840,
+     "frames": 24,
+     "loop": true,
+     "seconds": 0.55,
+     "stride": 0.4
+    },
+    "idle": {
+     "base": 1419264,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "dog_dachshund",
+   "breed": "dachshund",
+   "withers": 0.24,
+   "furTint": false,
+   "coat": false,
+   "verts": 351,
+   "boundsMin": [
+    -0.11560405045747757,
+    -0.0008376074838452041,
+    -0.4895176589488983
+   ],
+   "boundsMax": [
+    0.1158047467470169,
+    0.33062469959259033,
+    0.44207069277763367
+   ],
+   "anchors": {
+    "collar": 101
+   },
+   "clips": {
+    "walk": {
+     "base": 1424880,
+     "frames": 24,
+     "loop": true,
+     "seconds": 0.55,
+     "stride": 0.34
+    },
+    "idle": {
+     "base": 1433304,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "dog_pug",
+   "breed": "pug",
+   "withers": 0.31,
+   "furTint": false,
+   "coat": true,
+   "verts": 423,
+   "boundsMin": [
+    -0.1291564255952835,
+    -0.0011414868058636785,
+    -0.28442516922950745
+   ],
+   "boundsMax": [
+    0.12916402518749237,
+    0.4404195547103882,
+    0.3893047571182251
+   ],
+   "anchors": {
+    "collar": 173
+   },
+   "clips": {
+    "walk": {
+     "base": 1438920,
+     "frames": 24,
+     "loop": true,
+     "seconds": 0.55,
+     "stride": 0.42
+    },
+    "idle": {
+     "base": 1449072,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    }
+   }
+  }
+ ],
+ "atlasLayout": {
+  "size": [
+   1024,
+   1280
+  ],
+  "faces": [
+   {
+    "name": "ben",
+    "rect": [
+     0,
+     0,
+     256,
+     128
+    ],
+    "group": "m",
+    "hair": [
+     0.3,
+     0.2,
+     0.12
+    ],
+    "skin": [
+     0.93,
+     0.76,
+     0.64
+    ]
+   },
+   {
+    "name": "marcus",
+    "rect": [
+     256,
+     0,
+     256,
+     128
+    ],
+    "group": "m",
+    "hair": [
+     0.06,
+     0.05,
+     0.05
+    ],
+    "skin": [
+     0.42,
+     0.27,
+     0.18
+    ]
+   },
+   {
+    "name": "priya",
+    "rect": [
+     512,
+     0,
+     256,
+     128
+    ],
+    "group": "f",
+    "hair": [
+     0.07,
+     0.05,
+     0.05
+    ],
+    "skin": [
+     0.72,
+     0.52,
+     0.38
+    ]
+   },
+   {
+    "name": "mei",
+    "rect": [
+     768,
+     0,
+     256,
+     128
+    ],
+    "group": "f",
+    "hair": [
+     0.06,
+     0.05,
+     0.06
+    ],
+    "skin": [
+     0.95,
+     0.8,
+     0.66
+    ]
+   },
+   {
+    "name": "siobhan",
+    "rect": [
+     0,
+     128,
+     256,
+     128
+    ],
+    "group": "f",
+    "hair": [
+     0.62,
+     0.27,
+     0.12
+    ],
+    "skin": [
+     0.97,
+     0.82,
+     0.73
+    ]
+   },
+   {
+    "name": "omar",
+    "rect": [
+     256,
+     128,
+     256,
+     128
+    ],
+    "group": "m",
+    "hair": [
+     0.09,
+     0.07,
+     0.06
+    ],
+    "skin": [
+     0.78,
+     0.58,
+     0.42
+    ]
+   },
+   {
+    "name": "walter",
+    "rect": [
+     512,
+     128,
+     256,
+     128
+    ],
+    "group": "om",
+    "hair": [
+     0.8,
+     0.8,
+     0.78
+    ],
+    "skin": [
+     0.91,
+     0.74,
+     0.65
+    ]
+   },
+   {
+    "name": "gloria",
+    "rect": [
+     768,
+     128,
+     256,
+     128
+    ],
+    "group": "of",
+    "hair": [
+     0.82,
+     0.81,
+     0.8
+    ],
+    "skin": [
+     0.36,
+     0.23,
+     0.16
+    ]
+   },
+   {
+    "name": "leo",
+    "rect": [
+     0,
+     256,
+     256,
+     128
+    ],
+    "group": "kid",
+    "hair": [
+     0.22,
+     0.14,
+     0.09
+    ],
+    "skin": [
+     0.7,
+     0.5,
+     0.36
+    ]
+   },
+   {
+    "name": "ava",
+    "rect": [
+     256,
+     256,
+     256,
+     128
+    ],
+    "group": "kid",
+    "hair": [
+     0.85,
+     0.68,
+     0.38
+    ],
+    "skin": [
+     0.96,
+     0.81,
+     0.7
+    ]
+   },
+   {
+    "name": "nia",
+    "rect": [
+     512,
+     256,
+     256,
+     128
+    ],
+    "group": "f",
+    "hair": [
+     0.05,
+     0.04,
+     0.04
+    ],
+    "skin": [
+     0.3,
+     0.19,
+     0.13
+    ]
+   },
+   {
+    "name": "arjun",
+    "rect": [
+     768,
+     256,
+     256,
+     128
+    ],
+    "group": "m",
+    "hair": [
+     0.06,
+     0.05,
+     0.05
+    ],
+    "skin": [
+     0.62,
+     0.43,
+     0.3
+    ]
+   },
+   {
+    "name": "kenji",
+    "rect": [
+     0,
+     384,
+     256,
+     128
+    ],
+    "group": "m",
+    "hair": [
+     0.08,
+     0.07,
+     0.07
+    ],
+    "skin": [
+     0.92,
+     0.77,
+     0.62
+    ]
+   },
+   {
+    "name": "rosa",
+    "rect": [
+     256,
+     384,
+     256,
+     128
+    ],
+    "group": "f",
+    "hair": [
+     0.18,
+     0.11,
+     0.07
+    ],
+    "skin": [
+     0.85,
+     0.64,
+     0.5
+    ]
+   },
+   {
+    "name": "harold",
+    "rect": [
+     512,
+     384,
+     256,
+     128
+    ],
+    "group": "om",
+    "hair": [
+     0.86,
+     0.85,
+     0.83
+    ],
+    "skin": [
+     0.48,
+     0.32,
+     0.22
+    ]
+   },
+   {
+    "name": "mae",
+    "rect": [
+     768,
+     384,
+     256,
+     128
+    ],
+    "group": "of",
+    "hair": [
+     0.92,
+     0.91,
+     0.9
+    ],
+    "skin": [
+     0.96,
+     0.8,
+     0.7
+    ]
+   }
+  ],
+  "fabrics": {
+   "wool": [
+    0,
+    512,
+    128,
+    128
+   ],
+   "puffer": [
+    128,
+    512,
+    128,
+    128
+   ],
+   "parka": [
+    256,
+    512,
+    128,
+    128
+   ],
+   "knit": [
+    384,
+    512,
+    128,
+    128
+   ],
+   "fleece": [
+    512,
+    512,
+    128,
+    128
+   ],
+   "denim": [
+    640,
+    512,
+    128,
+    128
+   ],
+   "charcoal": [
+    768,
+    512,
+    128,
+    128
+   ],
+   "khaki": [
+    896,
+    512,
+    128,
+    128
+   ],
+   "leggings": [
+    0,
+    640,
+    128,
+    128
+   ],
+   "sweats": [
+    128,
+    640,
+    128,
+    128
+   ],
+   "plaid_red": [
+    256,
+    640,
+    128,
+    128
+   ],
+   "plaid_green": [
+    384,
+    640,
+    128,
+    128
+   ],
+   "stripe_scarf": [
+    512,
+    640,
+    128,
+    128
+   ],
+   "leather_brown": [
+    640,
+    640,
+    128,
+    128
+   ],
+   "leather_black": [
+    768,
+    640,
+    128,
+    128
+   ],
+   "sneaker": [
+    896,
+    640,
+    128,
+    128
+   ],
+   "tote": [
+    0,
+    768,
+    128,
+    128
+   ],
+   "paperbag": [
+    128,
+    768,
+    128,
+    128
+   ],
+   "courier": [
+    256,
+    768,
+    128,
+    128
+   ],
+   "nylon": [
+    384,
+    768,
+    128,
+    128
+   ],
+   "misc": [
+    512,
+    768,
+    128,
+    128
+   ],
+   "hair_black": [
+    640,
+    768,
+    128,
+    128
+   ],
+   "hair_brown": [
+    768,
+    768,
+    128,
+    128
+   ],
+   "hair_blonde": [
+    896,
+    768,
+    128,
+    128
+   ],
+   "hair_grey": [
+    0,
+    896,
+    128,
+    128
+   ],
+   "hair_red": [
+    128,
+    896,
+    128,
+    128
+   ],
+   "fur": [
+    256,
+    896,
+    128,
+    128
+   ],
+   "camel": [
+    384,
+    896,
+    128,
+    128
+   ],
+   "houndstooth": [
+    512,
+    896,
+    128,
+    128
+   ],
+   "flannel": [
+    640,
+    896,
+    128,
+    128
+   ],
+   "hivis": [
+    768,
+    896,
+    128,
+    128
+   ],
+   "boot_tan": [
+    896,
+    896,
+    128,
+    128
+   ],
+   "trench": [
+    0,
+    1024,
+    128,
+    128
+   ],
+   "stroller": [
+    128,
+    1024,
+    128,
+    128
+   ],
+   "gear": [
+    256,
+    1024,
+    128,
+    128
+   ],
+   "windbreaker": [
+    384,
+    1024,
+    128,
+    128
+   ],
+   "dog_golden": [
+    512,
+    1024,
+    128,
+    128
+   ],
+   "dog_golden_head": [
+    640,
+    1024,
+    128,
+    128
+   ],
+   "dog_doxie": [
+    768,
+    1024,
+    128,
+    128
+   ],
+   "dog_doxie_head": [
+    896,
+    1024,
+    128,
+    128
+   ],
+   "dog_white": [
+    0,
+    1152,
+    128,
+    128
+   ],
+   "dog_white_head": [
+    128,
+    1152,
+    128,
+    128
+   ],
+   "dog_fawn": [
+    256,
+    1152,
+    128,
+    128
+   ],
+   "dog_fawn_head": [
+    384,
+    1152,
+    128,
+    128
+   ],
+   "dog_coat": [
+    512,
+    1152,
+    128,
+    128
+   ],
+   "hairlight": [
+    640,
+    1152,
+    128,
+    128
+   ],
+   "spare1": [
+    768,
+    1152,
+    128,
+    128
+   ],
+   "spare2": [
+    896,
+    1152,
+    128,
+    128
+   ]
+  },
+  "misc": {
+   "phone": [
+    512,
+    768,
+    64,
+    64
+   ],
+   "cup": [
+    576,
+    768,
+    64,
+    64
+   ],
+   "metal": [
+    512,
+    832,
+    64,
+    64
+   ],
+   "white": [
+    576,
+    832,
+    64,
+    64
+   ]
+  },
+  "tintable": [
+   "dog_coat",
+   "dog_golden",
+   "fleece",
+   "hairlight",
+   "houndstooth",
+   "knit",
+   "nylon",
+   "parka",
+   "puffer",
+   "windbreaker",
+   "wool"
+  ]
+ }
+}
