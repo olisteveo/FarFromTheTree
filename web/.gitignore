@@ -5,3 +5,4 @@ data/*.svg
 data/*.png
 data/*.html
 recordings
+.wrangler/

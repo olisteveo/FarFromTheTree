@@ -79,3 +79,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1210; col
 .leafmeter-label.low { color: #ff7a5a; animation: pulse 0.5s infinite alternate; }
 .status { bottom: 24px !important; }
 .keys { bottom: 50px; left: 160px; }
+
+/* leaderboard: name entry when you plant your seed, fastest seeds on the title screen */
+.board { position: absolute; left: 50%; top: 66%; transform: translateX(-50%); min-width: 300px; max-width: calc(100vw - 32px); padding: 14px 18px; border-radius: 10px; background: rgba(20, 10, 4, 0.62); backdrop-filter: blur(6px); pointer-events: auto; opacity: 0; transition: opacity 0.5s; z-index: 5; }
+.board.show { opacity: 1; }
+.board .h, .board-mini .h { font: 700 15px Fraunces, Georgia, serif; color: var(--amber); margin-bottom: 8px; }
+.board .line { display: flex; gap: 8px; }
+.board input { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid rgba(255, 220, 180, 0.35); border-radius: 6px; background: rgba(0, 0, 0, 0.35); color: #fff3e6; font: 15px system-ui, sans-serif; outline: none; }
+.board input:focus { border-color: var(--amber); }
+.board button { padding: 9px 14px; border: 0; border-radius: 6px; background: var(--amber); color: #2a1406; font: 700 14px system-ui, sans-serif; cursor: pointer; white-space: nowrap; }
+.board button:disabled { opacity: 0.5; cursor: default; }
+.board .err { min-height: 1.2em; margin-top: 6px; font-size: 13px; color: #ff9a80; }
+.board .note { font-size: 14px; color: var(--muted); }
+.board .row, .board-mini .row { display: flex; justify-content: space-between; gap: 24px; font: 14px/1.7 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.board .row.me { color: var(--amber); font-weight: 700; }
+.board-mini { position: absolute; right: 24px; top: 96px; min-width: 200px; padding: 10px 14px; border-radius: 8px; background: rgba(20, 10, 4, 0.45); opacity: 0; transition: opacity 0.5s; pointer-events: none; }
+.board-mini.show { opacity: 1; }
+@media (max-width: 640px) { .board-mini { display: none; } .board { top: 58%; } }

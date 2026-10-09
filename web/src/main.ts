@@ -10,6 +10,7 @@
 
 import * as THREE from "three";
 import GUI from "lil-gui";
+import { Leaderboard } from "./game/leaderboard";
 import { CityData } from "./world/data";
 import { makeCourse } from "./world/course";
 import { Landmarks } from "./world/landmarks";
@@ -100,6 +101,7 @@ placeAt();
 
 const input = new Input();
 const hud = new Hud(hudEl, city);
+const leaderboard = new Leaderboard(hudEl);
 const audio = new Audio(city);
 const leafMeter = new LeafMeter(hudEl);
 pigeons.onScatter = (x, y, z) => audio.play("pigeon_flap", { at: [x, y + 1, z], vol: 1, world: true });
@@ -219,9 +221,12 @@ for (const k of Object.keys(FLIGHT) as (keyof typeof FLIGHT)[]) fg.add(FLIGHT, k
 const ag = gui.addFolder("Wind");
 for (const k of Object.keys(AIR) as (keyof typeof AIR)[]) ag.add(AIR, k, 0, Math.max(1, AIR[k] * 3), 0.1);
 gui.add(streaks, "enabled").name("wind streaks");
+// a tuned flight model doesn't go on the leaderboard
+gui.onChange((e) => { if (e.object !== streaks) leaderboard.eligible = false; });
 
 // ------------------------------------------------------------------ loop
 const autopilot = params.get("fly") === "1";
+if (autopilot || freeCam || params.get("at") || params.get("sub") || params.get("replay")) leaderboard.eligible = false;
 const STEP = 1 / 240;
 let last = performance.now(), acc = 0, wall = 0, bestS = 0;
 let underMix = 0;
@@ -252,13 +257,14 @@ function tick(dt: number, render: boolean) {
     achievements.reset();
     leaf.reset();
     hud.reset();
+    leaderboard.hide();
     audio.reset();
     bestS = 0;
     placeAt();
   }
   if (input.anyKey) {
     audio.start();
-    if (leaf.state === "attached" && !input.hit("KeyG") && !freeCam) { leaf.detach(); recorder.start(leaf); }
+    if (leaf.state === "attached" && !input.hit("KeyG") && !freeCam) { leaf.detach(); recorder.start(leaf); leaderboard.startRun(); }
   }
   if (autopilot) {
     if (leaf.state === "attached") { leaf.detach(); recorder.start(leaf); }
@@ -323,6 +329,8 @@ function tick(dt: number, render: boolean) {
   subway.update(leaf.clock, cam.position, underMix);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
+  if (leaf.state === "planted" && !replay) leaderboard.showWon(leaf.time);
+  leaderboard.showMini(leaf.state === "attached" && !introPlaying);
   leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);
   audio.update(dt, leaf, cam, city.district(ns.s).name);
   recorder.update(dt, leaf, input.state, ns.s, city.district(ns.s).name);

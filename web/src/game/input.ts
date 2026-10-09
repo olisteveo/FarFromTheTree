@@ -15,6 +15,8 @@ export class Input {
   constructor() {
     window.addEventListener("keydown", (e) => {
       if (e.repeat) return;
+      // typing a name for the leaderboard isn't flying
+      if ((e.target as HTMLElement | null)?.closest?.("input, textarea")) return;
       this.keys.add(e.code);
       this.pressed.add(e.code);
       this.anyKey = true;
