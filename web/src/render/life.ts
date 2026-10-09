@@ -54,39 +54,81 @@ const CAR_COLOURS = [0x1c1c1e, 0xe8e8e8, 0x6d7278, 0x22344d, 0x7a1d1d, 0x2f4a3a,
 
 export class TrafficView {
   readonly root = new THREE.Group();
-  private meshes = new Map<VehicleKind, THREE.InstancedMesh>();
+  /** per vehicle kind: one instanced mesh per material part; "paint" parts get a colour per car */
+  private parts = new Map<VehicleKind, { mesh: THREE.InstancedMesh; paint: boolean }[]>();
   constructor(private flow: Airflow) {
+    // simple box cars straight away, swapped for the modelled ones when they load
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.35 });
-    for (const k of ["cab", "car", "bus", "truck"] as VehicleKind[]) {
-      const im = new THREE.InstancedMesh(vehicleGeo(k), mat, 400);
-      im.castShadow = true;
-      im.receiveShadow = true;
-      im.frustumCulled = false;
-      im.count = 0;
-      this.meshes.set(k, im);
-      this.root.add(im);
-    }
+    for (const k of ["cab", "car", "suv", "van", "bus", "truck"] as VehicleKind[]) this.setParts(k, [{ geo: vehicleGeo(k === "suv" || k === "van" ? "car" : k), mat, paint: true }]);
+    this.loadModels();
   }
+
+  private setParts(kind: VehicleKind, list: { geo: THREE.BufferGeometry; mat: THREE.Material; paint: boolean }[]) {
+    for (const old of this.parts.get(kind) ?? []) { this.root.remove(old.mesh); old.mesh.dispose(); }
+    const made = list.map(({ geo, mat, paint }) => {
+      const mesh = new THREE.InstancedMesh(geo, mat, 400);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      mesh.count = 0;
+      this.root.add(mesh);
+      return { mesh, paint };
+    });
+    this.parts.set(kind, made);
+  }
+
+  private async loadModels() {
+    try {
+      const { GLTFLoader } = await import("three/addons/loaders/GLTFLoader.js");
+      const gltf = await new GLTFLoader().loadAsync("./models/vehicles.glb");
+      // which modelled vehicle stands in for each traffic kind (cars alternate sedan / suv / van)
+      const map: Record<VehicleKind, string[]> = { cab: ["cab"], car: ["sedan"], suv: ["suv"], van: ["van"], bus: ["bus"], truck: ["truck"] };
+      for (const [kind, names] of Object.entries(map) as [VehicleKind, string[]][]) {
+        const list: { geo: THREE.BufferGeometry; mat: THREE.Material; paint: boolean }[] = [];
+        const obj = gltf.scene.getObjectByName(names[0]);
+        if (!obj) continue;
+        obj.updateMatrixWorld(true);
+        obj.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          const geo = m.geometry.clone();
+          geo.applyMatrix4(new THREE.Matrix4().copy(m.matrixWorld).premultiply(new THREE.Matrix4().copy(obj.matrixWorld).invert()));
+          const mat = (m.material as THREE.MeshStandardMaterial).clone();
+          const name = (m.material as THREE.Material).name;
+          const paint = name === "paint";
+          if (paint) mat.color.set(0xffffff);
+          list.push({ geo, mat, paint });
+        });
+        if (list.length) this.setParts(kind, list);
+      }
+    } catch { /* keep the box cars */ }
+  }
+
   update(focus: THREE.Vector3) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
     const counts = new Map<VehicleKind, number>();
-    for (const im of this.meshes.values()) im.count = 0;
     for (const v of this.flow.traffic.now) {
       const dx = v.x - focus.x, dz = v.z - focus.z;
       if (dx * dx + dz * dz > 320 * 320) continue;
-      const im = this.meshes.get(v.v.kind)!;
-      const i = counts.get(v.v.kind) ?? 0;
-      if (i >= 400) continue;
-      counts.set(v.v.kind, i + 1);
-      q.setFromAxisAngle(Y, Math.atan2(v.tx, v.tz));
-      im.setMatrixAt(i, m.compose(p.set(v.x, 0.02, v.z), q, s));
       const kind = v.v.kind;
-      im.setColorAt(i, c.set(kind === "cab" ? CAB : kind === "car" ? CAR_COLOURS[v.v.colorSeed % CAR_COLOURS.length] : kind === "bus" ? 0xf4f4f0 : [0xf0f0ec, 0xc8382a, 0x2b5d9a][v.v.colorSeed % 3]));
+      const parts = this.parts.get(kind)!;
+      const i = counts.get(kind) ?? 0;
+      if (i >= 400) continue;
+      counts.set(kind, i + 1);
+      q.setFromAxisAngle(Y, Math.atan2(v.tx, v.tz));
+      m.compose(p.set(v.x, 0.02, v.z), q, s);
+      c.set(kind === "cab" ? CAB : kind === "bus" ? 0xf4f4f0 : kind === "truck" || kind === "van" ? [0xf0f0ec, 0xc8382a, 0x2b5d9a, 0xe8e8e0][v.v.colorSeed % 4] : CAR_COLOURS[v.v.colorSeed % CAR_COLOURS.length]);
+      for (const part of parts) {
+        part.mesh.setMatrixAt(i, m);
+        if (part.paint) part.mesh.setColorAt(i, c);
+      }
     }
-    for (const [k, im] of this.meshes) {
-      im.count = counts.get(k) ?? 0;
-      im.instanceMatrix.needsUpdate = true;
-      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    for (const [k, parts] of this.parts) {
+      for (const part of parts) {
+        part.mesh.count = counts.get(k) ?? 0;
+        part.mesh.instanceMatrix.needsUpdate = true;
+        if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+      }
     }
   }
 }

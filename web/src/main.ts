@@ -154,7 +154,7 @@ function updateCamera(dt: number, t: number) {
   const p = leaf.pos;
   if (leaf.state === "attached") {
     const a = leaf.heading + Math.PI * 0.42 + Math.sin(t * 0.12) * 0.35; // beside the leaf, the city behind it
-    cam.position.set(p.x + Math.sin(a) * 2.4, p.y + 0.5 + Math.sin(t * 0.3) * 0.2, p.z + Math.cos(a) * 2.4);
+    cam.position.set(p.x + Math.sin(a) * 1.25, p.y + 0.75 + Math.sin(t * 0.3) * 0.1, p.z + Math.cos(a) * 1.25);
     cam.lookAt(p.x, p.y + 0.05, p.z);
     cam.fov = 50;
     cam.updateProjectionMatrix();

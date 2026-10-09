@@ -7,10 +7,12 @@
 
 import { Grid, type CityData } from "./data";
 
-export type VehicleKind = "cab" | "car" | "bus" | "truck";
+export type VehicleKind = "cab" | "car" | "suv" | "van" | "bus" | "truck";
 export const VEHICLE_SIZE: Record<VehicleKind, { l: number; w: number; h: number }> = {
   cab: { l: 4.9, w: 1.9, h: 1.55 },
   car: { l: 4.6, w: 1.85, h: 1.45 },
+  suv: { l: 4.9, w: 1.95, h: 1.8 },
+  van: { l: 5.5, w: 2.0, h: 2.4 },
   bus: { l: 12, w: 2.6, h: 3.2 },
   truck: { l: 8.5, w: 2.5, h: 3.4 },
 };
@@ -95,7 +97,7 @@ export class Traffic {
           for (let k = 0; k < count; k++) {
             id++;
             const r = h01(id * 7);
-            const kind: VehicleKind = r < 0.5 ? "cab" : r < 0.82 ? "car" : r < 0.92 ? "truck" : "bus";
+            const kind: VehicleKind = r < 0.45 ? "cab" : r < 0.65 ? "car" : r < 0.77 ? "suv" : r < 0.85 ? "van" : r < 0.93 ? "truck" : "bus";
             const laneW = c.width / Math.max(lanes, 1);
             const lane = c.dir === 0 ? (l + 0.5) * Math.min(3.3, laneW) : (l - (nl - 1) / 2) * Math.min(3.3, laneW);
             this.vehicles.push({ kind, chain: ci, lane, dir: d, speed: (kind === "bus" ? 7 : 9) + h01(id * 13) * 5, s0: h01(id * 3) * c.length, colorSeed: id });
