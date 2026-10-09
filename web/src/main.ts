@@ -25,6 +25,7 @@ import { GroundMesh } from "./render/ground";
 import { SubwayMesh } from "./render/subway";
 import { LeafView } from "./render/leaf";
 import { FacadePropsView } from "./render/facadeProps";
+import { Pigeons } from "./render/pigeons";
 import { CrowdView, SteamView, TrafficView, TrainsView, WindStreaks, lastTree, streetHazards } from "./render/life";
 import { Input } from "./game/input";
 import { Hud } from "./game/hud";
@@ -63,9 +64,10 @@ const steam = new SteamView(flow);
 const streaks = new WindStreaks(flow);
 const facadeProps = new FacadePropsView(flow.facades);
 const crowdView = new CrowdView(flow);
+const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
-stage.scene.add(landmarkMeshes(landmarks), crowdView.mesh, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+stage.scene.add(pigeons.mesh, landmarkMeshes(landmarks), crowdView.mesh, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree
 const course = makeCourse(city);
@@ -96,6 +98,7 @@ placeAt();
 const input = new Input();
 const hud = new Hud(hudEl, city);
 const audio = new Audio(city);
+pigeons.onScatter = (x, y, z) => audio.play("pigeon_flap", { at: [x, y + 1, z], vol: 1, world: true });
 const recorder = new Recorder(canvas, stage.quality);
 const tutorial = new Tutorial(hudEl, params.get("tutorial") === "1");
 const achievements = new Achievements(landmarks);
@@ -303,6 +306,7 @@ function tick(dt: number, render: boolean) {
   facadeProps.update(focus);
   if (freeCam) flow.crowd.update(leaf.clock + wall, focus.x, focus.z);
   crowdView.update();
+  pigeons.update(dt, leaf.pos, wall);
   ground.update(wall);
   ground.updateFocus(focus);
   // light: underground the sun goes and the fluorescents take over
@@ -333,4 +337,4 @@ function advance(seconds: number) {
   return { state: l.state, failure: l.failure, t: +l.time.toFixed(1), s: +city.route.nearest(l.pos.x, l.pos.z).s.toFixed(0), y: +l.pos.y.toFixed(1), lane: l.lane, v: +l.vel.length().toFixed(1), integrity: +l.integrity.toFixed(2) };
 }
 
-Object.assign(window, { fftt: { THREE, city, flow, leaf, stage, cam, advance, input, recorder, subway } });
+Object.assign(window, { fftt: { THREE, city, flow, leaf, stage, cam, advance, input, recorder, subway, pigeons } });

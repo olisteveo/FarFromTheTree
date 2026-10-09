@@ -17,7 +17,7 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
   const grid: THREE.Vector2[] = [];
   for (let i = 0; i < LAYERS; i++) grid.push(new THREE.Vector2(1, 1));
   for (const [st, layer] of Object.entries(STYLE_LAYER)) grid[layer].set(TILES[st as Style].bays, TILES[st as Style].floors);
-  for (let i = 8; i < LAYERS; i++) grid[i].set(2, 1);
+  for (let i = 8; i < LAYERS; i++) grid[i].set(6, 1);
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uAlb = { value: tex.albedo };
     sh.uniforms.uNor = { value: tex.normal };
@@ -58,7 +58,8 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
             bool shop = vY < gH && vInfo.w >= 0.0;
             float layer = shop ? vInfo.w : vMisc.y < -0.5 ? 0.0 : floor(vInfo.w < -1.5 ? -vInfo.w - 2.0 : 0.0);
             vec3 tuv;
-            if (shop) tuv = vec3(vUvm.x / ${SHOP_W.toFixed(1)}, vY / gH, vInfo.w);
+            // each building starts somewhere different along the six-shop strip
+            if (shop) tuv = vec3((vUvm.x + floor(fract(vMisc.z * 0.618) * 6.0) * 4.5) / ${SHOP_W.toFixed(1)}, vY / gH, vInfo.w);
             else tuv = vec3(vUvm.x / vInfo.x, (vY - gH) / vInfo.y, layer);
             vec4 a = texture(uAlb, tuv);
             vec3 nt = texture(uNor, tuv).xyz * 2.0 - 1.0;

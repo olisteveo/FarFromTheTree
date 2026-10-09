@@ -27,7 +27,7 @@ export const STYLE_LAYER: Record<Style, number> = { tenement: 0, castiron: 1, pr
 export const STOREFRONTS = ["generic", "chinatown", "soho", "midtown", "lobby"] as const;
 export type Storefront = (typeof STOREFRONTS)[number];
 export const SHOP_LAYER = (s: Storefront) => 8 + STOREFRONTS.indexOf(s);
-export const SHOP_W = 9; // metres per storefront tile
+export const SHOP_W = 27; // metres per storefront tile: six different shops
 export const LAYERS = 8 + STOREFRONTS.length;
 
 // ------------------------------------------------------------------ drawing kit
@@ -64,7 +64,7 @@ function rect(k: Ctx, x: number, y: number, w: number, h: number, col: string, h
 }
 
 const glassRects: { x: number; y: number; w: number; h: number }[] = [];
-function glass(k: Ctx, x: number, y: number, w: number, h: number, tone: [number, number, number], depth = 40) {
+function glass(k: Ctx, x: number, y: number, w: number, h: number, tone: [number, number, number], depth = 40, blinds = true) {
   // dark glass with a soft sky gradient and the odd blind or curtain
   const g = k.c.createLinearGradient(0, y * k.sy, 0, (y + h) * k.sy);
   const [r, gg, b] = tone;
@@ -73,7 +73,7 @@ function glass(k: Ctx, x: number, y: number, w: number, h: number, tone: [number
   g.addColorStop(1, `rgb(${Math.max(0, r - 10)},${Math.max(0, gg - 10)},${Math.max(0, b - 8)})`);
   k.c.fillStyle = g;
   k.c.fillRect(x * k.sx, y * k.sy, w * k.sx, h * k.sy);
-  const blind = rnd();
+  const blind = blinds ? rnd() : 1;
   if (blind < 0.35) {
     k.c.fillStyle = pick(["#d9cdb4", "#cfc2a6", "#e6dcc8", "#bfae8f", "#a8b4b8"]);
     k.c.fillRect(x * k.sx, y * k.sy, w * k.sx, h * k.sy * (0.2 + rnd() * 0.5));
@@ -327,15 +327,24 @@ function shopWindow(k: Ctx, x: number, y: number, w: number, h: number) {
   glassRects.push({ x: x * k.sx, y: y * k.sy, w: w * k.sx, h: h * k.sy });
 }
 
+/** Text drawn in metres with the right proportions, whatever the tile's aspect. */
+function signText(k: Ctx, text: string, xm: number, ym: number, maxWm: number) {
+  k.c.save();
+  k.c.translate(xm * k.sx, ym * k.sy);
+  k.c.scale(k.sx / k.sy, 1); // the tile is squeezed sideways: draw in vertical-pixel units
+  k.c.fillText(text, 0, 0, maxWm * k.sy);
+  k.c.restore();
+}
+
 function storefront(k: Ctx, kind: Storefront, H: number) {
   void SHOP_W;
   // 2 shops per tile, each 4.5 m
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 6; i++) {
     const x = i * 4.5;
     const pier = kind === "lobby" ? "#9da5aa" : kind === "soho" ? "#2b2d30" : pick(["#6b5a4a", "#4d4440", "#7a6a58", "#5a5550"]);
     rect(k, x, 0, 4.5, H, pier, 200);
     if (kind === "lobby") {
-      glass(k, x + 0.3, 0.6, 3.9, H - 0.6, [60, 70, 76], 60);
+      glass(k, x + 0.3, 0.6, 3.9, H - 0.6, [60, 70, 76], 60, false);
       rect(k, x + 2.2, 0.6, 0.08, H - 0.6, "#bcc3c7", 160);
       continue;
     }
@@ -349,10 +358,10 @@ function storefront(k: Ctx, kind: Storefront, H: number) {
     if (kind === "chinatown") {
       k.c.font = `bold ${Math.round(signH * k.sy * 0.62)}px serif`;
       const word = pick(CN) + pick(CN) + pick(CN);
-      k.c.fillText(word, (x + 2.25) * k.sx, (0.25 + signH / 2) * k.sy);
+      signText(k, word, x + 2.25, 0.25 + signH / 2, 3.7);
     } else {
       k.c.font = `bold ${Math.round(signH * k.sy * 0.5)}px Inter, Arial, sans-serif`;
-      k.c.fillText(pick(SIGN_WORDS), (x + 2.25) * k.sx, (0.25 + signH / 2) * k.sy);
+      signText(k, pick(SIGN_WORDS), x + 2.25, 0.25 + signH / 2, 3.7);
     }
     // shop window and door, sometimes a roll-down shutter
     const wy = 0.25 + signH + 0.25;
