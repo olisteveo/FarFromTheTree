@@ -1,0 +1,51 @@
+:root {
+  --ink: #fff7ec;
+  --muted: rgba(255, 240, 225, 0.72);
+  --amber: #ffb04a;
+  --red: #ff5a3c;
+  --glass: rgba(24, 14, 10, 0.32);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1210; color: var(--ink); font-family: Inter, system-ui, sans-serif; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#hud { position: fixed; inset: 0; pointer-events: none; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45); }
+
+.top { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); }
+.route { position: relative; height: 26px; }
+.route .seg { position: absolute; top: 12px; height: 3px; background: rgba(255, 240, 225, 0.35); border-left: 2px solid rgba(255, 240, 225, 0.75); }
+.route .seg span { position: absolute; top: -16px; left: 6px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.route .marker { position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50% 0 50% 50%; transform: rotate(-45deg); background: var(--amber); box-shadow: 0 0 12px var(--amber); transition: left 0.1s linear; }
+
+.clock { position: absolute; top: 18px; left: 24px; }
+.clock .time { font: 700 34px/1 Inter, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.clock .best { margin-top: 4px; font-size: 12px; color: var(--muted); letter-spacing: 0.08em; }
+
+.status { position: absolute; left: 24px; bottom: 26px; display: flex; flex-direction: column; gap: 8px; }
+.leafbar { width: 180px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.18); overflow: hidden; }
+.leafbar .fill { height: 100%; background: linear-gradient(90deg, #c4532a, #f0b443); transition: width 0.15s; }
+.leafbar.low .fill { background: var(--red); animation: pulse 0.6s infinite alternate; }
+.layer { font-size: 12px; letter-spacing: 0.16em; font-weight: 700; color: var(--muted); }
+.layer[data-layer="subway"] { color: #7dffb0; }
+.layer[data-layer="rooftop"], .layer[data-layer="sky"] { color: #ffd38a; }
+
+.card { position: absolute; top: 22%; left: 0; right: 0; text-align: center; opacity: 0; transform: translateY(8px); transition: opacity 0.8s, transform 0.8s; }
+.card.show { opacity: 1; transform: none; }
+.card .name { font: 800 clamp(40px, 7vw, 84px)/1 Fraunces, Georgia, serif; letter-spacing: -0.02em; }
+.card .sub { margin-top: 8px; font-size: 14px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--muted); }
+
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 16px; opacity: 0; transition: opacity 0.5s; }
+.screen.show { opacity: 1; }
+.screen.dead { background: radial-gradient(ellipse at center, rgba(40, 8, 4, 0.15), rgba(30, 6, 3, 0.55)); }
+.screen.won { background: radial-gradient(ellipse at center, rgba(255, 200, 120, 0.12), rgba(60, 30, 5, 0.45)); }
+.screen.start { justify-content: flex-end; padding-bottom: 14vh; background: linear-gradient(180deg, transparent 50%, rgba(25, 12, 6, 0.55)); }
+.screen .title { font: 800 clamp(44px, 8vw, 104px)/0.95 Fraunces, Georgia, serif; letter-spacing: -0.03em; }
+.screen .title.small { font-size: clamp(30px, 5vw, 60px); }
+.screen .sub { max-width: 560px; font-size: 16px; line-height: 1.55; color: var(--muted); }
+.screen .cta { margin-top: 10px; font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--amber); animation: pulse 1.4s infinite alternate; }
+
+.keys { position: absolute; right: 24px; bottom: 26px; font-size: 11px; letter-spacing: 0.08em; color: rgba(255, 240, 225, 0.5); text-align: right; max-width: 46vw; }
+.lil-gui { pointer-events: auto; }
+@keyframes pulse { from { opacity: 1; } to { opacity: 0.45; } }
+@media (max-width: 640px) { .keys { display: none; } .clock .time { font-size: 26px; } }
+.loading { position: absolute; inset: 0; display: grid; place-items: center; font: 600 22px Fraunces, Georgia, serif; color: var(--muted); }
+.fps { position: absolute; left: 12px; bottom: 10px; font: 12px/1.4 Inter, sans-serif; color: rgba(255, 255, 255, 0.8); text-shadow: 0 1px 3px #000; }
