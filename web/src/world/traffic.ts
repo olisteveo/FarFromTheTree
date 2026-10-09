@@ -60,6 +60,8 @@ export class Traffic {
   /** Vehicles placed at the current time, indexed by position (rebuilt by update). */
   readonly now: VehicleState[] = [];
   readonly grid = new Grid<VehicleState>(24);
+  /** Closed areas (the blockers): no vehicle drives inside them. */
+  closed: { x: number; z: number; r: number }[] = [];
   private t = -1;
 
   constructor(city: CityData) {
@@ -141,6 +143,10 @@ export class Traffic {
       const x = c.x[lo] + (c.x[hi] - c.x[lo]) * f - tz * v.lane * v.dir;
       const z = c.z[lo] + (c.z[hi] - c.z[lo]) * f + tx * v.lane * v.dir;
       tx *= v.dir; tz *= v.dir;
+      // the street's closed: traffic turns off before the barriers (they hide the turn)
+      let shut = false;
+      for (const b of this.closed) if ((x - b.x) ** 2 + (z - b.z) ** 2 < (b.r + 4) ** 2) { shut = true; break; }
+      if (shut) continue;
       const st: VehicleState = { x, z, tx, tz, speed: v.speed, v };
       this.now.push(st);
       this.grid.add(st, x - 6, z - 6, x + 6, z + 6);

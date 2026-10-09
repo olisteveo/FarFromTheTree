@@ -161,11 +161,13 @@ export class Underground {
 
 export const TRAIN = { length: 150, speed: 22, width: 3.0, height: 3.7, uptownHeadway: 70, downtownHeadway: 88, track: 3.3 };
 
-export interface Train { head: number; tail: number; dir: 1 | -1; off: number }
+/** head/tail: the part of the train that's out in the open tunnel (clipped at closed
+ *  stretches, which it slides into and out of); lo0: where its full length starts. */
+export interface Train { head: number; tail: number; dir: 1 | -1; off: number; lo0: number }
 
-/** Where every train is at time t: deterministic, the same every run. */
-/** Where every train is at time t: deterministic, the same every run. Service stops either side of
- *  a closed stretch (the flood), so trains appear and vanish at the barriers. */
+/** Where every train is at time t: deterministic, the same every run. Trains slide into a
+ *  closed stretch (the flood, the dead end at Bowling Green) and back out of it a carriage at
+ *  a time, as if they ran on behind its wall; they never appear on top of you. */
 export function trainsAt(t: number, length: number, out: Train[] = [], closed: { ss0: number; ss1: number }[] = []): Train[] {
   out.length = 0;
   const loop = length + 600;
@@ -175,9 +177,15 @@ export function trainsAt(t: number, length: number, out: Train[] = [], closed: {
       const d = (((t + phase) * TRAIN.speed + k * gap) % (Math.ceil(loop / gap) * gap));
       const head = dir > 0 ? -300 + d : length + 300 - d;
       if (head < -400 || head > length + 400) continue;
-      const lo = Math.min(head, head - dir * TRAIN.length), hi = Math.max(head, head - dir * TRAIN.length);
-      if (closed.some((c) => hi > c.ss0 - 12 && lo < c.ss1 + 12)) continue;
-      out.push({ head, tail: head - dir * TRAIN.length, dir, off: dir > 0 ? TRAIN.track : -TRAIN.track });
+      const lo0 = Math.min(head, head - dir * TRAIN.length);
+      let lo = lo0, hi = lo0 + TRAIN.length, gone = false;
+      for (const c of closed) {
+        const a = c.ss0 - 12, b = c.ss1 + 12;
+        if (hi <= a || lo >= b) continue;
+        if (lo < a) hi = a; else if (hi > b) lo = b; else gone = true;
+      }
+      if (gone || hi - lo < 1) continue;
+      out.push({ head: dir > 0 ? hi : lo, tail: dir > 0 ? lo : hi, dir, off: dir > 0 ? TRAIN.track : -TRAIN.track, lo0 });
     }
   }
   return out;

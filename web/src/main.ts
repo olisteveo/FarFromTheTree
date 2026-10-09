@@ -69,7 +69,8 @@ const crowdView = new CrowdView(flow);
 const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
-stage.scene.add(blockerMeshes(flow.blockers), pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+const blockerView = blockerMeshes(flow.blockers);
+stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree
 const course = makeCourse(city);
@@ -311,6 +312,7 @@ function tick(dt: number, render: boolean) {
   if (freeCam) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, 400); }
   crowdView.update();
   pigeons.update(dt, leaf.pos, wall);
+  blockerView.userData.update(wall);
   ground.update(wall);
   ground.updateFocus(focus);
   // light: underground the sun goes and the fluorescents take over

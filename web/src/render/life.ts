@@ -200,8 +200,8 @@ export class TrainsView {
       if (hi < near - 600 || lo > near + 600) continue;
       const carL = TRAIN.length / 8;
       for (let k = 0; k < 8 && ci < 120; k++) {
-        const ss = lo + carL * (k + 0.5);
-        if (ss < 0 || ss > sub.length) continue;
+        const ss = tr.lo0 + carL * (k + 0.5);
+        if (ss < 0 || ss > sub.length || ss < lo - carL * 0.3 || ss > hi + carL * 0.3) continue;
         const a = sub.at(ss);
         // the track's lateral offset uses the same sign as Polyline.nearest's "off"
         const px = a.x + a.tz * tr.off, pz = a.z - a.tx * tr.off;
@@ -211,7 +211,8 @@ export class TrainsView {
         ci++;
       }
       const hd = sub.at(Math.max(0, Math.min(sub.length, tr.head)));
-      for (const d of [-0.9, 0.9]) {
+      const headOut = Math.abs(tr.head - (tr.dir > 0 ? tr.lo0 + TRAIN.length : tr.lo0)) < 0.5;
+      for (const d of headOut ? [-0.9, 0.9] : []) {
         if (li >= 40) break;
         const px = hd.x + hd.tz * (tr.off + d), pz = hd.z - hd.tx * (tr.off + d);
         this.lights.setMatrixAt(li++, m.compose(p.set(px + hd.tx * tr.dir * 0.2, TUNNEL.floor + 1.6, pz + hd.tz * tr.dir * 0.2), q.identity(), s.set(1, 1, 1)));

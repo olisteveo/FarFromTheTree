@@ -16,6 +16,8 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "empire", name: "Top of the World, Ma!", desc: "Land on the roof of the Empire State." },
   { id: "cat", name: "Catnap", desc: "Get swatted by a cat. Curiosity didn't kill this one." },
   { id: "laundry", name: "Laundry Day", desc: "Get caught on a washing line." },
+  { id: "gobble", name: "Gobble Gobble", desc: "Boing off the giant turkey at the Thanksgiving parade." },
+  { id: "splash", name: "Making a Splash", desc: "Fly into the spray from the burst water main." },
   { id: "vent", name: "Mind the Gap", desc: "Get blown out of the subway up a vent shaft." },
   { id: "cab", name: "Cab Surfer", desc: "Ride a cab's slipstream for three seconds." },
   { id: "mole", name: "Mole Person", desc: "Spend a whole minute underground in one run." },
@@ -72,6 +74,15 @@ export class Achievements {
       const e = leaf.events[this.lastEvents];
       if (/cat/.test(e)) this.unlock("cat");
       if (/washing line/.test(e)) this.unlock("laundry");
+      if (/parade balloon/.test(e)) this.unlock("gobble");
+    }
+    // touching the spray curtain of the water main
+    if (p.y < 8 && p.y > 0) {
+      for (const bar of leaf.flow.blockers.barriers) {
+        if (bar.kind !== "water") continue;
+        const rx = p.x - bar.x, rz = p.z - bar.z;
+        if (Math.abs(rx * bar.ax + rz * bar.az) < bar.half && Math.abs(rx * bar.nx + rz * bar.nz) < 1.2) this.unlock("splash");
+      }
     }
     if (leaf.lane !== this.lastLane) {
       if (this.lastLane === "subway" && leaf.lane !== "subway" && leaf.vel.y > 6) this.unlock("vent");

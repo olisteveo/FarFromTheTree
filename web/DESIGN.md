@@ -61,12 +61,12 @@ single layer goes the whole way. Authored by `s`:
 | Section | Blocker |
 |---|---|
 | Battery Park | Tutorial: street only, then the first choices at Bowling Green |
-| Financial District | Roofs: the towers are too tall to stay over. Street or subway. |
+| Financial District | Roofs: the towers are too tall to stay over. Street: a water main break on Broadway throws a 9 m curtain of spray across it (hop it high, or duck into the subway). |
 | City Hall / Chinatown | Street: the festival lantern canopy and crowds on Mott St. Up to the low roofs or down at Canal St. |
 | SoHo | Subway: Prince St is flooded (water main break). Up the vent. |
-| Union Sq / Flatiron | Roofs: the square is open, nothing to stand on. The Flatiron wind (23rd St) is a street-level gift. |
+| Union Sq / Flatiron | Street: the Union Square Holiday Market's stalls and strings of lights close 14th St to Broadway (8 m). Roofs: the square itself is open, nothing to stand on. The Flatiron wind (23rd St) is a street-level gift. |
 | Herald / Times Sq | Street: the Times Square crowds and the TKTS steps. Roofs or subway. |
-| Columbus Circle | Subway: the line ends at 57 St. Roofs: Billionaires' Row is too tall. The street takes you into the park. |
+| Columbus Circle | Subway: the line ends at 57 St. Roofs: Billionaires' Row is too tall. The street takes you into the park, over the Thanksgiving parade's 7 m barriers and under (or round) its giant turkey balloon, which boings you away. |
 | Central Park | Canopy, lawn and paths. Kids and dogs. Plant the seed. |
 
 ## Flight model (the whole game)

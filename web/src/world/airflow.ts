@@ -73,6 +73,7 @@ export class Airflow {
     this.facades = new Facades(city);
     this.crowd = new Crowd(this.traffic);
     this.blockers = new Blockers(city);
+    this.traffic.closed = this.blockers.list;
   }
 
   trainsAt(t: number): Train[] {

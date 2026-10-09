@@ -19,6 +19,7 @@ import { inPoly, nearestEdge, type Building, type CityData } from "../world/data
 import { Airflow, type AirSample, type Lane } from "../world/airflow";
 import { ratAt } from "../world/underground";
 import { Facades } from "../world/facades";
+import { BARRIER_NAME } from "../world/blockers";
 
 const PROP_NAME: Record<string, string> = { ac: "an AC unit", balcony: "a balcony", solid: "a monument", cat: "a cat", line: "a washing line" };
 
@@ -92,6 +93,7 @@ export class Glider {
   private lastSnag = -99;
   private lastBump = -99;
   private lastHit = -99;
+  private lastBoing = -99;
   private bl: Building[] = [];
 
   constructor(readonly city: CityData, readonly flow: Airflow, readonly start: { x: number; y: number; z: number; heading: number }) {
@@ -382,8 +384,21 @@ export class Glider {
         const d = rx * bar.nx + rz * bar.nz; // + outside the closed area
         if (Math.abs(d) < r + 0.15) {
           const side = d >= 0 ? 1 : -1;
-          this.contact(bar.nx * side, 0, bar.nz * side, r + 0.15 - Math.abs(d), bar.blocker === "festival" ? "the festival lanterns" : "the crowd barriers");
+          this.contact(bar.nx * side, 0, bar.nz * side, r + 0.15 - Math.abs(d), BARRIER_NAME[bar.kind]);
         }
+      }
+    }
+    // parade balloons: soft and bouncy, they don't hurt, they boing
+    for (const b of this.flow.blockers.balloons) {
+      const dx = p.x - b.x, dy = p.y - b.y, dz = p.z - b.z, d = Math.hypot(dx, dy, dz);
+      if (d > b.r + r || d < 1e-3) continue;
+      const nx = dx / d, ny = dy / d, nz = dz / d;
+      p.x = b.x + nx * (b.r + r); p.y = b.y + ny * (b.r + r); p.z = b.z + nz * (b.r + r);
+      const vn = this.vel.x * nx + this.vel.y * ny + this.vel.z * nz;
+      if (vn < 0) {
+        const k = -vn * 1.6 + 3;
+        this.vel.x += nx * k; this.vel.y += ny * k + 2; this.vel.z += nz * k;
+        if (this.clock - this.lastBoing > 1) { this.lastBoing = this.clock; this.events.push(`t${this.time.toFixed(1)} boinged off the parade balloon`); }
       }
     }
     // the street, unless there's a hole in it
