@@ -12,6 +12,9 @@ import * as THREE from "three";
 import GUI from "lil-gui";
 import { CityData } from "./world/data";
 import { makeCourse } from "./world/course";
+import { Landmarks } from "./world/landmarks";
+import { landmarkMeshes, landmarkSolids } from "./render/landmarks";
+import { Achievements } from "./game/achievements";
 import { Airflow, AIR } from "./world/airflow";
 import { TUNNEL } from "./world/underground";
 import { Glider, FLIGHT } from "./sim/glider";
@@ -21,7 +24,8 @@ import { BuildingsMesh } from "./render/buildings";
 import { GroundMesh } from "./render/ground";
 import { SubwayMesh } from "./render/subway";
 import { LeafView } from "./render/leaf";
-import { SteamView, TrafficView, TrainsView, WindStreaks, lastTree, streetHazards } from "./render/life";
+import { FacadePropsView } from "./render/facadeProps";
+import { CrowdView, SteamView, TrafficView, TrainsView, WindStreaks, lastTree, streetHazards } from "./render/life";
 import { Input } from "./game/input";
 import { Hud } from "./game/hud";
 import { Audio } from "./game/audio";
@@ -57,7 +61,11 @@ const traffic = new TrafficView(flow);
 const trains = new TrainsView(flow);
 const steam = new SteamView(flow);
 const streaks = new WindStreaks(flow);
-stage.scene.add(buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+const facadeProps = new FacadePropsView(flow.facades);
+const crowdView = new CrowdView(flow);
+const landmarks = new Landmarks(city);
+landmarkSolids(landmarks, flow.facades);
+stage.scene.add(landmarkMeshes(landmarks), crowdView.mesh, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree
 const course = makeCourse(city);
@@ -90,6 +98,12 @@ const hud = new Hud(hudEl, city);
 const audio = new Audio(city);
 const recorder = new Recorder(canvas, stage.quality);
 const tutorial = new Tutorial(hudEl, params.get("tutorial") === "1");
+const achievements = new Achievements(landmarks);
+achievements.onUnlock = (a) => {
+  hud.notify(`<b>${a.name}</b><br/><span style="opacity:.75">${a.desc}</span>`, 4.5);
+  audio.ui("achievement_chime");
+  recorder.event("achievement", a.name);
+};
 
 // ------------------------------------------------------------------ replay (?replay=<session>/<run>)
 let replay: RunLog | null = null;
@@ -227,6 +241,7 @@ function tick(dt: number, render: boolean) {
   }
   if (input.hit("KeyR") && !replay) {
     recorder.finish(leaf, "restart");
+    achievements.reset();
     leaf.reset();
     hud.reset();
     audio.reset();
@@ -259,10 +274,11 @@ function tick(dt: number, render: boolean) {
       leaf.failure = replay.result?.failure ?? "";
       (leaf as unknown as { updateQuat(s: number): void }).updateQuat(0);
     }
-    flow.traffic.update(leaf.clock);
+    flow.traffic.update(leaf.clock, leaf.pos.x, leaf.pos.z, 400);
   } else if (!freeCam) {
     acc += dt;
-    flow.traffic.update(leaf.clock);
+    flow.traffic.update(leaf.clock, leaf.pos.x, leaf.pos.z, 400);
+    flow.crowd.update(leaf.clock, leaf.pos.x, leaf.pos.z);
     let steps = 0;
     while (acc >= STEP && steps < 12) {
       leaf.step(STEP, input.state);
@@ -284,6 +300,9 @@ function tick(dt: number, render: boolean) {
   traffic.update(focus);
   trains.update(leaf.clock, focus);
   buildings.update(focus);
+  facadeProps.update(focus);
+  if (freeCam) flow.crowd.update(leaf.clock + wall, focus.x, focus.z);
+  crowdView.update();
   ground.update(wall);
   ground.updateFocus(focus);
   // light: underground the sun goes and the fluorescents take over
@@ -297,6 +316,7 @@ function tick(dt: number, render: boolean) {
   audio.update(dt, leaf, cam, city.district(ns.s).name);
   recorder.update(dt, leaf, input.state, ns.s, city.district(ns.s).name);
   tutorial.update(dt, leaf, input.state);
+  if (!replay) achievements.update(dt, leaf);
   if (render) { stage.render(); recorder.afterRender(leaf.time, ns.s); }
   input.endFrame();
 }

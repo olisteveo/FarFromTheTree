@@ -42,7 +42,7 @@ if (process.env.FFTT_WORKER) {
     const lanes: Record<string, number> = {}, dist: Record<string, number> = {};
     let prevS = 0;
     for (let i = 0; i < (job.maxMinutes * 60) / dt && g.state === "flying"; i++) {
-      if (i % 6 === 0) flow.traffic.update(g.clock);
+      if (i % 6 === 0) { flow.traffic.update(g.clock); flow.crowd.update(g.clock, g.pos.x, g.pos.z, 60); }
       const input = pilot.update(dt);
       g.step(dt, input);
       if (g.grounded && course.inMeadow(g.pos.x, g.pos.z) && Math.hypot(g.vel.x, g.vel.z) < 2.5) g.plant();

@@ -17,7 +17,7 @@ export const TUNNEL = {
   stationHalfLength: 75,
   grateEvery: 70,
   /** steel I-beam columns down the middle of the tunnel, between the two tracks */
-  columnEvery: 5,
+  columnEvery: 8,
   columnRadius: 0.22,
 };
 
@@ -32,6 +32,9 @@ export class Underground {
   readonly shaftGrid = new Grid<Shaft>(16);
   readonly stations: { ss: number; name: string }[];
   readonly blocked: Blocked[];
+  /** stretches with no train service: the flood, and Bowling Green to the Wall St junction
+   *  (a calm first tunnel to learn the subway in) */
+  readonly noTrains: { ss0: number; ss1: number }[];
   readonly start: number;
   readonly end: number;
   private hint = -1;
@@ -60,6 +63,8 @@ export class Underground {
         this.addShaft({ x: e.x, z: e.z, r: 2.1, tx: p.x - e.x, tz: p.z - e.z, kind: "stairs", ss: s, name: e.n, out: i % 2 === 1 });
       });
     }
+    const wallSt = this.stations.find((s) => /Wall St/.test(s.name))?.ss ?? 380;
+    this.noTrains = [{ ss0: -2000, ss1: wallSt - 110 }, this.blocked[0]];
     // relief vents just before the flood and the end of the line: the tunnel air (and you) escape up them
     for (const ss of [this.blocked[0].ss0 - 7, this.end - 7]) {
       const p = sub.at(ss);
@@ -161,7 +166,7 @@ export interface Train { head: number; tail: number; dir: 1 | -1; off: number }
 /** Where every train is at time t: deterministic, the same every run. */
 /** Where every train is at time t: deterministic, the same every run. Service stops either side of
  *  a closed stretch (the flood), so trains appear and vanish at the barriers. */
-export function trainsAt(t: number, length: number, out: Train[] = [], closed?: { ss0: number; ss1: number }): Train[] {
+export function trainsAt(t: number, length: number, out: Train[] = [], closed: { ss0: number; ss1: number }[] = []): Train[] {
   out.length = 0;
   const loop = length + 600;
   for (const [dir, headway, phase] of [[1, TRAIN.uptownHeadway, 21], [-1, TRAIN.downtownHeadway, 47]] as const) {
@@ -170,10 +175,8 @@ export function trainsAt(t: number, length: number, out: Train[] = [], closed?: 
       const d = (((t + phase) * TRAIN.speed + k * gap) % (Math.ceil(loop / gap) * gap));
       const head = dir > 0 ? -300 + d : length + 300 - d;
       if (head < -400 || head > length + 400) continue;
-      if (closed) {
-        const lo = Math.min(head, head - dir * TRAIN.length), hi = Math.max(head, head - dir * TRAIN.length);
-        if (hi > closed.ss0 - 12 && lo < closed.ss1 + 12) continue;
-      }
+      const lo = Math.min(head, head - dir * TRAIN.length), hi = Math.max(head, head - dir * TRAIN.length);
+      if (closed.some((c) => hi > c.ss0 - 12 && lo < c.ss1 + 12)) continue;
       out.push({ head, tail: head - dir * TRAIN.length, dir, off: dir > 0 ? TRAIN.track : -TRAIN.track });
     }
   }

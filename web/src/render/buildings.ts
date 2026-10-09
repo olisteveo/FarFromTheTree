@@ -3,6 +3,7 @@
 // towers, parapets, and roofs with clutter (water towers, bulkheads, HVAC).
 
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Building, CityData, Poly, Style } from "../world/data";
 import { ringArea, inPoly } from "../world/data";
 import { SHOP_LAYER, SHOP_W, STYLE_LAYER, TILES, TINTS, LAYERS, type FacadeTextures, type Storefront } from "./facades";
@@ -271,79 +272,142 @@ function addBuilding(g: GeoBuilder, b: Building, district: string, roofs: RoofSp
     const miscR = [top, 0, seed, 1];
     for (const p of all) g.vert(p.x, tier.y1, p.y, 0, 1, 0, p.x, p.y, 1, 0, tint, infoT, miscR);
     for (const f of faces) g.idx.push(base + f[0], base + f[2], base + f[1]);
-    if (tier.top) roofs.push({ b, poly: tier.poly, y: tier.y1 });
+    if (tier.top) roofs.push({ b, poly: tier.poly, y: tier.y1, district });
   }
 }
 
 // ------------------------------------------------------------------ roof clutter
 
-interface RoofSpot { b: Building; poly: Poly; y: number }
+interface RoofSpot { b: Building; poly: Poly; y: number; district: string }
+
+function vc(g: THREE.BufferGeometry, c: number): THREE.BufferGeometry {
+  const col = new THREE.Color(c), n = g.attributes.position.count, arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) arr.set([col.r, col.g, col.b], i * 3);
+  g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+  return g.index ? g.toNonIndexed() : g;
+}
+const bx = (w: number, h: number, d: number, x: number, y: number, z: number, c: number) => vc(new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z), c);
+const cyl = (r0: number, r1: number, h: number, x: number, y: number, z: number, c: number, seg = 12) => vc(new THREE.CylinderGeometry(r0, r1, h, seg).translate(x, y + h / 2, z), c);
+const merge = (parts: THREE.BufferGeometry[]) => mergeGeometries(parts)!;
+
+/** The rooftop kit: each item is built at unit scale around its own origin (y = roof level). */
+const ROOF_KIT = {
+  waterTower: merge([
+    cyl(1, 1, 3.6, 0, 2.6, 0, 0x6e4c34, 16), vc(new THREE.ConeGeometry(1.08, 0.9, 16).translate(0, 6.65, 0), 0x5a3c28),
+    ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, c]) => bx(0.12, 2.6, 0.12, a * 0.7, 0, c * 0.7, 0x3a3a3a)),
+    bx(1.6, 0.08, 1.6, 0, 2.55, 0, 0x4a4a4a),
+    ...[0.9, 1.8, 2.7].map((y) => vc(new THREE.TorusGeometry(1.01, 0.03, 4, 20).rotateX(Math.PI / 2).translate(0, 2.6 + y, 0), 0x2a2a2a)),
+  ]),
+  steelTank: merge([cyl(1.4, 1.4, 4.2, 0, 1.2, 0, 0xb8bcc0, 18), bx(2.4, 1.2, 2.4, 0, 0, 0, 0x6a6a6a), cyl(0.05, 0.05, 1.2, 1.5, 5.4, 0, 0x6a6a6a, 5)]),
+  bulkhead: merge([bx(3, 2.6, 3.4, 0, 0, 0, 0x8c8378), bx(0.9, 2, 0.05, 0.6, 0, 1.72, 0x4a3a2e), bx(3.2, 0.15, 3.6, 0, 2.6, 0, 0x5a554e)]),
+  hvacBank: merge([
+    ...[-1.6, 0, 1.6].map((x) => bx(1.4, 1.1, 1.4, x, 0, 0, 0x9aa0a4)),
+    ...[-1.6, 0, 1.6].map((x) => vc(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16).translate(x, 1.12, 0), 0x2a2a2a)),
+    bx(4.6, 0.2, 1.8, 0, 0, 0, 0x5a5a5a),
+  ]),
+  chimney: merge([bx(0.9, 2.4, 0.7, 0, 0, 0, 0x8a3e30), bx(1.0, 0.18, 0.8, 0, 2.4, 0, 0x6a6058), cyl(0.14, 0.14, 0.5, 0.18, 2.58, 0, 0x5a3a2a, 6), cyl(0.14, 0.14, 0.4, -0.18, 2.58, 0, 0x5a3a2a, 6)]),
+  dish: merge([vc(new THREE.SphereGeometry(0.45, 12, 6, 0, Math.PI * 2, 0, 0.9).rotateX(-1.1).translate(0, 1.0, 0), 0xdcdcd8), cyl(0.04, 0.04, 1, 0, 0, 0, 0x5a5a5a, 5)]),
+  skylight: merge([bx(2.4, 0.4, 1.6, 0, 0, 0, 0x6a6058), vc(new THREE.ConeGeometry(1.35, 0.9, 4).rotateY(Math.PI / 4).scale(1, 1, 0.7).translate(0, 0.85, 0), 0x6a8a9a)]),
+  mast: merge([cyl(0.06, 0.1, 9, 0, 0, 0, 0x5a5a5a, 6), ...[3, 5, 7].map((y) => bx(1.2, 0.05, 0.05, 0, y, 0, 0x5a5a5a)), vc(new THREE.SphereGeometry(0.12, 6, 4).translate(0, 9.05, 0), 0xff3a2a)]),
+  garden: merge([
+    bx(5.5, 0.12, 4, 0, 0, 0, 0x7a5a3a),                                      // deck
+    ...[-2.2, 2.2].map((x) => bx(0.9, 0.6, 3.6, x, 0.12, 0, 0x5a4a3a)),        // planters
+    ...[-2.2, 2.2].map((x) => vc(new THREE.IcosahedronGeometry(0.55, 0).translate(x, 1.2, -1), 0x4a5a2a)),
+    ...[-2.2, 2.2].map((x) => cyl(0.05, 0.08, 1.6, x, 0.7, 1, 0x3e342c, 5)),   // little bare trees
+    bx(0.8, 0.05, 0.8, 0, 0.75, 0, 0x2a2a2a), cyl(0.04, 0.04, 0.62, 0, 0.12, 0, 0x2a2a2a, 5),     // table
+    ...[-0.8, 0.8].map((x) => bx(0.45, 0.06, 0.45, x, 0.55, 0.1, 0xb8a080)),  // chairs
+    ...[-0.8, 0.8].map((x) => bx(0.45, 0.5, 0.05, x, 0.6, 0.32, 0xb8a080)),
+    ...[-2.7, 2.7].map((x) => cyl(0.03, 0.03, 2.4, x, 0, 1.9, 0x2a2a2a, 4)),  // string light poles
+  ]),
+  coop: merge([
+    bx(2.4, 1.6, 1.6, 0, 0.3, 0, 0xb09070), vc(new THREE.ConeGeometry(1.8, 0.6, 4).rotateY(Math.PI / 4).scale(1, 1, 0.75).translate(0, 2.2, 0), 0x6a4a3a),
+    bx(2.5, 0.3, 1.7, 0, 0, 0, 0x5a5a5a), bx(1.8, 0.8, 0.04, 0, 0.7, 0.81, 0x3a3a3a),
+    bx(3, 0.05, 0.05, 0, 2.5, 1.4, 0x3a3a3a),
+  ]),
+  solar: merge([...[-1.4, 0, 1.4].map((x) => vc(new THREE.BoxGeometry(1.2, 0.05, 2).rotateX(-0.45).translate(x, 0.6, 0), 0x1f2a44)), bx(4.2, 0.25, 0.2, 0, 0, -0.7, 0x5a5a5a), bx(4.2, 0.6, 0.2, 0, 0, 0.7, 0x5a5a5a)]),
+  billboard: merge([
+    ...[-3.5, 3.5].map((x) => bx(0.25, 6, 0.25, x, 0, 0, 0x3a3a3a)),
+    bx(9, 4.2, 0.2, 0, 6, 0, 0xf0f0f0),                                       // the face (tinted by the instance)
+    ...[1, 3, 5].map((y) => bx(7.5, 0.1, 0.1, 0, y, -0.15, 0x3a3a3a)),
+  ]),
+  gooseneck: merge([cyl(0.12, 0.12, 0.9, 0, 0, 0, 0x8a8a8a, 6), vc(new THREE.TorusGeometry(0.22, 0.12, 6, 8, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2).translate(0, 0.9, 0.22), 0x8a8a8a)]),
+  laundry: merge([
+    ...[-2, 2].map((x) => cyl(0.04, 0.04, 2, x, 0, 0, 0x5a5a5a, 4)),
+    ...[-1.4, -0.7, 0.1, 0.8, 1.5].map((x, i) => vc(new THREE.PlaneGeometry(0.45, 0.6).translate(x, 1.65, 0), [0xc8382a, 0xf0ece0, 0x2a5a9a, 0xe0b423, 0xd27aa2][i])),
+  ]),
+};
+type RoofItem = keyof typeof ROOF_KIT;
+const ROOF_FOOTPRINT: Record<RoofItem, number> = { waterTower: 3, steelTank: 3, bulkhead: 2.6, hvacBank: 3, chimney: 1, dish: 1, skylight: 1.6, mast: 0.6, garden: 3.6, coop: 1.8, solar: 2.6, billboard: 5, gooseneck: 0.5, laundry: 2.2 };
+
+/** What goes on a roof, by the building's age, style, district and height. */
+function roofPlan(b: Building, district: string, r: (k: number) => number): RoofItem[] {
+  const out: RoofItem[] = [];
+  const add = (it: RoofItem, chance: number, max = 1) => { for (let i = 0; i < max; i++) if (r(out.length * 7 + i + it.length) < chance) out.push(it); };
+  if (b.area > 120) add("bulkhead", 0.85);
+  switch (b.style) {
+    case "tenement":
+      add("chimney", 0.7, 3); add("dish", 0.5, 2); add("gooseneck", 0.6, 2);
+      if (district === "chinatown" || district === "littleitaly") { add("coop", 0.22); add("laundry", 0.35); }
+      add("waterTower", b.h > 18 ? 0.45 : 0.15);
+      break;
+    case "castiron":
+      add("skylight", 0.6, 2); add("waterTower", 0.45); add("gooseneck", 0.4, 2); add("garden", 0.18);
+      break;
+    case "prewar": case "deco": case "civic":
+      add("waterTower", b.h < 110 ? 0.5 : 0.1); add("garden", district === "village" || district === "littleitaly" ? 0.3 : 0.12);
+      add("skylight", 0.25); add("hvacBank", 0.3); add("mast", b.h > 90 ? 0.6 : 0.05);
+      break;
+    case "brick":
+      add("hvacBank", 0.4); add("dish", 0.4, 2); add("garden", 0.15); add("steelTank", 0.15); add("gooseneck", 0.5, 2);
+      break;
+    case "modern": case "glass":
+      add("hvacBank", 0.75, 2); add("steelTank", 0.35); add("solar", 0.3, 2); add("mast", b.h > 70 ? 0.55 : 0.1); add("gooseneck", 0.4, 3);
+      break;
+  }
+  if ((district === "midtown" || district === "columbus") && b.h < 60 && b.area > 250) add("billboard", 0.35);
+  return out;
+}
+
+const BILLBOARD_TINTS = [0xffd84a, 0x4ad8ff, 0xff4a8a, 0xffffff, 0x8aff6a, 0xff8a3a];
 
 function roofClutter(spots: RoofSpot[]): THREE.Group {
   const g = new THREE.Group();
-  const wood = new THREE.MeshStandardMaterial({ color: 0x6e4c34, roughness: 0.9 });
-  const metal = new THREE.MeshStandardMaterial({ color: 0x9aa0a4, roughness: 0.45, metalness: 0.7 });
-  const box = new THREE.MeshStandardMaterial({ color: 0x8c8378, roughness: 0.9 });
-  const tankGeo = new THREE.CylinderGeometry(1, 1, 1, 16);
-  tankGeo.translate(0, 0.5, 0);
-  const coneGeo = new THREE.ConeGeometry(1.08, 0.5, 16);
-  coneGeo.translate(0, 0.25, 0);
-  const legGeo = new THREE.BoxGeometry(0.12, 1, 0.12);
-  legGeo.translate(0, 0.5, 0);
-  const cube = new THREE.BoxGeometry(1, 1, 1);
-  cube.translate(0, 0.5, 0);
-  const towers: THREE.Matrix4[] = [], cones: THREE.Matrix4[] = [], legs: THREE.Matrix4[] = [], heads: THREE.Matrix4[] = [], hvac: THREE.Matrix4[] = [];
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-  const inside = (poly: Poly, x: number, z: number) => inPoly(poly, x, z);
-  for (const { b, poly, y } of spots) {
-    if (b.area < 60) continue;
-    const r = (k: number) => hash(b.seed * 31 + k);
-    const spot = (k: number, margin: number): [number, number] | null => {
-      for (let t = 0; t < 8; t++) {
-        const x = b.x0 + margin + (b.x1 - b.x0 - 2 * margin) * r(k * 13 + t);
-        const z = b.z0 + margin + (b.z1 - b.z0 - 2 * margin) * r(k * 17 + t + 5);
-        if (inside(poly, x, z) && inside(poly, x + margin, z) && inside(poly, x - margin, z) && inside(poly, x, z + margin) && inside(poly, x, z - margin)) return [x, z];
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.15 });
+  const glow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0xffffff, emissiveIntensity: 0.0 });
+  const lists = new Map<RoofItem, { m: THREE.Matrix4; tint?: number }[]>();
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  for (const { b, poly, y, district } of spots) {
+    if (b.area < 40) continue;
+    const r = (k: number) => hash(b.seed * 31 + k * 977);
+    const plan = roofPlan(b, district, r);
+    const placed: [number, number, number][] = [];
+    const yawBase = (() => { const ring = poly[0]; return Math.atan2(ring[2] - ring[0], ring[3] - ring[1]); })();
+    plan.forEach((it, i) => {
+      const fp = ROOF_FOOTPRINT[it];
+      for (let tries = 0; tries < 10; tries++) {
+        const x = b.x0 + fp + (b.x1 - b.x0 - 2 * fp) * r(i * 13 + tries * 3 + 1);
+        const z = b.z0 + fp + (b.z1 - b.z0 - 2 * fp) * r(i * 17 + tries * 5 + 2);
+        if (b.x1 - b.x0 < 2 * fp || b.z1 - b.z0 < 2 * fp) return;
+        const ok = [[0, 0], [fp, 0], [-fp, 0], [0, fp], [0, -fp]].every(([dx, dz]) => inPoly(poly, x + dx, z + dz));
+        if (!ok || placed.some(([px, pz, pr]) => Math.hypot(px - x, pz - z) < pr + fp)) continue;
+        placed.push([x, z, fp]);
+        const yaw = yawBase + (r(i * 29 + tries) < 0.5 ? 0 : Math.PI / 2);
+        const k = it === "waterTower" ? 1.6 + r(i * 3) * 1.0 : it === "steelTank" ? 0.9 + r(i * 5) * 0.5 : 1;
+        q.setFromAxisAngle(Y, yaw);
+        (lists.get(it) ?? lists.set(it, []).get(it)!).push({ m: m.clone().compose(p.set(x, y, z), q, sc.set(k, k, k)), tint: it === "billboard" ? BILLBOARD_TINTS[Math.floor(r(i * 41) * BILLBOARD_TINTS.length)] : undefined });
+        return;
       }
-      return null;
-    };
-    // stair / elevator bulkhead on almost every roof
-    const bh = spot(1, 2.5);
-    if (bh && r(2) < 0.85) {
-      q.setFromAxisAngle(Y, Math.atan2(b.x1 - b.x0, b.z1 - b.z0) * 0 + (r(3) < 0.5 ? 0 : Math.PI / 2));
-      heads.push(m.clone().compose(p.set(bh[0], y, bh[1]), q, s.set(2.6 + r(4) * 2, 2.6 + r(5) * 1.4, 3 + r(6) * 2)));
-    }
-    // the classic wooden water tower, on old buildings of 6 to 30 floors
-    const old = b.year > 0 && b.year < 1950 && b.h > 18 && b.h < 110;
-    if (old && r(7) < 0.42) {
-      const wt = spot(8, 3);
-      if (wt) {
-        const rad = 1.8 + r(9) * 1.2, legH = 3 + r(10) * 2, tank = 3.6 + r(11) * 2;
-        towers.push(m.clone().compose(p.set(wt[0], y + legH, wt[1]), q.identity(), s.set(rad, tank, rad)));
-        cones.push(m.clone().compose(p.set(wt[0], y + legH + tank, wt[1]), q.identity(), s.set(rad, 1.6, rad)));
-        for (const [a, c] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) legs.push(m.clone().compose(p.set(wt[0] + a * rad * 0.7, y, wt[1] + c * rad * 0.7), q.identity(), s.set(1, legH, 1)));
-      }
-    }
-    // HVAC on newer and bigger roofs
-    if ((b.style === "modern" || b.style === "glass" || b.area > 900) && r(12) < 0.8) {
-      for (let k = 0; k < 1 + Math.floor(r(13) * 3); k++) {
-        const hv = spot(20 + k, 2.5);
-        if (hv) hvac.push(m.clone().compose(p.set(hv[0], y, hv[1]), q.setFromAxisAngle(Y, r(30 + k) < 0.5 ? 0 : Math.PI / 2), s.set(2 + r(40 + k) * 3, 1.4 + r(50 + k), 1.6 + r(60 + k) * 2)));
-      }
-    }
+    });
   }
-  const inst = (geo: THREE.BufferGeometry, mat: THREE.Material, list: THREE.Matrix4[]) => {
-    if (!list.length) return;
-    const im = new THREE.InstancedMesh(geo, mat, list.length);
-    list.forEach((mm, i) => im.setMatrixAt(i, mm));
-    im.castShadow = true; im.receiveShadow = true;
+  const tint = new THREE.Color();
+  for (const [it, list] of lists) {
+    const im = new THREE.InstancedMesh(ROOF_KIT[it], it === "billboard" ? glow : mat, list.length);
+    list.forEach((e, i) => { im.setMatrixAt(i, e.m); if (e.tint !== undefined) im.setColorAt(i, tint.set(e.tint)); });
+    im.castShadow = it !== "gooseneck" && it !== "dish";
+    im.receiveShadow = true;
     im.computeBoundingSphere();
     g.add(im);
-  };
-  inst(tankGeo, wood, towers);
-  inst(coneGeo, wood, cones);
-  inst(legGeo, metal, legs);
-  inst(cube, box, heads);
-  inst(cube, metal, hvac);
+  }
   return g;
 }
 

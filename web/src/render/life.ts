@@ -258,7 +258,8 @@ export function streetHazards(flow: Airflow): THREE.Group {
  *  blue where it blows against you, white where it lifts. */
 export class WindStreaks {
   readonly mesh: THREE.LineSegments;
-  private n = 900;
+  private n = 560;
+  private flip = 0;
   private p: Float32Array; private age: Float32Array; private life: Float32Array;
   private pos: Float32Array; private col: Float32Array;
   private s: AirSample = { x: 0, y: 0, z: 0, lane: "street", vehicle: false, train: false };
@@ -281,7 +282,10 @@ export class WindStreaks {
     const R = 28, under = focus.y < -0.4;
     const route = this.flow.city.route;
     const rt = route.at(route.nearest(focus.x, focus.z).s);
-    for (let i = 0; i < this.n; i++) {
+    // half the streaks each frame (each moves two frames' worth): the same look for half the wind samples
+    this.flip ^= 1;
+    dt *= 2;
+    for (let i = this.flip; i < this.n; i += 2) {
       let x = this.p[i * 3], y = this.p[i * 3 + 1], z = this.p[i * 3 + 2];
       if (this.age[i] > this.life[i] || Math.abs(x - focus.x) > R || Math.abs(z - focus.z) > R || Math.abs(y - focus.y) > 14 || (under !== y < -0.4)) {
         x = focus.x + (Math.random() * 2 - 1) * R;
@@ -346,4 +350,40 @@ export function lastTree(at: { x: number; z: number }, leafAt: THREE.Vector3): T
   m.receiveShadow = true;
   g.add(m);
   return g;
+}
+
+// ------------------------------------------------------------------ people on the sidewalks
+
+export class CrowdView {
+  readonly mesh: THREE.InstancedMesh;
+  constructor(private flow: Airflow) {
+    const body = mergeGeometries([
+      coloured(new THREE.CylinderGeometry(0.19, 0.25, 1.05, 8).translate(0, 0.62, 0), 0xffffff),   // coat (tinted)
+      coloured(new THREE.CylinderGeometry(0.09, 0.08, 0.5, 6).translate(-0.09, 0.25, 0), 0x1a1a1c), // legs
+      coloured(new THREE.CylinderGeometry(0.09, 0.08, 0.5, 6).translate(0.09, 0.25, 0), 0x1a1a1c),
+      coloured(new THREE.SphereGeometry(0.12, 8, 6).translate(0, 1.3, 0), 0xc89a7a),               // head
+      coloured(new THREE.CylinderGeometry(0.13, 0.13, 0.1, 8).translate(0, 1.42, 0), 0x2a2a2a),    // hat
+      coloured(new THREE.BoxGeometry(0.34, 0.08, 0.2).translate(0, 1.12, 0.02), 0xb03a2a),          // scarf
+    ])!;
+    this.mesh = new THREE.InstancedMesh(body, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }), 900);
+    this.mesh.frustumCulled = false;
+    this.mesh.count = 0;
+    this.mesh.castShadow = true;
+  }
+  update() {
+    const coats = [0x2a2a30, 0x5a2a2a, 0x2a3a5a, 0x6b5a40, 0x1e1e1e, 0x3a4a3a, 0x8a7a6a, 0x4a2a4a];
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
+    let n = 0;
+    for (const w of this.flow.crowd.now) {
+      if (n >= 900) break;
+      q.setFromAxisAngle(Y, Math.atan2(w.tx, w.tz));
+      const k = w.w.h / 1.55;
+      this.mesh.setMatrixAt(n, m.compose(p.set(w.x, 0.15 + Math.abs(Math.sin(w.phase * 2)) * 0.04, w.z), q, s.set(1, k, 1)));
+      this.mesh.setColorAt(n, c.set(coats[w.w.seed % coats.length]));
+      n++;
+    }
+    this.mesh.count = n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
 }

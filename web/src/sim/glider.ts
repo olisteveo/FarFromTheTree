@@ -18,6 +18,9 @@ import { clamp, noise1 } from "../core/rng";
 import { inPoly, nearestEdge, type Building, type CityData } from "../world/data";
 import { Airflow, type AirSample, type Lane } from "../world/airflow";
 import { ratAt } from "../world/underground";
+import { Facades } from "../world/facades";
+
+const PROP_NAME: Record<string, string> = { ac: "an AC unit", balcony: "a balcony", solid: "a monument", cat: "a cat", line: "a washing line" };
 
 export const FLIGHT = {
   wingLoad: 0.3,      // area / mass (m^2/kg): bigger floats more; sets the glide speed (~8.5 m/s)
@@ -86,6 +89,8 @@ export class Glider {
   readonly air: AirSample = { x: 0, y: 0, z: 0, lane: "street", vehicle: false, train: false };
   private dropFromRoofAt = -99;
   private lastHop = -99;
+  private lastSnag = -99;
+  private lastBump = -99;
   private lastHit = -99;
   private bl: Building[] = [];
 
@@ -251,8 +256,19 @@ export class Glider {
     this.pos.addScaledVector(this.vel, dt);
     this.collide();
     if (this.air.vehicle) this.hitBy("a cab", 0.2);
+    // brushing past people on the sidewalk knocks you about
+    if (this.pos.y < 2.1 && this.pos.y > 0 && this.clock - this.lastBump > 0.8) {
+      const who = this.flow.crowd.hit(this.pos.x, this.pos.y, this.pos.z);
+      if (who) {
+        this.lastBump = this.clock;
+        const dx = this.pos.x - who.x, dz = this.pos.z - who.z, d = Math.hypot(dx, dz) || 1;
+        this.vel.x += (dx / d) * 3 + who.tx * 1.5; this.vel.z += (dz / d) * 3 + who.tz * 1.5; this.vel.y += 2;
+        this.integrity -= 0.04;
+        this.events.push(`t${this.time.toFixed(1)} bumped into someone -> ${this.integrity.toFixed(2)}`);
+      }
+    }
     if (this.clock - this.lastHit > T.healDelay && this.integrity < this.maxIntegrity) this.integrity = Math.min(this.maxIntegrity, this.integrity + T.heal * dt);
-    if (this.air.train) this.fail("Flattened by a train");
+    if (this.air.train) this.fail(this.air.trainDir! > 0 ? "Caught by the uptown train" : "Hit head-on by a downtown train");
     this.fate();
     this.updateQuat(0);
   }
@@ -325,6 +341,35 @@ export class Glider {
         else this.contact(ed.nx, 0, ed.nz, ed.d + r, "a wall");
       } else if (ed.d < r && p.y < b.h) {
         this.contact(ed.nx, 0, ed.nz, r - ed.d, "a wall");
+      }
+    }
+    // facade clutter: AC units and balconies are solid; cats swat; washing lines snag
+    if (p.y > 1.5 && p.y < 66) {
+      for (const f of this.flow.facades.grid.at(p.x, p.z)) {
+        if (f.kind === "line") {
+          if (Facades.lineDistance(f, p.x, p.y, p.z) < r + 0.06 && this.clock - this.lastSnag > 1.2) {
+            this.lastSnag = this.clock;
+            this.vel.multiplyScalar(0.15);
+            this.hitBy("a washing line", 0.12);
+          }
+          continue;
+        }
+        const rx = p.x - f.x, ry = p.y - f.y, rz = p.z - f.z;
+        const lu = rx * f.tx + rz * f.tz, lo = rx * f.nx + rz * f.nz;
+        if (f.kind === "cat") {
+          if (lo > -0.2 && lo < 1.8 && Math.abs(lu) < 1.2 && Math.abs(ry) < 1.1 && this.clock - this.lastHit > 0.8) {
+            this.vel.x += f.nx * 6; this.vel.z += f.nz * 6;
+            this.hitBy("a cat", 0.3);
+            if (this.state === "dead") this.failure = "Swatted by a cat";
+          }
+          continue;
+        }
+        const du = f.hw + r - Math.abs(lu), dh = f.hh + r - Math.abs(ry), dd = f.hd + r - Math.abs(lo);
+        if (du <= 0 || dh <= 0 || dd <= 0) continue;
+        // push out along the shallowest axis
+        if (dh < du && dh < dd) this.contact(0, Math.sign(ry) || 1, 0, dh, PROP_NAME[f.kind]);
+        else if (dd < du) { const s2 = Math.sign(lo) || 1; this.contact(f.nx * s2, 0, f.nz * s2, dd, PROP_NAME[f.kind]); }
+        else { const s2 = Math.sign(lu) || 1; this.contact(f.tx * s2, 0, f.tz * s2, du, PROP_NAME[f.kind]); }
       }
     }
     // the street, unless there's a hole in it

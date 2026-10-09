@@ -117,7 +117,7 @@ export class Stage {
 
     // the low November sun, south-west (true azimuth ~235 deg, 11 deg up), which in the
     // grid frame (avenues along +z) is behind and to the left of a player heading uptown
-    const az = THREE.MathUtils.degToRad(235 - 28.9), el = THREE.MathUtils.degToRad(11);
+    const az = THREE.MathUtils.degToRad(247 - 28.9), el = THREE.MathUtils.degToRad(11);
     this.sunDir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize(); // east is -x
 
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMaterial(this.sunDir));

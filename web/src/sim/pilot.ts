@@ -48,6 +48,7 @@ export class Pilot {
   private decided = -1;
   private stuckFor = 0;
   private targetSince = 0;
+  private trackSide = 0;
   private giveUpUntil = -1;
   /** what the pilot is doing, for the report */
   log: string[] = [];
@@ -126,9 +127,16 @@ export class Pilot {
         wantY = d < 3 ? 2 : (TUNNEL.floor + TUNNEL.ceiling) / 2 + 1;
         if (d < 4) input.spread = true;
       } else {
-        const a = city.subway.at(sub.s + 18 + p.skill * 12);
-        // good players keep to the uptown track (the downtown one has trains coming at you)
-        const side = p.skill > 0.5 ? 3.0 : 0;
+        const a = city.subway.at(sub.s + 28 + p.skill * 22); // in a tunnel you watch the curve coming
+        // good players keep to the uptown track (the downtown one has trains coming at you), and
+        // anyone sees headlights coming and swerves to the other track
+        let side = p.skill > 0.5 ? 3.0 : this.trackSide;
+        for (const tr of this.flow.trainsAt(L.clock)) {
+          if (tr.dir > 0) continue;
+          const ahead = tr.head - sub.s;
+          if (ahead > 0 && ahead < 90 + 160 * p.skill && Math.sign(sub.off || -1) === Math.sign(tr.off)) side = 3.0;
+        }
+        this.trackSide = side;
         tx = a.x + a.tz * side; tz = a.z - a.tx * side;
         // good players hug the ceiling: a train can pass underneath
         wantY = (TUNNEL.floor + TUNNEL.ceiling) / 2 + 0.3 + p.skill * 2.4;

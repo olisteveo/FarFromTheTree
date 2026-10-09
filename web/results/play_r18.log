@@ -1,0 +1,19 @@
+1/32 runs  16s   2/32 runs  18s   3/32 runs  31s   4/32 runs  32s   5/32 runs  40s   6/32 runs  50s   7/32 runs  50s   8/32 runs  56s   9/32 runs  77s   10/32 runs  81s   11/32 runs  89s   12/32 runs  92s   13/32 runs  97s   14/32 runs  107s   15/32 runs  110s   16/32 runs  115s   17/32 runs  117s   18/32 runs  121s   19/32 runs  134s   20/32 runs  134s   21/32 runs  144s   22/32 runs  148s   23/32 runs  155s   24/32 runs  159s   25/32 runs  198s   26/32 runs  202s   27/32 runs  232s   28/32 runs  236s   29/32 runs  238s   30/32 runs  243s   31/32 runs  259s   32/32 runs  275s   
+# Human-pilot playtest
+
+32 runs, 8 per skill level, up to 20 min each. Route 8.83 km.
+
+| Pilot | finished | median finish | furthest (median) | deaths | stuck (avg) | street / roof / subway time | uptown m/s: street / roof / subway | drops | tricks |
+|---|---|---|---|---|---|---|---|---|---|
+| first go | 0/8 | - | 1.61 km | 6 | 0s | 97% / 2% / 1% | 5.0 / 4.8 / 8.4 | 3.6 | 0.1 |
+| casual | 0/8 | - | 1.43 km | 6 | 2s | 91% / 2% / 7% | 6.1 / 6.2 / 10.8 | 2.5 | 0.5 |
+| regular | 0/8 | - | 1.24 km | 7 | 0s | 76% / 0% / 24% | 8.1 / - / 11.6 | 0.9 | 0.0 |
+| speedrunner | 0/8 | - | 1.71 km | 7 | 144s | 48% / 0% / 52% | 7.9 / 11.3 / 11.1 | 0.9 | 0.1 |
+
+## What ended runs
+
+- **first go**: Flattened by a train ×1 (at 706 m); Torn apart on a wall ×3 (at 757, 1109, 2141 m); Torn apart on an AC unit ×1 (at 2110 m); Hit by a cab ×1 (at 1618 m)
+- **first go**: Flattened by a train ×1 (at 706 m); Torn apart on a wall ×3 (at 757, 1109, 2141 m); Torn apart on an AC unit ×1 (at 2110 m); Hit by a cab ×1 (at 1618 m)
+- **casual**: Torn apart on the tunnel wall ×2 (at 852, 1657 m); Eaten by a rat ×1 (at 453 m); Flattened by a train ×1 (at 983 m); Torn apart on a wall ×2 (at 2055, 2109 m)
+- **regular**: Flattened by a train ×3 (at 697, 1019, 1235 m); Torn apart on the tunnel wall ×4 (at 508, 916, 1296, 1472 m)
+- **speedrunner**: Flattened by a train ×4 (at 1014, 1027, 1044, 2104 m); Torn apart on the tunnel wall ×1 (at 1715 m); Swatted by a cat ×1 (at 1909 m); Hit by a cab ×1 (at 1901 m)

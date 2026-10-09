@@ -12,6 +12,8 @@
 import { clamp, noise3, smoothstep } from "../core/rng";
 import { inPoly, nearestEdge, streetHit, type Building, type CityData } from "./data";
 import { StreetLife } from "./streetlife";
+import { Facades } from "./facades";
+import { Crowd } from "./crowd";
 import { Traffic } from "./traffic";
 import { TRAIN, trainsAt, TUNNEL, Underground, type Train } from "./underground";
 
@@ -23,7 +25,7 @@ export const AIR = {
   channel: 0.35,      // how strongly an avenue canyon draws you back to its middle (1/s)
   roof: 8.5,          // the north-westerly over the roofs
   roofGrowth: 0.035,  // stronger with height
-  tunnel: 14,         // the tunnel's standing draught
+  tunnel: 11,         // the tunnel's standing draught
   station: 7,
   canyonLift: 1.5,    // mean updraft in the street canyons (m/s)
   trainPush: 20,      // extra ahead of an uptown train
@@ -36,6 +38,8 @@ export interface AirSample {
   /** what the leaf touched, if it's fatal or hurts */
   vehicle: boolean;
   train: boolean;
+  /** which way the train that got you was going */
+  trainDir?: number;
 }
 
 /** The winter wind's direction over the roofs: from the north-west, so it blows to the
@@ -48,6 +52,8 @@ export class Airflow {
   readonly under: Underground;
   readonly traffic: Traffic;
   readonly life: StreetLife;
+  readonly facades: Facades;
+  readonly crowd: Crowd;
   private trains: Train[] = [];
   private trainT = -1;
   private wk = { x: 0, y: 0, z: 0, hit: null as unknown };
@@ -62,10 +68,12 @@ export class Airflow {
     this.under = new Underground(city);
     this.traffic = new Traffic(city);
     this.life = new StreetLife(city);
+    this.facades = new Facades(city);
+    this.crowd = new Crowd(this.traffic);
   }
 
   trainsAt(t: number): Train[] {
-    if (t !== this.trainT) { trainsAt(t, this.city.subway.length, this.trains, this.under.blocked[0]); this.trainT = t; }
+    if (t !== this.trainT) { trainsAt(t, this.city.subway.length, this.trains, this.under.noTrains); this.trainT = t; }
     return this.trains;
   }
 
@@ -98,7 +106,8 @@ export class Airflow {
       for (const tr of this.trainsAt(t)) {
         const ahead = (ss - tr.head) * tr.dir; // > 0 in front of the train
         const behind = (tr.tail - ss) * tr.dir;
-        const sameTrack = Math.sign(off) === Math.sign(tr.off) ? 1 : 0.5;
+        // each train's air mostly stays on its own track: the downtown track is the wrong side of the road
+        const sameTrack = Math.sign(off) === Math.sign(tr.off) ? 1 : tr.dir > 0 ? 0.5 : 0.15;
         if (tr.dir > 0) {
           if (ahead > 0 && ahead < 260) along += AIR.trainPush * (1 - ahead / 260) * sameTrack;
           if (behind > 0 && behind < 120) along += 8 * (1 - behind / 120);
@@ -107,15 +116,17 @@ export class Airflow {
         }
         // inside a train?
         const inBody = tr.dir > 0 ? ss < tr.head && ss > tr.tail : ss > tr.head && ss < tr.tail;
-        if (inBody && Math.abs(off - tr.off) < TRAIN.width / 2 + 0.15 && y < TUNNEL.floor + 0.6 + TRAIN.height) out.train = true;
+        if (inBody && Math.abs(off - tr.off) < TRAIN.width / 2 + 0.15 && y < TUNNEL.floor + 0.6 + TRAIN.height) { out.train = true; out.trainDir = tr.dir; }
       }
       // the air slows as the tunnel nears the flood or the end of the line and escapes up the relief vent
       const blockAhead = Math.min(...u.blocked.map((b) => (b.ss0 > ss ? b.ss0 - ss : 1e9)));
       if (blockAhead < 260) along *= 0.2 + 0.8 * (blockAhead / 260);
       wx = sp.tx * along; wz = sp.tz * along;
       // pull toward the middle of the tunnel and a little turbulence
-      // the tunnel air hugs the curves: it steers you back toward the middle
-      wx += sp.tz * -off * 1.1; wz += -sp.tx * -off * 1.1;
+      // the tunnel air hugs the curves: it holds you in the middle of whichever track you're over
+      // (not the middle of the tunnel, where the column row is)
+      const lane = (off >= 0 ? 1 : -1) * TRAIN.track, dl = off - lane;
+      wx += sp.tz * -dl * 1.1; wz += -sp.tx * -dl * 1.1;
       wy = 0.8 * noise3(x / 8, y / 4, z / 8 + t, 41);
       // vents overhead draw the tunnel air up into them: the relief vents always, the grates
       // when a train pushes the air ahead of it. Stand under one and you're fired up to the street.
@@ -297,6 +308,20 @@ export class Airflow {
           wx += nx * into * k; wz += nz * into * k;
           wy += into * k * 0.7;
         }
+      }
+    }
+
+    // ---------------------------------------------------------------- AC units blowing out of the walls
+    if (y > 2 && y < 64) {
+      for (const p of this.facades.grid.at(x, z)) {
+        if (p.kind !== "ac" || !p.blows) continue;
+        const rx = x - p.x, ry = y - p.y, rz = z - p.z;
+        const out = rx * p.nx + rz * p.nz;
+        if (out < 0 || out > 4.5) continue;
+        const side = Math.abs(rx * p.tx + rz * p.tz);
+        if (side > 0.9 || Math.abs(ry) > 0.8) continue;
+        const k = (1 - out / 4.5) * (1 - side / 0.9);
+        wx += p.nx * 7 * k; wz += p.nz * 7 * k; wy += 1.5 * k;
       }
     }
 

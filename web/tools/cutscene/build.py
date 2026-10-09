@@ -201,7 +201,7 @@ def rng_ms(start, dur):
 def playback(start=0.0, dur=DUR):
     d = int(dur * 1000)
     return {"type": "windowed", "inputRange": {"start": int(start * 1000), "duration": d},
-            "mapping": {"type": "linear", "input": {"start": 0, "duration": d},
+            "mapping": {"type": "linear", "input": {"start": int(start * 1000), "duration": d},
                         "output": {"start": 0, "duration": d}}, "inputOffsetMs": 0}
 
 
@@ -1057,6 +1057,9 @@ def build():
     harbour = build_harbour()
     skyline, lit = build_skyline()
     prom = build_promenade()
+    import sys as _sys, people
+    p_lawn, p_prom, p_bench = people.make(_sys.modules[__name__])
+    prom = p_bench + prom
     ground = build_ground()
     tree, particles = build_tree()
     leaves = build_particles(particles)
@@ -1068,7 +1071,9 @@ def build():
     world = group("World (graded by time of day)", [
         camera_group("Wind streaks (k=1)", 1.0, streaks),
         camera_group("Blowing leaves (k=1)", 1.0, leaves),
+        camera_group("People on the lawn (k=1)", 1.0, p_lawn, desc="Kids, ball, leaf pile (in front of the tree)."),
         camera_group("Tree (k=1)", 1.0, [tree]),
+        camera_group("People on the promenade (k=1)", 1.0, p_prom, desc="Couple, runners, dog walker, businessman, passers-by, winter walker."),
         camera_group("Ground (k=1)", 1.0, ground),
         camera_group("Promenade (k=0.8)", 0.8, prom),
         camera_group("Skyline (k=0.5)", 0.5, skyline),
@@ -1135,6 +1140,8 @@ if __name__ == "__main__":
     if "--audio" in sys.argv and os.path.exists(stems):
         for s in json.load(open(stems)):
             audio_layer(s["assetId"], s["name"], s["volume"], s["durationMs"])
+            if s.get("envelope"):
+                anim(AUDIO_LAYERS[-1]["id"], "volume", s["envelope"])
     doc = build()
     out = os.path.join(WORK, "editable.json")
     json.dump(doc, open(out, "w"), indent=None)

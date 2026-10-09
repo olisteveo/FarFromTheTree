@@ -105,14 +105,15 @@ export class Traffic {
     });
   }
 
-  /** Place every vehicle at time t (cheap; call once per frame / tick batch). */
-  update(t: number) {
+  /** Place the vehicles near (fx, fz) at time t (call once per frame / tick batch). */
+  update(t: number, fx = 0, fz = 0, range = Infinity) {
     if (t === this.t) return;
     this.t = t;
     this.now.length = 0;
     this.grid.clear();
     for (const v of this.vehicles) {
       const c = this.chains[v.chain];
+      if (range < Infinity && (Math.abs(c.x[0] - fx) > range + c.length || Math.abs(c.z[0] - fz) > range + c.length)) continue;
       let s = (v.s0 + v.speed * t) % c.length;
       if (v.dir < 0) s = c.length - s;
       // find the segment
