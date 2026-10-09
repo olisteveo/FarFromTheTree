@@ -372,6 +372,20 @@ export class Glider {
         else { const s2 = Math.sign(lu) || 1; this.contact(f.tx * s2, 0, f.tz * s2, du, PROP_NAME[f.kind]); }
       }
     }
+    // blockers: lantern curtains and crowd barriers close the street layer
+    if (p.y < 12 && p.y > -0.4) {
+      for (const bar of this.flow.blockers.barriers) {
+        if (p.y > bar.height) continue;
+        const rx = p.x - bar.x, rz = p.z - bar.z;
+        const across = rx * bar.ax + rz * bar.az;
+        if (Math.abs(across) > bar.half) continue;
+        const d = rx * bar.nx + rz * bar.nz; // + outside the closed area
+        if (Math.abs(d) < r + 0.15) {
+          const side = d >= 0 ? 1 : -1;
+          this.contact(bar.nx * side, 0, bar.nz * side, r + 0.15 - Math.abs(d), bar.blocker === "festival" ? "the festival lanterns" : "the crowd barriers");
+        }
+      }
+    }
     // the street, unless there's a hole in it
     const u = this.flow.under;
     const hole = u.openingAt(p.x, p.z);

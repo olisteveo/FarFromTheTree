@@ -26,6 +26,7 @@ import { SubwayMesh } from "./render/subway";
 import { LeafView } from "./render/leaf";
 import { FacadePropsView } from "./render/facadeProps";
 import { Pigeons } from "./render/pigeons";
+import { blockerMeshes } from "./render/blockers";
 import { CrowdView, SteamView, TrafficView, TrainsView, WindStreaks, lastTree, streetHazards } from "./render/life";
 import { Input } from "./game/input";
 import { Hud } from "./game/hud";
@@ -33,6 +34,7 @@ import { Audio } from "./game/audio";
 import { Recorder, sampleAt, type RunLog } from "./game/recorder";
 import { Tutorial } from "./game/tutorial";
 import { playIntro } from "./game/intro";
+import { LeafMeter } from "./game/leafmeter";
 import { clamp } from "./core/rng";
 
 const params = new URLSearchParams(location.search);
@@ -67,7 +69,7 @@ const crowdView = new CrowdView(flow);
 const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
-stage.scene.add(pigeons.mesh, landmarkMeshes(landmarks), crowdView.mesh, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+stage.scene.add(blockerMeshes(flow.blockers), pigeons.mesh, landmarkMeshes(landmarks), crowdView.mesh, facadeProps.root, buildings.root, ground.root, subway.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree
 const course = makeCourse(city);
@@ -98,6 +100,7 @@ placeAt();
 const input = new Input();
 const hud = new Hud(hudEl, city);
 const audio = new Audio(city);
+const leafMeter = new LeafMeter(hudEl);
 pigeons.onScatter = (x, y, z) => audio.play("pigeon_flap", { at: [x, y + 1, z], vol: 1, world: true });
 const recorder = new Recorder(canvas, stage.quality);
 const tutorial = new Tutorial(hudEl, params.get("tutorial") === "1");
@@ -221,6 +224,7 @@ const autopilot = params.get("fly") === "1";
 const STEP = 1 / 240;
 let last = performance.now(), acc = 0, wall = 0, bestS = 0;
 let underMix = 0;
+let lastHint = "";
 
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -317,9 +321,16 @@ function tick(dt: number, render: boolean) {
   subway.update(leaf.clock, cam.position, underMix);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
+  leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);
   audio.update(dt, leaf, cam, city.district(ns.s).name);
   recorder.update(dt, leaf, input.state, ns.s, city.district(ns.s).name);
   tutorial.update(dt, leaf, input.state);
+  // a hint when a closed street is ahead
+  {
+    const bl = leaf.state === "flying" && leaf.lane === "street" ? flow.blockers.near(leaf.pos.x, leaf.pos.z) : null;
+    if (bl && bl.id !== lastHint) { lastHint = bl.id; hud.notify(`<b>${bl.name}</b><br/><span style="opacity:.8">${bl.hint}</span>`, 5); }
+    if (!bl && leaf.state !== "flying") lastHint = "";
+  }
   if (!replay) achievements.update(dt, leaf);
   if (render) { stage.render(); recorder.afterRender(leaf.time, ns.s); }
   input.endFrame();

@@ -73,3 +73,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1210; col
 .intro-gate .cta { font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; color: #ffb04a; animation: pulse 1.4s infinite alternate; }
 .intro-skip { position: absolute; right: 22px; bottom: 18px; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); display: none; }
 .intro.playing .intro-skip { display: block; }
+.leafmeter { position: absolute; left: 14px; bottom: 74px; width: 132px; height: 132px; pointer-events: none; }
+.leafmeter canvas { width: 132px; height: 132px; display: block; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35)); }
+.leafmeter-label { position: absolute; left: 0; right: 0; bottom: -4px; text-align: center; font: 800 15px/1 Inter, sans-serif; letter-spacing: 0.06em; color: #fff3e6; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
+.leafmeter-label.low { color: #ff7a5a; animation: pulse 0.5s infinite alternate; }
+.status { bottom: 24px !important; }
+.keys { bottom: 50px; left: 160px; }

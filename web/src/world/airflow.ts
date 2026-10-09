@@ -14,6 +14,7 @@ import { inPoly, nearestEdge, streetHit, type Building, type CityData } from "./
 import { StreetLife } from "./streetlife";
 import { Facades } from "./facades";
 import { Crowd } from "./crowd";
+import { Blockers } from "./blockers";
 import { Traffic } from "./traffic";
 import { TRAIN, trainsAt, TUNNEL, Underground, type Train } from "./underground";
 
@@ -54,6 +55,7 @@ export class Airflow {
   readonly life: StreetLife;
   readonly facades: Facades;
   readonly crowd: Crowd;
+  readonly blockers: Blockers;
   private trains: Train[] = [];
   private trainT = -1;
   private wk = { x: 0, y: 0, z: 0, hit: null as unknown };
@@ -70,6 +72,7 @@ export class Airflow {
     this.life = new StreetLife(city);
     this.facades = new Facades(city);
     this.crowd = new Crowd(this.traffic);
+    this.blockers = new Blockers(city);
   }
 
   trainsAt(t: number): Train[] {

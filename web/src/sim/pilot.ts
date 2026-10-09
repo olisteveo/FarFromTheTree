@@ -147,6 +147,12 @@ export class Pilot {
       wantY = d < 6 ? -3 : 3.5;
       if (d < 5) input.curl = true;
       if (d > 160 || L.clock - this.targetSince > 25) { this.mode = "street"; this.target = null; this.giveUpUntil = L.clock + 30; this.log.push(`s${route.s.toFixed(0)}: gave up on the stairs`); }
+    } else if (this.flow.blockers.near(pos.x, pos.z) && !under) {
+      // a closed street: up over the roofs
+      const look = 22 + p.skill * 18;
+      const a = city.route.at(route.s + look);
+      tx = a.x; tz = a.z;
+      wantY = city.canopy(pos.x, pos.z, 30) + 8;
     } else {
       const look = 22 + p.skill * 18;
       const a = city.route.at(route.s + look);
