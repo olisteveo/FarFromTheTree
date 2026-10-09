@@ -23,8 +23,9 @@ WEB = os.path.abspath(os.path.join(HERE, "..", ".."))
 OUT_GLB = os.path.join(WEB, "public", "models", "vehicles.glb")
 PREV_DIR = os.path.join(HERE, "previews")
 ATLAS_PNG = os.path.join(HERE, "sign_atlas.png")
+LIVERY_PNG = os.path.join(HERE, "livery_atlas.png")
 
-MATS = ["paint", "glass", "trim", "tyre", "rim", "light_front", "light_rear", "sign"]
+MATS = ["paint", "glass", "trim", "tyre", "rim", "light_front", "light_rear", "sign", "livery", "chrome"]
 MI = {n: i for i, n in enumerate(MATS)}
 
 
@@ -401,7 +402,10 @@ class Body:
                 info = dict(seg=seg, side=side, zone=zone, u=u, x0=st0[0], x1=st1[0], n=n,
                             zb=self.zb((st0[0] + st1[0]) / 2), zt=self.zt((st0[0] + st1[0]) / 2))
                 mat = mat_fn(c, info)
-                f = B.face([va, vb, vc, vd], mat)
+                uvc = None
+                if isinstance(mat, tuple):
+                    mat, uvc = mat
+                f = B.face([va, vb, vc, vd], mat, uvfn=(lambda co, q=uvc: q) if uvc else None)
                 if f:
                     faces.append((f, c, seg))
         # global orientation: the left side faces must point +y
@@ -446,7 +450,12 @@ class Body:
                     vs = [A[i][1], C[k + 1][1], C[k][1]]
                     k += 1
                 c = sum((v.co for v in vs), Vector()) / len(vs)
-                B.face(vs, mat_fn(c.y, c.z), out=out, uvfn=uvfn)
+                mat = mat_fn(c.y, c.z)
+                fn = uvfn
+                if isinstance(mat, tuple):
+                    mat, q = mat
+                    fn = (lambda co, q=q: q)
+                B.face(vs, mat, out=out, uvfn=fn)
 
     def end_x(self, z, end):
         """Fascia x at height z on the end cap ('f' or 'r'), plus the fascia slope dx/dz there."""
@@ -627,7 +636,7 @@ def greenhouse(B, body, G):
     return pts
 
 
-# ============================================================ sign atlas texture
+# ============================================================ texture atlases
 
 GLYPHS = {
     "T": ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."],
@@ -638,9 +647,20 @@ GLYPHS = {
     "O": [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
     "W": ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#"],
     "N": ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"],
+    "P": ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."],
+    "L": ["#....", "#....", "#....", "#....", "#....", "#....", "#####"],
+    "C": [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."],
+    "E": ["#####", "#....", "#....", "####.", "#....", "#....", "#####"],
+    "M": ["#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"],
+    "B": ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."],
+    "U": ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."],
+    "S": [".####", "#....", "#....", ".###.", "....#", "....#", "####."],
+    "H": ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"],
+    "R": ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"],
+    "F": ["#####", "#....", "#....", "####.", "#....", "#....", "#...."],
+    "Y": ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."],
     " ": [".....", ".....", ".....", ".....", ".....", ".....", "....."],
 }
-ATLAS_W, ATLAS_H = 256, 128
 
 
 def write_png(path, w, h, px):
@@ -655,56 +675,141 @@ def write_png(path, w, h, px):
         f.write(data)
 
 
-def build_atlas():
-    """Top half (v 0.5-1): lit TAXI panel. Bottom half (v 0-0.5): amber LED destination sign."""
-    W, H = ATLAS_W, ATLAS_H
-    px = [0] * (W * H * 3)
+class Canvas:
+    def __init__(self, w, h):
+        self.w, self.h = w, h
+        self.px = [0] * (w * h * 3)
 
-    def put(x, y, c):
-        if 0 <= x < W and 0 <= y < H:
-            o = (y * W + x) * 3
-            px[o:o + 3] = c
-    # TAXI panel, rows 0..63 of the image (top)
-    bg, ink = (255, 238, 185), (28, 22, 16)
-    for y in range(0, 64):
-        for x in range(W):
-            put(x, y, bg)
-    text, cell = "TAXI", 7
-    gw = len(text) * 5 * cell + (len(text) - 1) * cell * 1.4
-    x0, y0 = int((W - gw) / 2), int((64 - 7 * cell) / 2)
-    for ci, ch in enumerate(text):
+    def put(self, x, y, c):
+        if 0 <= x < self.w and 0 <= y < self.h:
+            o = (y * self.w + x) * 3
+            self.px[o:o + 3] = c
+
+    def fill(self, x0, y0, x1, y1, c):
+        for y in range(int(y0), int(y1)):
+            for x in range(int(x0), int(x1)):
+                self.put(x, y, c)
+
+    def text(self, text, cx, y0, cell, ink, gap=1):
+        """Blocky 5x7 text centred on cx. Returns the pixel bounds (x0, y0, x1, y1)."""
+        adv = (5 + gap) * cell
+        tw = len(text) * adv - gap * cell
+        x0 = int(cx - tw / 2)
+        for ci, ch in enumerate(text):
+            for r, line in enumerate(GLYPHS[ch]):
+                for c, on in enumerate(line):
+                    if on == "#":
+                        self.fill(x0 + ci * adv + c * cell, y0 + r * cell,
+                                  x0 + ci * adv + (c + 1) * cell, y0 + (r + 1) * cell, ink)
+        return (x0, y0, x0 + tw, y0 + 7 * cell)
+
+    def uv(self, x0, y0, x1, y1):
+        """Pixel rect -> (u0, v0, u1, v1) with v up."""
+        return (x0 / self.w, 1 - y1 / self.h, x1 / self.w, 1 - y0 / self.h)
+
+    def save(self, path):
+        write_png(path, self.w, self.h, self.px)
+
+
+# sign atlas regions (filled by build_atlas)
+TAXI_UV = (0.0, 0.75, 1.0, 1.0)
+TAXI_BG_UV = (0.03, 0.985)
+DEST_UV = (0.0, 0.5, 1.0, 0.75)
+SG = {}                     # lamp swatches: red, blue, amber, white -> (u, v)
+STOP_C = (32 / 256, 32 / 256)   # STOP octagon centre (u, v)
+STOP_APOTHEM = 30 / 256         # octagon apothem in UV units
+# livery atlas regions (filled by build_livery)
+LV = {}                     # swatches -> (u, v)
+LVT = {}                    # text panels -> ((u0, v0, u1, v1), aspect w/h)
+LV_REG = {}                 # "awning", "chevron" -> (u0, v0, u1, v1)
+
+
+def build_atlas():
+    """
+    sign_atlas.png 256x256 (rows from the top):
+      0-63 lit TAXI panel | 64-127 amber LED "DOWNTOWN" | 128-191 red/blue/amber/white lamp swatches
+      192-255 STOP octagon (stop arm) in the first 64x64 cell
+    """
+    C = Canvas(256, 256)
+    C.fill(0, 0, 256, 64, (255, 238, 185))
+    cell = 7
+    gw = 4 * 5 * cell + 3 * cell * 1.4
+    x0, y0 = int((256 - gw) / 2), int((64 - 7 * cell) / 2)
+    for ci, ch in enumerate("TAXI"):
         gx = x0 + int(ci * (5 * cell + cell * 1.4))
         for r, line in enumerate(GLYPHS[ch]):
             for c, on in enumerate(line):
                 if on == "#":
-                    for yy in range(cell):
-                        for xx in range(cell):
-                            put(gx + c * cell + xx, y0 + r * cell + yy, ink)
-    # LED destination sign, rows 64..127
-    off, on, dim = (6, 5, 4), (255, 150, 25), (48, 26, 6)
-    for y in range(64, 128):
-        for x in range(W):
-            put(x, y, off)
+                    C.fill(gx + c * cell, y0 + r * cell, gx + (c + 1) * cell, y0 + (r + 1) * cell, (28, 22, 16))
+    # LED destination sign
+    C.fill(0, 64, 256, 128, (6, 5, 4))
     text, cell = "DOWNTOWN", 5
     cols = len(text) * 6 - 1
-    x0, y0 = (W - cols * cell) // 2, 64 + (64 - 7 * cell) // 2
+    x0, y0 = (256 - cols * cell) // 2, 64 + (64 - 7 * cell) // 2
     for row in range(-2, 9):
         for col in range(-2, cols + 2):
             lit = False
             ci, cc = divmod(col, 6)
             if 0 <= row < 7 and 0 <= col < cols and cc < 5 and ci < len(text):
                 lit = GLYPHS[text[ci]][row][cc] == "#"
-            colr = on if lit else dim
-            for yy in range(cell - 1):
-                for xx in range(cell - 1):
-                    put(x0 + col * cell + xx, y0 + row * cell + yy, colr)
-    write_png(ATLAS_PNG, W, H, px)
+            C.fill(x0 + col * cell, y0 + row * cell, x0 + col * cell + cell - 1, y0 + row * cell + cell - 1,
+                   (255, 150, 25) if lit else (48, 26, 6))
+    # lamp swatches
+    for i, (name, col) in enumerate((("red", (255, 30, 25)), ("blue", (40, 90, 255)),
+                                     ("amber", (255, 150, 20)), ("white", (255, 250, 240)))):
+        C.fill(i * 64, 128, (i + 1) * 64, 192, col)
+        SG[name] = ((i * 64 + 32) / 256, 1 - 160 / 256)
+    # STOP octagon (white rim, red face, white letters)
+    C.fill(0, 192, 256, 256, (20, 20, 20))
+    a = 30
+    for y in range(192, 256):
+        for x in range(0, 64):
+            dx, dy = abs(x + 0.5 - 32), abs(y + 0.5 - 224)
+            if dx <= a and dy <= a and dx + dy <= a * 1.4142:
+                inner = dx <= a - 3 and dy <= a - 3 and dx + dy <= (a - 3) * 1.4142
+                C.put(x, y, (205, 18, 18) if inner else (255, 255, 255))
+    C.text("STOP", 32, 224 - 7, 2, (255, 255, 255))
+    C.save(ATLAS_PNG)
 
 
-# UV regions in the atlas (u, v with v up)
-TAXI_UV = (0.0, 0.5, 1.0, 1.0)
-TAXI_BG_UV = (0.03, 0.97)
-DEST_UV = (0.0, 0.0, 1.0, 0.5)
+def build_livery():
+    """
+    livery_atlas.png 256x256, non-tinted decals (32 px bands from the top):
+      0 swatches | 1 POLICE | 2 AMBULANCE | 3 SCHOOL BUS | 4 CITY TOURS | 5 STREET FOOD
+      6 awning stripes | 7 hazard chevrons
+    """
+    C = Canvas(256, 256)
+    sw = [("navy", (20, 34, 96)), ("red", (196, 22, 24)), ("white", (245, 245, 242)), ("black", (16, 16, 18)),
+          ("yellow", (246, 178, 20)), ("jacket", (38, 52, 40)), ("blue", (34, 76, 170)), ("orange", (232, 104, 20))]
+    for i, (name, col) in enumerate(sw):
+        C.fill(i * 32, 0, (i + 1) * 32, 32, col)
+        LV[name] = ((i * 32 + 16) / 256, 1 - 16 / 256)
+    panels = [("POLICE", (255, 255, 255), (20, 34, 96)), ("AMBULANCE", (196, 22, 24), (245, 245, 242)),
+              ("SCHOOL BUS", (16, 16, 18), (246, 178, 20)), ("CITY TOURS", (250, 206, 40), (16, 16, 18)),
+              ("STREET FOOD", (255, 255, 255), (196, 22, 24))]
+    for i, (text, ink, bg) in enumerate(panels):
+        y0 = 32 * (i + 1)
+        C.fill(0, y0, 256, y0 + 32, bg)
+        x0, ty0, x1, ty1 = C.text(text, 128, y0 + 5, 3, ink)
+        rect = C.uv(x0 - 4, ty0 - 3, x1 + 4, ty1 + 3)
+        LVT[text] = (rect, (x1 - x0 + 8) / (ty1 - ty0 + 6))
+    for y in range(192, 224):
+        for x in range(256):
+            C.put(x, y, (200, 24, 24) if (x // 16) % 2 == 0 else (245, 242, 230))
+    LV_REG["awning"] = C.uv(0, 196, 256, 220)
+    for y in range(224, 256):
+        for x in range(256):
+            C.put(x, y, (210, 20, 20) if ((x + y) // 16) % 2 == 0 else (245, 245, 240))
+    LV_REG["chevron"] = C.uv(0, 226, 256, 254)
+    C.save(LIVERY_PNG)
+
+
+def sgn_uv(name):
+    return lambda co, n=None: SG[name]
+
+
+def lv_uv(name):
+    return lambda co, n=None: LV[name]
 
 
 # ============================================================ vehicles
@@ -748,11 +853,11 @@ def grille(B, body, z0, z1, w, bars=1, depth=0.05, bevel=0.022):
     ang = math.atan(slope)
     M = Matrix.Rotation(ang, 4, "Y")
     rbox(B, (x - depth / 2 + 0.02, 0, zm), (depth, 2 * w, z1 - z0), "trim", bevel=bevel,
-         mat_fn=lambda n: "trim" if n.x > 0.85 else "rim", M=M)
+         mat_fn=lambda n: "trim" if n.x > 0.85 else "chrome", M=M)
     for i in range(bars):
         zb = z0 + (z1 - z0) * (i + 1) / (bars + 1)
         xb, _ = body.end_x(zb, "f")
-        rbox(B, (xb + 0.022, 0, zb), (0.02, 2 * w - 0.05, 0.022), "rim", bevel=0.0, M=M)
+        rbox(B, (xb + 0.022, 0, zb), (0.02, 2 * w - 0.05, 0.022), "chrome", bevel=0.0, M=M)
 
 
 def lamp(B, x, y, z, size, lens="light_front", housing="trim", facing=1):
@@ -787,6 +892,10 @@ def car(name, P, G, extras=None):
         seg, zone, u = info["seg"], info["zone"], info["u"]
         if seg <= 0:
             return "trim"
+        if P.get("mat_hook"):
+            r = P["mat_hook"](c, info, body)
+            if r:
+                return r
         if seg == 1 and clad > 0:
             return "trim"
         if zone == "f" and u >= hl.get("u", 0.5) and hl["z0"] <= c.z <= hl["z1"]:
@@ -805,6 +914,10 @@ def car(name, P, G, extras=None):
 
     def cap_fn(end, y, z):
         ay = abs(y)
+        if P.get("cap_hook"):
+            r = P["cap_hook"](end, y, z)
+            if r:
+                return r
         if end == "f":
             if hl["z0"] <= z <= hl["z1"] and ay > hl["y_in"]:
                 return "light_front"
@@ -823,8 +936,8 @@ def car(name, P, G, extras=None):
                 return "trim"
         return "paint"
 
-    bps_f = [hl["y_in"], gr["w"], it["w"]]
-    bps_r = [tl["y_in"]] + ([0.27] if P.get("plate") else [])
+    bps_f = [hl["y_in"], gr["w"], it["w"]] + P.get("extra_bps", {}).get("f", [])
+    bps_r = [tl["y_in"]] + ([0.27] if P.get("plate") else []) + P.get("extra_bps", {}).get("r", [])
     bps = {"f": sorted(set([b for b in bps_f] + [-b for b in bps_f])),
            "r": sorted(set([b for b in bps_r] + [-b for b in bps_r]))}
     body.build(B, mat_fn, cap_fn, bps)
@@ -849,7 +962,8 @@ def car(name, P, G, extras=None):
         shut_strip(B, body, xs, body.w - 0.13)
 
     print(f"[vehicles]   {name} greenhouse+details: {B.tris() - t0}")
-    W = wheel(P["R"], P["tw"], segs=P.get("wheel_segs", 15), style=P.get("wheel_style", "alloy"))
+    W = wheel(P["R"], P["tw"], segs=P.get("wheel_segs", 15), style=P.get("wheel_style", "alloy"),
+              rim_frac=P.get("rim_frac", 0.64))
     print(f"[vehicles]   {name} wheel: {W.tris()} each")
     yo = body.w + 0.01
     for (xa, _) in P["arches"]:
@@ -1319,7 +1433,7 @@ def build_truck():
     # chassis rails, fuel tank, battery box
     for s in (1, -1):
         rbox(B, ((-xf + 0.2 + xcr) / 2, s * 0.45, 0.82), (xcr + xf - 0.2, 0.09, 0.22), "trim", bevel=0.01)
-    rbox(B, (0.4, -1.0, 0.72), (0.9, 0.42, 0.42), "rim", bevel=0.12, segs=2)   # fuel tank (chrome-ish)
+    rbox(B, (0.4, -1.0, 0.72), (0.9, 0.42, 0.42), "chrome", bevel=0.12, segs=2)   # fuel tank
     rbox(B, (0.4, 1.0, 0.75), (0.6, 0.38, 0.4), "trim", bevel=0.03)
     # underride bumper + tail lights
     rbox(B, (-xf + 0.12, 0, 0.62), (0.14, Wbox - 0.2, 0.14), "trim", bevel=0.03)
@@ -1343,6 +1457,940 @@ def build_truck():
     return B
 
 
+# ============================================================ second batch: helpers
+
+def quad_uv(B, pts, uvs, mat, out=None):
+    """One quad with explicit per-corner UVs (decals, stop sign)."""
+    vs = [B.v(p) for p in pts]
+    f = B.face(vs, mat, out=out)
+    if f:
+        m = {v: uv for v, uv in zip(vs, uvs)}
+        for lp in f.loops:
+            lp[B.uv].uv = m[lp.vert]
+    return f
+
+
+def rect_uvs(r):
+    u0, v0, u1, v1 = r
+    return [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+
+
+def side_text(B, text, xc, zc, h, y_fn, sides=(1, -1), lift=0.006):
+    """Livery text decal on a vehicle side, readable from outside on both sides."""
+    rect, asp = LVT[text]
+    w = h * asp
+    x0, x1, z0, z1 = xc - w / 2, xc + w / 2, zc - h / 2, zc + h / 2
+    for s in sides:
+        cs = [(x1, z0), (x0, z0), (x0, z1), (x1, z1)] if s > 0 else [(x0, z0), (x1, z0), (x1, z1), (x0, z1)]
+        quad_uv(B, [(x, s * (y_fn(x, z) + lift), z) for x, z in cs], rect_uvs(rect), "livery", out=(0, s, 0))
+    return w
+
+
+def end_text(B, text, x, zc, h, facing, yc=0.0, lift=0.006, rect=None, w=None):
+    """Livery decal on a front (facing=+1) or rear (-1) face."""
+    if rect is None:
+        rect, asp = LVT[text]
+        w = h * asp
+    y0, y1, z0, z1 = yc - w / 2, yc + w / 2, zc - h / 2, zc + h / 2
+    xx = x + facing * lift
+    cs = [(y0, z0), (y1, z0), (y1, z1), (y0, z1)] if facing > 0 else [(y1, z0), (y0, z0), (y0, z1), (y1, z1)]
+    quad_uv(B, [(xx, y, z) for y, z in cs], rect_uvs(rect), "livery", out=(facing, 0, 0))
+
+
+def limb(B, a, b, t, mat, bevel=0.03, segs=1, uvfn=None, tz=None):
+    """Bevelled box spanning a -> b (arms, legs)."""
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    M = d.to_track_quat("X", "Z").to_matrix().to_4x4()
+    rbox(B, (a + b) / 2, (d.length + t * 0.3, t, tz or t), mat, bevel=bevel, segs=segs, M=M, uvfn=uvfn)
+
+
+def prism(B, poly, hw, edge_mats, cap_mat="paint"):
+    """Convex side-view polygon [(x, z)...] extruded across +-hw. edge_mats[i] is the face poly[i]->poly[i+1]."""
+    L = [B.v((x, hw, z)) for x, z in poly]
+    R = [B.v((x, -hw, z)) for x, z in poly]
+    B.face(L, cap_mat, out=(0, 1, 0))
+    B.face(R, cap_mat, out=(0, -1, 0))
+    cx = sum(p[0] for p in poly) / len(poly)
+    cz = sum(p[1] for p in poly) / len(poly)
+    for i in range(len(poly)):
+        j = (i + 1) % len(poly)
+        mx, mz = (poly[i][0] + poly[j][0]) / 2, (poly[i][1] + poly[j][1]) / 2
+        B.face([L[i], L[j], R[j], R[i]], edge_mats[i], out=(mx - cx, 0, mz - cz))
+
+
+def stop_sign(B, x, y, z, r, s):
+    """Octagonal STOP sign facing s*y (folded stop arm), textured from the sign atlas."""
+    Rc = r / math.cos(math.pi / 8)
+    pts, uvs = [], []
+    for k in range(8):
+        a = math.pi / 8 + k * math.pi / 4
+        dx, dz = Rc * math.cos(a), Rc * math.sin(a)
+        pts.append((x + dx, y, z + dz))
+        su = -dx if s > 0 else dx
+        uvs.append((STOP_C[0] + su / r * STOP_APOTHEM, STOP_C[1] + dz / r * STOP_APOTHEM))
+    vs = [B.v(p) for p in pts]
+    f = B.face(vs, "sign", out=(0, s, 0))
+    if f:
+        m = {v: uv for v, uv in zip(vs, uvs)}
+        for lp in f.loops:
+            lp[B.uv].uv = m[lp.vert]
+    B.face([B.v((p[0], y - s * 0.012, p[2])) for p in pts], "trim", out=(0, -s, 0))
+
+
+def light_bar(B, x, z, width, cols, depth=0.24):
+    """Roof light bar: trim base with emissive lenses (sign swatches) from +y to -y."""
+    rbox(B, (x, 0, z + 0.03), (depth + 0.04, width + 0.06, 0.06), "trim", bevel=0.015)
+    n = len(cols)
+    seg = width / n
+    for i, col in enumerate(cols):
+        yy = width / 2 - seg * (i + 0.5)
+        rbox(B, (x, yy, z + 0.105), (depth, seg - 0.02, 0.09), "sign", bevel=0.025, uvfn=sgn_uv(col))
+
+
+# ============================================================ second batch: cars
+
+def build_police():
+    L, W, belt, R = 5.0, 1.9, 0.97, 0.335
+    xf = L / 2
+    ax_f = xf - 1.0
+    ax_r = ax_f - 2.92
+    P = sedan_params(L=L, W=W, belt=belt, R=R)
+    P["arches"] = [(ax_f, 0.41), (ax_r, 0.41)]
+    P["zt_tab"] = [(-xf, 0.92), (-xf + 0.22, 1.01), (ax_r - 0.33, 1.02), (ax_r, belt), (ax_f - 0.52, belt),
+                   (ax_f + 0.12, 0.90), (xf - 0.25, 0.84), (xf, 0.77)]
+    P["seam_strips"] = [ax_f - 0.5, -0.05, ax_r + 0.35]
+    P["handles"] = [(0.66, 0.88), (-0.42, 0.88)]
+    P["hood_lines"] = (1.05, xf - 0.30)
+    P["wheel_style"] = "steel"
+
+    def mat_hook(c, info, body):
+        # dark blue side stripe along the doors
+        xm = (info["x0"] + info["x1"]) / 2
+        if ax_r + 0.42 < xm < ax_f - 0.42 and abs(c.y) > body.w - 0.1 and 0.62 <= c.z <= 0.74:
+            return ("livery", LV["navy"])
+        return None
+    P["mat_hook"] = mat_hook
+    G = sedan_gh(belt=belt, top=1.42, ws=(1.05, 0.16), rear=(-1.02, -1.70))
+    G["radii"] = [0.22, 0.28]
+
+    def extras(B, body):
+        side_text(B, "POLICE", 0.42, 0.805, 0.095, body.side_y)
+        light_bar(B, -0.32, 1.445, 1.16, ["red", "red", "white", "blue", "blue"])
+        # push bumper
+        xg, _ = body.end_x(0.55, "f")
+        for s in (1, -1):
+            rbox(B, (xg + 0.13, s * 0.32, 0.60), (0.05, 0.06, 0.40), "trim", bevel=0.01)
+            rbox(B, (xg + 0.05, s * 0.32, 0.46), (0.16, 0.05, 0.05), "trim", bevel=0.0)
+        for z in (0.50, 0.74):
+            rbox(B, (xg + 0.13, 0, z), (0.05, 0.70, 0.05), "trim", bevel=0.01)
+        # A-pillar spotlight
+        rbox(B, (0.95, 0.86, 1.06), (0.12, 0.08, 0.08), "chrome", bevel=0.03)
+    return car("police", P, G, extras)
+
+
+def build_hatch():
+    L, W, belt, R = 4.0, 1.75, 0.95, 0.31
+    xf = L / 2
+    ax_f = xf - 0.85
+    ax_r = ax_f - 2.48
+    P = sedan_params(L=L, W=W, belt=belt, R=R)
+    P["arches"] = [(ax_f, R + 0.07), (ax_r, R + 0.07)]
+    P["zt_tab"] = [(-xf, 0.98), (-xf + 0.16, belt + 0.03), (0.75, belt), (1.25, 0.88), (xf - 0.22, 0.82), (xf, 0.76)]
+    P["corner_r"] = (0.22, 0.04, [(0.0, 0.04), (0.3, 0.0), (1.0, 0.03)])
+    P["corner_f"] = (0.30, 0.14, [(0.0, 0.07), (0.25, 0.0), (0.55, 0.03), (1.0, 0.14)])
+    P["seam_strips"] = [0.80, -0.22, -0.96]
+    P["handles"] = [(0.50, 0.85), (-0.52, 0.85)]
+    P["hood_lines"] = (0.85, xf - 0.28)
+    P["tail"] = dict(z0=0.74, z1=0.95, y_in=0.40, u=0.5)
+    G = dict(ctrl=[(0.85, belt - 0.01), (0.02, 1.455), (-1.42, 1.46), (-1.88, belt + 0.03)], radii=[0.20, 0.16],
+             z_base=belt - 0.01, inset=0.07, tumble=0.30, r=0.05, pillar=0.07, crown=0.03, frame=0.035,
+             pillars=[(-0.22, -0.20, 0.075), (-1.10, -1.10, 0.13)])
+
+    def extras(B, body):
+        rbox(B, (-1.52, 0, 1.475), (0.24, 1.10, 0.035), "paint", bevel=0.012)   # roof spoiler
+    return car("hatch", P, G, extras)
+
+
+def build_sports():
+    L, W, belt, R = 4.5, 1.9, 0.84, 0.33
+    xf = L / 2
+    ax_f = xf - 0.98
+    ax_r = ax_f - 2.62
+    P = sedan_params(L=L, W=W, belt=belt, R=R)
+    P.update(
+        tw=0.27, rim_frac=0.72,
+        arches=[(ax_f, R + 0.06), (ax_r, R + 0.065)],
+        zb_tab=[(-xf, 0.24), (-xf + 0.4, 0.17), (xf - 0.4, 0.17), (xf, 0.20)],
+        zt_tab=[(-xf, 0.78), (-xf + 0.2, 0.87), (-1.45, 0.88), (-1.0, belt), (0.55, belt), (1.25, 0.77),
+                (xf - 0.25, 0.70), (xf, 0.645)],
+        bulge_tab=[(0.15, -0.03), (0.32, 0.0), (0.5, 0.03), (0.7, 0.022), (0.9, -0.02)], bulge_max=0.03,
+        breaks=[0.30, 0.38, 0.47, 0.56],
+        head=dict(z0=0.47, z1=0.56, y_in=0.42, u=0.55), tail=dict(z0=0.56, z1=0.82, y_in=0.30, u=0.5),
+        grille=dict(z0=0.30, z1=0.47, w=0.40), intake=dict(z0=0.21, z1=0.30, w=0.72), valance=0.21,
+        plate=(0.38, 0.47),
+        corner_f=(0.36, 0.22, [(0.0, 0.08), (0.25, 0.0), (0.55, 0.06), (1.0, 0.22)]),
+        corner_r=(0.32, 0.06, [(0.0, 0.06), (0.3, 0.0), (1.0, 0.06)]),
+        seam_strips=[0.60, -0.62], handles=[(-0.44, 0.76)], hood_lines=(0.62, xf - 0.32))
+    G = dict(ctrl=[(0.72, belt - 0.01), (-0.14, 1.205), (-0.70, 1.215), (-1.72, belt + 0.02)], radii=[0.18, 0.42],
+             z_base=belt - 0.01, inset=0.10, tumble=0.45, r=0.05, pillar=0.07, crown=0.025, frame=0.03,
+             pillars=[(-0.66, -0.58, 0.07)])
+
+    def extras(B, body):
+        zd = body.zt(-2.02) + 0.03
+        rbox(B, (-2.04, 0, zd + 0.10), (0.20, 1.46, 0.03), "paint", bevel=0.012)
+        for s in (1, -1):
+            rbox(B, (-2.0, s * 0.55, zd + 0.045), (0.08, 0.035, 0.11), "trim", bevel=0.0)
+            tube(B, (-xf + 0.08, s * 0.42, 0.26), (-xf - 0.05, s * 0.42, 0.26), 0.038, "chrome", segs=8)
+            # side intake ahead of the rear wheel
+            rbox(B, (ax_r + 0.62, s * (body.side_y(ax_r + 0.62, 0.45) + 0.0), 0.45), (0.34, 0.02, 0.10),
+                 "trim", bevel=0.0)
+    return car("sports", P, G, extras)
+
+
+def build_limo():
+    L, W, belt, R = 8.5, 1.9, 0.97, 0.335
+    xf = L / 2
+    ax_f = xf - 1.0
+    ax_r = -xf + 1.05
+    P = sedan_params(L=L, W=W, belt=belt, R=R)
+    P["arches"] = [(ax_f, 0.41), (ax_r, 0.41)]
+    P["zt_tab"] = [(-xf, 0.92), (-xf + 0.22, 1.01), (ax_r - 0.33, 1.02), (ax_r, belt), (ax_f - 0.52, belt),
+                   (ax_f + 0.12, 0.90), (xf - 0.25, 0.84), (xf, 0.77)]
+    P["seam_strips"] = [ax_f - 0.5, ax_f - 1.55, -2.05, ax_r + 0.36]
+    P["handles"] = [(ax_f - 0.85, 0.88), (-2.35, 0.88)]
+    P["hood_lines"] = (ax_f - 0.45, xf - 0.30)
+    P["max_step"] = 0.7
+    G = sedan_gh(belt=belt, top=1.42, ws=(ax_f - 0.45, ax_f - 1.30), rear=(ax_r + 0.42, ax_r - 0.26))
+    G["radii"] = [0.22, 0.28]
+    G["pillars"] = [(ax_f - 1.55, ax_f - 1.53, 0.08), (0.35, 0.35, 0.9), (-1.25, -1.25, 0.22), (-2.05, -2.05, 0.08)]
+
+    def extras(B, body):
+        x0, x1 = ax_r + 0.30, ax_f - 0.48
+        for s in (1, -1):
+            y = body.hw(0.0) - G["inset"] + 0.004
+            rbox(B, ((x0 + x1) / 2, s * y, belt + 0.004), (x1 - x0, 0.014, 0.022), "chrome", bevel=0.0)
+            yy = body.side_y(0.0, 0.40) + 0.004
+            rbox(B, (0.0, s * yy, 0.40), (2 * xf - 2.6, 0.012, 0.025), "chrome", bevel=0.0)
+    return car("limo", P, G, extras)
+
+
+def build_pickup():
+    L, W, R = 5.6, 2.0, 0.40
+    xf = L / 2
+    belt = 1.18
+    bed_z = 1.22
+    ax_f = xf - 0.95
+    ax_r = ax_f - 3.55
+
+    def mat_hook(c, info, body):
+        xm = (info["x0"] + info["x1"]) / 2
+        if xm < -0.49 and c.z > bed_z - 0.035 and abs(c.y) < body.w - 0.075:
+            return "trim"   # tonneau cover over the bed + the cab/bed gap
+        return None
+    P = dict(
+        L=L, W=W, R=R, tw=0.27, belt=belt,
+        arches=[(ax_f, R + 0.09), (ax_r, R + 0.09)], arch_steps=6,
+        zb_tab=[(-xf, 0.56), (-xf + 0.3, 0.46), (xf - 0.4, 0.46), (xf, 0.54)],
+        zt_tab=[(-xf, bed_z - 0.04), (-xf + 0.1, bed_z), (-0.62, bed_z), (-0.50, belt), (1.15, belt),
+                (1.6, 1.17), (xf - 0.25, 1.13), (xf, 1.06)],
+        bulge_tab=[(0.4, -0.02), (0.6, 0.0), (0.9, 0.022), (1.1, 0.016), (1.25, -0.01)], bulge_max=0.022,
+        rb=0.07, rt=0.06, crown=0.02,
+        breaks=[0.64, 0.72, 0.86, 0.98],
+        corner_f=(0.22, 0.08, [(0.0, 0.04), (0.25, 0.0), (1.0, 0.08)]),
+        corner_r=(0.10, 0.02, [(0.0, 0.02), (1.0, 0.02)]),
+        head=dict(z0=0.86, z1=0.98, y_in=0.56, u=0.6),
+        tail=dict(z0=0.72, z1=1.14, y_in=0.80, u=0.5),
+        grille=dict(z0=0.72, z1=0.98, w=0.52), intake=dict(z0=0.56, z1=0.64, w=0.70),
+        valance=0.64, plate=(0.72, 0.86),
+        seam_strips=[1.13, 0.02], handles=[(0.85, 1.08), (-0.30, 1.08)], hood_lines=(1.2, xf - 0.3),
+        grille_bars=2, max_step=0.5, mat_hook=mat_hook,
+    )
+    G = dict(ctrl=[(1.20, belt - 0.01), (0.45, 1.82), (-0.34, 1.83), (-0.52, belt + 0.02)], radii=[0.16, 0.08],
+             z_base=belt - 0.01, inset=0.08, tumble=0.15, r=0.055, pillar=0.075, crown=0.02, frame=0.035,
+             pillars=[(0.02, 0.05, 0.08)])
+
+    def extras(B, body):
+        xg, _ = body.end_x(0.62, "f")
+        rbox(B, (xg + 0.04, 0, 0.62), (0.16, 2.0, 0.18), "chrome", bevel=0.04, segs=1)
+        rbox(B, (-xf - 0.02, 0, 0.60), (0.18, 1.92, 0.15), "chrome", bevel=0.04, segs=1)
+        # tailgate shut line and handle
+        xr, _ = body.end_x(1.0, "r")
+        rbox(B, (xr - 0.004, 0, 1.0), (0.01, 0.22, 0.05), "trim", bevel=0.0)
+        # bed rail caps
+        for s in (1, -1):
+            rbox(B, ((-xf + 0.08 - 0.62) / 2, s * (body.w - 0.04), bed_z + 0.022),
+                 (xf - 0.70, 0.07, 0.025), "trim", bevel=0.0)
+    return car("pickup", P, G, extras)
+
+
+# ============================================================ second batch: scooter + rider
+
+def build_scooter():
+    B = Builder()
+    R, tw = 0.23, 0.10
+    Wh = wheel(R, tw, segs=12, rim_frac=0.6, style="alloy")
+    for x in (0.66, -0.62):
+        add_wheel(B, Wh, x, tw / 2, R, 1)
+    # front fork, fender, leg shield, headset
+    for s in (1, -1):
+        tube(B, (0.66, s * 0.07, 0.23), (0.51, s * 0.07, 0.90), 0.022, "chrome", segs=5)
+    rbox(B, (0.64, 0, 0.50), (0.40, 0.15, 0.05), "paint", bevel=0.02, M=Matrix.Rotation(math.radians(10), 4, "Y"))
+    rbox(B, (0.43, 0, 0.70), (0.16, 0.44, 0.64), "paint", bevel=0.06, segs=2,
+         M=Matrix.Rotation(math.radians(-14), 4, "Y"))
+    rbox(B, (0.50, 0, 1.00), (0.22, 0.28, 0.15), "paint", bevel=0.05)
+    rbox(B, (0.615, 0, 1.00), (0.03, 0.15, 0.09), "light_front", bevel=0.015)
+    # handlebar, grips, mirrors
+    tube(B, (0.48, -0.33, 1.06), (0.48, 0.33, 1.06), 0.016, "chrome", segs=5)
+    for s in (1, -1):
+        tube(B, (0.48, s * 0.27, 1.06), (0.48, s * 0.355, 1.06), 0.024, "trim", segs=6)
+        tube(B, (0.47, s * 0.21, 1.07), (0.43, s * 0.27, 1.30), 0.008, "chrome", segs=4)
+        rbox(B, (0.43, s * 0.28, 1.32), (0.03, 0.10, 0.065), "trim", bevel=0.012,
+             mat_fn=lambda n: "glass" if n.x < -0.7 else "trim")
+    # floorboard, rear body, seat, tail light, engine, exhaust
+    rbox(B, (0.10, 0, 0.36), (0.50, 0.36, 0.07), "trim", bevel=0.02)
+    rbox(B, (-0.45, 0, 0.56), (0.78, 0.38, 0.38), "paint", bevel=0.12, segs=2)
+    rbox(B, (-0.30, 0, 0.79), (0.62, 0.30, 0.10), "trim", bevel=0.04)
+    rbox(B, (-0.855, 0, 0.62), (0.04, 0.14, 0.07), "light_rear", bevel=0.015)
+    rbox(B, (-0.40, -0.06, 0.30), (0.40, 0.16, 0.18), "trim", bevel=0.03)
+    tube(B, (-0.35, -0.16, 0.27), (-0.84, -0.16, 0.34), 0.035, "chrome", segs=6)
+    # rack + delivery box
+    rbox(B, (-0.70, 0, 0.84), (0.40, 0.34, 0.03), "trim", bevel=0.0)
+    rbox(B, (-0.70, 0, 1.10), (0.46, 0.44, 0.48), "paint", bevel=0.03)
+    rbox(B, (-0.70, 0, 1.345), (0.48, 0.46, 0.03), "trim", bevel=0.01)
+
+    # rider: dark trousers, boots, winter puffer jacket, scarf, gloves, helmet with visor
+    J = lv_uv("jacket")
+    for s in (1, -1):
+        limb(B, (-0.24, s * 0.11, 0.90), (0.14, s * 0.15, 0.86), 0.15, "trim", bevel=0.05)
+        limb(B, (0.14, s * 0.15, 0.86), (0.21, s * 0.14, 0.46), 0.12, "trim", bevel=0.045)
+        rbox(B, (0.25, s * 0.14, 0.44), (0.23, 0.10, 0.09), "tyre", bevel=0.03)
+    rbox(B, (-0.19, 0, 1.13), (0.34, 0.44, 0.52), "livery", bevel=0.13, segs=2, uvfn=J,
+         M=Matrix.Rotation(math.radians(14), 4, "Y"))
+    for s in (1, -1):
+        limb(B, (-0.10, s * 0.21, 1.31), (0.13, s * 0.26, 1.13), 0.12, "livery", bevel=0.05, uvfn=J)
+        limb(B, (0.13, s * 0.26, 1.13), (0.44, s * 0.30, 1.07), 0.10, "livery", bevel=0.04, uvfn=J)
+        rbox(B, (0.48, s * 0.31, 1.06), (0.08, 0.07, 0.075), "trim", bevel=0.025)
+    rbox(B, (-0.08, 0, 1.40), (0.17, 0.19, 0.07), "livery", bevel=0.025, uvfn=lv_uv("red"))
+    rbox(B, (-0.04, 0, 1.51), (0.28, 0.25, 0.25), "paint", bevel=0.11, segs=2)
+    rbox(B, (0.095, 0, 1.50), (0.03, 0.19, 0.09), "glass", bevel=0.012)
+    return B
+
+
+# ============================================================ second batch: box-bodied trucks
+
+def cutaway_cab(Wc=2.05, R=0.36, Lc=2.55, roof=2.24, belt=1.18):
+    """Van-style front (bonnet, windscreen, cab doors) for box bodies. Local x centred on the cab."""
+    xf = Lc / 2
+    ax = xf - 0.95
+    P = dict(L=Lc, W=Wc, R=R, tw=0.235, belt=belt,
+             arches=[(ax, R + 0.08)], arch_steps=6,
+             zb_tab=[(-xf, 0.44), (xf - 0.4, 0.40), (xf, 0.42)],
+             zt_tab=[(-xf, roof), (-0.55, roof), (-0.22, roof - 0.07), (0.42, 1.22), (xf - 0.45, 1.06), (xf, 0.95)],
+             bulge_tab=[(0.3, -0.015), (0.55, 0.0), (0.9, 0.018), (1.2, 0.012), (2.3, -0.08)],
+             bulge_max=0.018, rb=0.06, rt=0.10, crown=0.04,
+             breaks=[0.52, 0.62, 0.80, 0.96, belt, 2.0],
+             corner_f=(0.30, 0.10, [(0.0, 0.05), (0.25, 0.0), (0.6, 0.02), (1.0, 0.10)]),
+             corner_us=[1.0, 0.75, 0.5, 0.25], max_step=0.5)
+    body = Body(P)
+    T = Builder()
+    gx = (-1.12, 0.32)
+
+    def mat_fn(c, info):
+        seg, zone, u = info["seg"], info["zone"], info["u"]
+        xm = (info["x0"] + info["x1"]) / 2
+        if seg <= 1:
+            return "trim"
+        if zone == "f" and u >= 0.6 and 0.80 <= c.z <= 0.96:
+            return "light_front"
+        if zone and c.z < 0.52:
+            return "trim"
+        if c.z < info["zb"] + 0.10 and abs(c.y) > 0.3:
+            return "trim"
+        if -0.22 < xm < 0.42 and c.z > 1.24 and abs(c.y) < body.w - 0.16:
+            return "glass"
+        if gx[0] < xm < gx[1] and belt + 0.02 < c.z < 2.0 and abs(c.y) > body.w - 0.2:
+            return "glass"
+        return "paint"
+
+    def cap_fn(end, y, z):
+        ay = abs(y)
+        if end == "f":
+            if 0.80 <= z <= 0.96 and ay > 0.52:
+                return "light_front"
+            if 0.62 <= z <= 0.96 and ay < 0.44:
+                return "trim"
+            if z < 0.52:
+                return "trim"
+        return "paint"
+    body.build(T, mat_fn, cap_fn, {"f": [-0.52, -0.44, 0.44, 0.52], "r": []},
+               extra_stations=[-0.22, 0.42, gx[0], gx[1]])
+    seam_strip(T, body, 0.36, z_hi=1.3)
+    seam_strip(T, body, -1.17, z_hi=2.05)
+    door_handle(T, body, -0.95, 1.08)
+    grille(T, body, 0.64, 0.94, 0.43, bars=2)
+    for s in (1, -1):
+        mirror(T, 0.14, body.w - 0.04, 1.40, s, size=(0.08, 0.16, 0.26), arm=0.12)
+    return T, body, ax
+
+
+def box_rear(B, x0, Wb, z0, z1, door_split=True, windows=True):
+    """Rear doors, lights and step for a box body whose rear face is at x0."""
+    yb = Wb / 2
+    if door_split:
+        rbox(B, (x0 - 0.004, 0, (z0 + z1) / 2), (0.014, 0.025, z1 - z0 - 0.2), "trim", bevel=0.0)
+    for s in (1, -1):
+        if windows:
+            rbox(B, (x0 - 0.005, s * 0.5, z1 - 0.62), (0.012, 0.62, 0.52), "glass", bevel=0.0)
+        rbox(B, (x0 - 0.01, s * 0.12, z0 + 0.65), (0.02, 0.14, 0.03), "trim", bevel=0.0)
+        rbox(B, (x0 - 0.012, s * (yb - 0.12), z0 + 0.18), (0.03, 0.15, 0.32), "trim", bevel=0.01)
+        rbox(B, (x0 - 0.03, s * (yb - 0.12), z0 + 0.18), (0.02, 0.11, 0.27), "light_rear", bevel=0.008)
+    rbox(B, (x0 + 0.04, 0, z0 - 0.32), (0.32, Wb - 0.2, 0.10), "trim", bevel=0.02)
+
+
+def build_ambulance():
+    L, Wb, R = 6.5, 2.3, 0.36
+    xf = L / 2
+    Lc = 2.55
+    T, cab, axl = cutaway_cab(R=R, Lc=Lc)
+    B = Builder()
+    cx = xf - Lc / 2
+    B.merge(T, Matrix.Translation((cx, 0, 0)))
+    ax_f, ax_r = cx + axl, -1.45
+    x0, x1 = -xf, cx - Lc / 2 + 0.06
+    z0, z1 = 0.92, 2.80
+    xm, yb = (x0 + x1) / 2, Wb / 2
+    rbox(B, (xm, 0, (z0 + z1) / 2), (x1 - x0, Wb, z1 - z0), "paint", bevel=0.06, segs=2)
+    red = lv_uv("red")
+    for s in (1, -1):
+        # lower skirts around the rear wheels
+        for (a, b) in ((ax_r + 0.50, x1 - 0.05), (x0 + 0.05, ax_r - 0.50)):
+            rbox(B, ((a + b) / 2, s * (yb - 0.03), 0.78), (b - a, 0.06, 0.30), "paint", bevel=0.02)
+        rbox(B, (xm, s * (yb + 0.003), 1.32), (x1 - x0 - 0.12, 0.012, 0.16), "livery", bevel=0.0, uvfn=red)
+        rbox(B, (xm, s * (yb + 0.003), 2.58), (x1 - x0 - 0.12, 0.012, 0.06), "livery", bevel=0.0, uvfn=red)
+        side_text(B, "AMBULANCE", -1.90, 1.78, 0.22, lambda x, z: yb, sides=(s,))
+        for xx in (x0 + 0.22, x1 - 0.22):
+            rbox(B, (xx, s * (yb + 0.012), 2.66), (0.20, 0.03, 0.12), "sign", bevel=0.012, uvfn=sgn_uv("red"))
+    rbox(B, (x0 - 0.003, 0, 1.32), (0.012, Wb - 0.12, 0.16), "livery", bevel=0.0, uvfn=red)
+    box_rear(B, x0, Wb, z0, z1)
+    for s in (1, -1):
+        rbox(B, (x0 - 0.012, s * (yb - 0.16), 2.64), (0.03, 0.2, 0.12), "sign", bevel=0.012, uvfn=sgn_uv("red"))
+    light_bar(B, x1 - 0.2, z1, 1.7, ["red", "white", "red"])
+    # kerb-side door with window
+    dx0, dx1, yk = -0.95, 0.30, -(yb + 0.004)
+    for xx in (dx0, dx1):
+        rbox(B, (xx, yk, 1.72), (0.02, 0.012, 1.5), "trim", bevel=0.0)
+    rbox(B, ((dx0 + dx1) / 2, yk, 2.47), (dx1 - dx0, 0.012, 0.02), "trim", bevel=0.0)
+    rbox(B, ((dx0 + dx1) / 2, yk - 0.002, 2.05), (0.75, 0.012, 0.45), "glass", bevel=0.0)
+    rbox(B, (dx1 - 0.15, yk - 0.006, 1.70), (0.03, 0.02, 0.14), "trim", bevel=0.0)
+    for s in (1, -1):
+        rbox(B, (xm, s * 0.45, 0.72), (x1 - x0 - 0.4, 0.09, 0.2), "trim", bevel=0.0)
+        rbox(B, (ax_r - 0.48, s * (yb - 0.17), 0.45), (0.02, 0.36, 0.42), "trim", bevel=0.0)
+    Wf = wheel(R, 0.235, segs=15, style="steel")
+    Wr = wheel(R, 0.42, segs=15, style="steel")
+    for s in (1, -1):
+        add_wheel(B, Wf, ax_f, cab.w + 0.005, R, s)
+        add_wheel(B, Wr, ax_r, yb - 0.07, R, s)
+    return B
+
+
+def build_foodtruck():
+    L, Wb, R = 7.0, 2.4, 0.37
+    xf = L / 2
+    Lc = 2.55
+    T, cab, axl = cutaway_cab(R=R, Lc=Lc, Wc=2.1)
+    B = Builder()
+    cx = xf - Lc / 2
+    B.merge(T, Matrix.Translation((cx, 0, 0)))
+    ax_f, ax_r = cx + axl, -1.95
+    x0, x1 = -xf, cx - Lc / 2 + 0.06
+    z0, z1 = 0.95, 2.86
+    xm, yb = (x0 + x1) / 2, Wb / 2
+    rbox(B, (xm, 0, (z0 + z1) / 2), (x1 - x0, Wb, z1 - z0), "paint", bevel=0.08, segs=2)
+    for s in (1, -1):
+        for (a, b) in ((ax_r + 0.52, x1 - 0.05), (x0 + 0.05, ax_r - 0.52)):
+            rbox(B, ((a + b) / 2, s * (yb - 0.03), 0.80), (b - a, 0.06, 0.32), "paint", bevel=0.02)
+        rbox(B, (xm, s * (yb + 0.004), z0 + 0.06), (x1 - x0 - 0.1, 0.02, 0.06), "chrome", bevel=0.0)
+    # serving hatch on the kerb side (-y): dark interior, chrome frame + counter, striped awning on struts
+    hx0, hx1, hz0, hz1 = -2.45, 0.05, 1.42, 2.28
+    yk = -(yb + 0.003)
+    rbox(B, ((hx0 + hx1) / 2, yk, (hz0 + hz1) / 2), (hx1 - hx0, 0.012, hz1 - hz0), "trim", bevel=0.0)
+    for (cxp, cz, sx, sz) in (((hx0 + hx1) / 2, hz1, hx1 - hx0 + 0.06, 0.04), ((hx0 + hx1) / 2, hz0, hx1 - hx0 + 0.06, 0.04),
+                              (hx0, (hz0 + hz1) / 2, 0.04, hz1 - hz0), (hx1, (hz0 + hz1) / 2, 0.04, hz1 - hz0)):
+        rbox(B, (cxp, yk - 0.006, cz), (sx, 0.02, sz), "chrome", bevel=0.0)
+    rbox(B, ((hx0 + hx1) / 2, -(yb + 0.17), hz0 - 0.02), (hx1 - hx0, 0.34, 0.04), "chrome", bevel=0.01)
+    # menu board inside the hatch
+    rbox(B, (-1.6, yk + 0.002, 2.0), (0.9, 0.01, 0.4), "livery", bevel=0.0, uvfn=lv_uv("black"))
+    ang, aw_d, aw_l = math.radians(14), 0.95, hx1 - hx0 + 0.3
+    M = Matrix.Rotation(ang, 4, "X")
+    cy = -(yb + 0.02 + aw_d / 2 * math.cos(ang))
+    cz = hz1 + 0.07 - aw_d / 2 * math.sin(ang)
+    ua0, va0, ua1, va1 = LV_REG["awning"]
+
+    def awn_uv(co, n):
+        t = min(max(co.x / aw_l + 0.5, 0.0), 1.0)
+        return (lerp(ua0, ua1, t), (va0 + va1) / 2)
+    rbox(B, ((hx0 + hx1) / 2, cy, cz), (aw_l, aw_d, 0.035), "livery", bevel=0.0, uvfn=awn_uv, M=M)
+    ye = -(yb + 0.02 + aw_d * math.cos(ang)) + 0.04
+    ze = hz1 + 0.07 - aw_d * math.sin(ang) - 0.02
+    for xx in (hx0 + 0.1, hx1 - 0.1):
+        tube(B, (xx, -yb, hz0 + 0.15), (xx, ye, ze), 0.015, "chrome", segs=4)
+    side_text(B, "STREET FOOD", xm, 1.95, 0.34, lambda x, z: yb, sides=(1,))
+    side_text(B, "STREET FOOD", (hx0 + hx1) / 2, 2.6, 0.2, lambda x, z: yb, sides=(-1,))
+    # roof kit
+    rbox(B, (-0.9, 0, z1 + 0.11), (0.75, 0.75, 0.22), "trim", bevel=0.04)
+    rbox(B, (-2.6, 0.4, z1 + 0.07), (0.45, 0.45, 0.14), "chrome", bevel=0.03)
+    tube(B, (-2.6, -0.5, z1), (-2.6, -0.5, z1 + 0.16), 0.05, "chrome", segs=8)
+    box_rear(B, x0, Wb, z0, z1, door_split=False, windows=False)
+    rbox(B, (x0 + 0.35, 0.55, 0.62), (0.5, 0.7, 0.36), "trim", bevel=0.04)   # generator under the floor
+    end_text(B, "STREET FOOD", x0, 2.4, 0.16, -1)
+    for s in (1, -1):
+        rbox(B, (xm, s * 0.45, 0.75), (x1 - x0 - 0.4, 0.09, 0.2), "trim", bevel=0.0)
+    Wf = wheel(R, 0.235, segs=15, style="steel")
+    Wr = wheel(R, 0.42, segs=15, style="steel")
+    for s in (1, -1):
+        add_wheel(B, Wf, ax_f, cab.w + 0.005, R, s)
+        add_wheel(B, Wr, ax_r, yb - 0.07, R, s)
+    return B
+
+
+def cabover(cab_len, cab_w, cab_h, R, ax_local, glass_x, seam_x, belt=1.50, zb=0.62, handles=(),
+            bumper_mat="trim"):
+    """Flat-fronted (cab-over) truck cab, local x centred on the cab."""
+    c2 = cab_len / 2
+    wt = cab_h - 0.25
+    zl = zb + 0.22
+    P = dict(L=cab_len, W=cab_w, R=R, tw=0.28,
+             arches=[(ax_local, R + 0.08)], arch_steps=8,
+             zb_tab=[(-c2, zb), (c2 - 0.3, zb), (c2, zb - 0.12)],
+             zt_tab=[(-c2, cab_h), (c2 - 0.3, cab_h), (c2, cab_h - 0.05)],
+             bulge_tab=[(0.4, -0.01), (0.8, 0.0), (1.5, 0.01), (cab_h + 0.1, -0.04)], bulge_max=0.01,
+             rb=0.05, rt=0.14, crown=0.03,
+             breaks=[zb + 0.06, zl, belt - 0.5, belt - 0.08, belt, wt],
+             corner_f=(0.20, 0.18, [(0.0, 0.05), (0.12, 0.0), (0.45, 0.02), (0.6, 0.06), (1.0, 0.18)]),
+             corner_us=[1.0, 0.7, 0.4], max_step=0.5)
+    cab = Body(P)
+    T = Builder()
+
+    def mat_fn(c, info):
+        seg, zone, u = info["seg"], info["zone"], info["u"]
+        xm = (info["x0"] + info["x1"]) / 2
+        if seg <= 1:
+            return "trim"
+        side = abs(c.y) > cab.w - 0.12
+        if zone == "f" and u >= 0.7 and belt <= c.z <= wt:
+            return "glass"
+        if c.z < zl and (zone or side):
+            return "trim"
+        if side and belt <= c.z <= wt and any(a < xm < b for a, b in glass_x):
+            return "glass"
+        if side and any(abs(xm - sx) < 0.012 for sx in seam_x) and c.z > info["zb"]:
+            return "trim"
+        return "paint"
+
+    def cap_fn(end, y, z):
+        ay = abs(y)
+        if end == "f":
+            if belt <= z <= wt and ay < cab.w - 0.16:
+                return "glass"
+            if zl <= z <= belt - 0.08 and ay < 0.55:
+                return "trim"
+            if z < zl:
+                return "trim"
+        return "paint"
+    extra = [v for ab in glass_x for v in ab] + [sx + d for sx in seam_x for d in (-0.012, 0.012)]
+    cab.build(T, mat_fn, cap_fn, {"f": [-0.55, 0.55], "r": []}, extra_stations=extra)
+    for s in (1, -1):
+        za, zb2 = wt - 0.35, belt + 0.08
+        tube(T, (c2 - 0.25, s * (cab.w - 0.02), za), (c2 - 0.1, s * (cab.w + 0.22), za), 0.016, "trim", 5)
+        tube(T, (c2 - 0.25, s * (cab.w - 0.02), zb2), (c2 - 0.1, s * (cab.w + 0.22), zb2), 0.016, "trim", 5)
+        rbox(T, (c2 - 0.1, s * (cab.w + 0.24), (za + zb2) / 2), (0.07, 0.18, 0.42), "trim", bevel=0.025,
+             mat_fn=lambda n: "glass" if n.x < -0.8 else "trim")
+        rbox(T, (-0.05, s * (cab.w - 0.05), zb - 0.14), (0.55, 0.22, 0.06), "trim", bevel=0.015)
+    for hx in handles:
+        door_handle(T, cab, hx, belt - 0.12)
+    zlamp = zl + 0.08
+    for s in (1, -1):
+        x, _ = cab.end_x(zlamp, "f")
+        rbox(T, (x - 0.01, s * (cab.w - 0.30), zlamp), (0.06, 0.30, 0.18), "trim", bevel=0.025)
+        rbox(T, (x + 0.02, s * (cab.w - 0.30), zlamp), (0.03, 0.24, 0.12), "light_front", bevel=0.02)
+    grille(T, cab, belt - 0.44, belt - 0.10, 0.53, bars=3)
+    rbox(T, (c2 + 0.02, 0, zb), (0.18, cab_w + 0.04, 0.24), bumper_mat, bevel=0.05, segs=2)
+    return T, cab
+
+
+def build_firetruck():
+    L, W, R = 10.5, 2.5, 0.5
+    xf = L / 2
+    cab_len, cab_w, cab_h = 3.0, 2.45, 2.9
+    cc = xf - cab_len / 2
+    ax_f = xf - 1.3
+    ax_r = ax_f - 6.35
+    T, cab = cabover(cab_len, cab_w, cab_h, R, ax_f - cc, glass_x=[(0.15, 0.95), (-1.30, -0.12)],
+                     seam_x=[1.05, 0.03, -1.40], belt=1.62, zb=0.70, handles=(0.22, -1.2), bumper_mat="chrome")
+    B = Builder()
+    B.merge(T, Matrix.Translation((cc, 0, 0)))
+    xb0, xb1 = -xf + 0.05, xf - cab_len - 0.08
+    z0, z1 = 1.08, 2.45
+    yb = W / 2
+    rbox(B, ((xb0 + xb1) / 2, 0, (z0 + z1) / 2), (xb1 - xb0, W, z1 - z0), "paint", bevel=0.04)
+    doors = [(xb1 - 1.0, xb1 - 0.1), (ax_r + 0.65, xb1 - 1.2), (xb0 + 0.1, ax_r - 0.65)]
+    for s in (1, -1):
+        y = s * (yb + 0.005)
+        for (lo, hi) in doors:
+            rbox(B, ((lo + hi) / 2, y, 1.72), (hi - lo, 0.014, 1.15), "chrome", bevel=0.0)
+            for zz in (1.40, 1.72, 2.04):
+                rbox(B, ((lo + hi) / 2, y + s * 0.008, zz), (hi - lo - 0.04, 0.008, 0.02), "trim", bevel=0.0)
+        rbox(B, ((xb0 + xb1) / 2, s * (yb + 0.004), 2.36), (xb1 - xb0 - 0.1, 0.012, 0.08), "livery", bevel=0.0,
+             uvfn=lv_uv("white"))
+        for xx in (xb1 - 0.15, xb0 + 0.15):
+            rbox(B, (xx, s * (yb + 0.012), 2.2), (0.16, 0.03, 0.1), "sign", bevel=0.01, uvfn=sgn_uv("red"))
+        rbox(B, ((xb0 + xb1) / 2, s * 0.45, 0.85), (xb1 - xb0 - 0.4, 0.1, 0.22), "trim", bevel=0.0)
+        rbox(B, (ax_r - 0.68, s * (yb - 0.17), 0.55), (0.02, 0.36, 0.45), "trim", bevel=0.0)
+    # aerial ladder, turntable, front rest
+    lz, lx0, lx1 = 3.18, -4.95, 4.85
+    for s in (1, -1):
+        rbox(B, ((lx0 + lx1) / 2, s * 0.42, lz), (lx1 - lx0, 0.06, 0.13), "chrome", bevel=0.0)
+    n = int((lx1 - lx0) / 0.42)
+    for i in range(n + 1):
+        rbox(B, (lx0 + 0.1 + i * (lx1 - lx0 - 0.2) / n, 0, lz), (0.035, 0.80, 0.035), "chrome", bevel=0.0)
+    rbox(B, (-4.3, 0, z1 + 0.15), (1.1, 1.3, 0.3), "trim", bevel=0.05)
+    rbox(B, (-4.3, 0, z1 + 0.45), (0.5, 0.95, 0.35), "paint", bevel=0.05)
+    rbox(B, (1.9, 0, (z1 + lz) / 2), (0.18, 0.9, lz - z1), "trim", bevel=0.02)
+    light_bar(B, xf - 0.45, cab_h + 0.03, 2.0, ["red", "white", "red", "white", "red"])
+    # rear: chevrons, lights, step
+    end_text(B, None, xb0, 1.72, 1.0, -1, rect=LV_REG["chevron"], w=2.2)
+    for s in (1, -1):
+        rbox(B, (xb0 - 0.02, s * 0.95, 1.25), (0.04, 0.2, 0.25), "light_rear", bevel=0.02)
+        rbox(B, (xb0 - 0.02, s * 1.0, 2.3), (0.04, 0.15, 0.12), "sign", bevel=0.02, uvfn=sgn_uv("red"))
+    rbox(B, (xb0 - 0.1, 0, 0.88), (0.3, W - 0.3, 0.12), "chrome", bevel=0.02)
+    Wf = wheel(R, 0.30, segs=18, style="steel", rim_frac=0.6)
+    Wr = wheel(R, 0.50, segs=18, style="steel", rim_frac=0.6)
+    for s in (1, -1):
+        add_wheel(B, Wf, ax_f, cab.w - 0.0, R, s)
+        add_wheel(B, Wr, ax_r, yb - 0.04, R, s)
+    return B
+
+
+def build_garbage():
+    L, W, R = 9.0, 2.5, 0.5
+    xf = L / 2
+    cab_len, cab_w, cab_h = 2.3, 2.45, 2.6
+    cc = xf - cab_len / 2
+    ax_f = xf - 1.25
+    T, cab = cabover(cab_len, cab_w, cab_h, R, ax_f - cc, glass_x=[(-0.85, 0.62)], seam_x=[0.70, -0.95],
+                     belt=1.55, zb=0.62, handles=(-0.70,))
+    B = Builder()
+    B.merge(T, Matrix.Translation((cc, 0, 0)))
+    cb0, cb1 = -3.0, xf - cab_len - 0.1
+    z0, z1 = 1.12, 3.30
+    rbox(B, ((cb0 + cb1) / 2, 0, (z0 + z1) / 2), (cb1 - cb0, W, z1 - z0), "paint", bevel=0.16, segs=2)
+    for s in (1, -1):
+        for i in range(6):
+            x = cb0 + 0.45 + i * (cb1 - cb0 - 0.9) / 5
+            rbox(B, (x, s * (W / 2 + 0.012), (z0 + z1) / 2), (0.09, 0.03, z1 - z0 - 0.3), "paint", bevel=0.0)
+        rbox(B, ((cb0 + cb1) / 2, s * (W / 2 + 0.01), z0 + 0.08), (cb1 - cb0 - 0.1, 0.03, 0.12), "trim", bevel=0.0)
+        rbox(B, ((cb0 + cb1) / 2 + 0.6, s * 0.45, 0.85), (cb1 - cb0 + 1.6, 0.1, 0.22), "trim", bevel=0.0)
+    # rear-loader compactor tailgate
+    poly = [(-3.0, 1.02), (-3.0, 3.40), (-3.45, 3.40), (-4.1, 2.95), (-4.5, 1.80), (-4.5, 1.30), (-4.15, 1.02)]
+    prism(B, poly, W / 2 - 0.03, ["paint", "paint", "paint", "paint", "trim", "trim", "trim"])
+    p0, p1 = Vector((-4.5, 1.80)), Vector((-4.1, 2.95))
+    d = (p1 - p0).normalized()
+    nrm = Vector((-d.y, d.x))
+    a_, b_ = p0 + d * 0.06 + nrm * 0.006, p0 + d * 0.58 + nrm * 0.006
+    quad_uv(B, [(a_.x, 1.0, a_.y), (a_.x, -1.0, a_.y), (b_.x, -1.0, b_.y), (b_.x, 1.0, b_.y)],
+            rect_uvs(LV_REG["chevron"]), "livery", out=(nrm.x, 0, nrm.y))
+    for s in (1, -1):
+        tube(B, (-3.15, s * (W / 2 + 0.03), 1.40), (-3.95, s * (W / 2 + 0.03), 2.75), 0.05, "chrome", segs=6)
+        rbox(B, (-4.53, s * 1.05, 1.55), (0.04, 0.16, 0.36), "light_rear", bevel=0.01)
+        rbox(B, (-4.30, s * 0.85, 0.86), (0.30, 0.45, 0.05), "trim", bevel=0.01)
+        rbox(B, (-3.75, s * (W / 2 - 0.02), 3.25), (0.1, 0.03, 0.08), "light_rear", bevel=0.01)
+    rbox(B, (xf - 0.7, 0, cab_h + 0.04), (0.25, 0.25, 0.05), "trim", bevel=0.01)
+    rbox(B, (xf - 0.7, 0, cab_h + 0.12), (0.16, 0.16, 0.12), "sign", bevel=0.04, uvfn=sgn_uv("amber"))
+    rbox(B, (1.2, -1.0, 0.75), (0.8, 0.42, 0.42), "chrome", bevel=0.12, segs=2)
+    Wf = wheel(R, 0.30, segs=18, style="steel", rim_frac=0.6)
+    Wr = wheel(R, 0.50, segs=18, style="steel", rim_frac=0.6)
+    for s in (1, -1):
+        add_wheel(B, Wf, ax_f, cab.w - 0.0, R, s)
+        for ax in (-1.35, -2.45):
+            add_wheel(B, Wr, ax, W / 2 - 0.04, R, s)
+    return B
+
+
+# ============================================================ second batch: buses
+
+def build_schoolbus():
+    L, W, R = 11.0, 2.5, 0.5
+    xf = L / 2
+    xbf = 3.55                      # main body front, behind the bonnet
+    ax_f, ax_r = 4.2, -2.3
+    Lb = xbf + xf
+    cb = (xbf - xf) / 2             # main body centre (global x)
+    roof = 3.12
+    win = (1.78, 2.50)
+    pillars = [2.45 - i * 0.82 for i in range(10)]
+    door = (2.62, 3.36)             # kerb side (-y)
+    P = dict(L=Lb, W=W, R=R, tw=0.30,
+             arches=[(ax_r - cb, R + 0.09)], arch_steps=8,
+             zb_tab=[(-Lb / 2, 0.80), (Lb / 2, 0.80)],
+             zt_tab=[(-Lb / 2, roof - 0.03), (-Lb / 2 + 0.2, roof), (Lb / 2, roof)],
+             bulge_tab=[(0.8, -0.01), (1.2, 0.01), (2.5, 0.0), (3.1, -0.03)], bulge_max=0.012,
+             rb=0.05, rt=0.30, crown=0.05,
+             breaks=[1.05, 1.68, win[0], win[1]],
+             corner_f=(0.10, 0.04, [(0.0, 0.0), (1.0, 0.04)]),
+             corner_r=(0.12, 0.02, [(0.0, 0.02), (1.0, 0.02)]),
+             corner_us=[1.0, 0.6], max_step=1.6)
+    body = Body(P)
+    T = Builder()
+    dm = (door[0] + door[1]) / 2
+
+    def mat_fn(c, info):
+        seg = info["seg"]
+        xg = (info["x0"] + info["x1"]) / 2 + cb
+        if seg <= 1:
+            return "trim"
+        side = abs(c.y) > body.w - 0.12
+        if not side:
+            return "paint"
+        if c.z < info["zb"] + 0.12:
+            return "trim"
+        if c.y < 0 and door[0] < xg < door[1] and c.z < win[1] + 0.01:
+            if abs(xg - door[0]) < 0.03 or abs(xg - door[1]) < 0.03 or abs(xg - dm) < 0.012:
+                return "trim"
+            return "glass" if c.z > 1.05 else "trim"
+        if 1.68 <= c.z <= win[0]:
+            return "trim"
+        if win[0] <= c.z <= win[1]:
+            if xg < -xf + 0.35:
+                return "paint"
+            for p in pillars:
+                if abs(xg - p) < 0.05:
+                    return "trim"
+            return "glass"
+        return "paint"
+
+    def cap_fn(end, y, z):
+        ay = abs(y)
+        if end == "f":
+            if 1.68 <= z <= win[1] and ay < body.w - 0.14:
+                return "trim" if ay < 0.03 else "glass"
+            return "paint"
+        if win[0] <= z <= win[1] and ay < body.w - 0.16:
+            return "trim" if 0.45 <= ay <= 0.52 else "glass"
+        if 1.05 <= z <= win[1] and 0.45 <= ay <= 0.52:
+            return "trim"
+        if 1.68 <= z <= win[0]:
+            return "trim"
+        return "paint"
+    extra = []
+    for p in pillars:
+        extra += [p - 0.05 - cb, p + 0.05 - cb]
+    for v in (door[0], door[0] + 0.03, door[1] - 0.03, door[1], dm - 0.012, dm + 0.012, -xf + 0.35):
+        extra.append(v - cb)
+    bw = body.w
+    body.build(T, mat_fn, cap_fn, {"f": [-(bw - 0.14), -0.03, 0.03, bw - 0.14],
+                                    "r": [-(bw - 0.16), -0.52, -0.45, 0.45, 0.52, bw - 0.16]},
+               extra_stations=extra)
+    # stop arm (driver side), rub rails, text, warning lights - in body-local x
+    stop_sign(T, 2.22 - cb, body.side_y(2.22 - cb, 1.38) + 0.035, 1.38, 0.2, 1)
+    rbox(T, (2.45 - cb, body.side_y(2.45 - cb, 1.38) + 0.02, 1.38), (0.08, 0.04, 0.12), "trim", bevel=0.0)
+    for s in (1, -1):
+        for zz in (1.05, 1.36):
+            y = body.side_y(0.0, zz) + 0.008
+            x0r, x1r = -Lb / 2 + 0.15, Lb / 2 - 0.12
+            rbox(T, ((x0r + x1r) / 2, s * y, zz), (x1r - x0r, 0.02, 0.05), "trim", bevel=0.0)
+    for end, fac in (("f", 1), ("r", -1)):
+        xe, _ = body.end_x(2.66, end)
+        end_text(T, "SCHOOL BUS", xe, 2.66, 0.2, fac)
+        for s in (1, -1):
+            rbox(T, (xe, s * 0.82, 2.68), (0.06, 0.14, 0.14), "sign", bevel=0.03, uvfn=sgn_uv("red"))
+            rbox(T, (xe, s * 1.0, 2.68), (0.06, 0.14, 0.14), "sign", bevel=0.03, uvfn=sgn_uv("amber"))
+    xr, _ = body.end_x(1.25, "r")
+    for s in (1, -1):
+        rbox(T, (xr - 0.01, s * 0.95, 1.25), (0.05, 0.2, 0.34), "trim", bevel=0.02)
+        rbox(T, (xr - 0.03, s * 0.95, 1.25), (0.03, 0.15, 0.28), "light_rear", bevel=0.015)
+    for xx in (-2.0, 1.5):
+        rbox(T, (xx, 0, roof + 0.05), (0.7, 0.7, 0.06), "trim", bevel=0.02)
+    B = Builder()
+    B.merge(T, Matrix.Translation((cb, 0, 0)))
+
+    # bonnet
+    Lh = 2.1
+    ch = xf - Lh / 2
+    HP = dict(L=Lh, W=2.2, R=R, tw=0.30,
+              arches=[(ax_f - ch, R + 0.09)], arch_steps=8,
+              zb_tab=[(-Lh / 2, 0.62), (Lh / 2 - 0.3, 0.62), (Lh / 2, 0.66)],
+              zt_tab=[(-Lh / 2, 1.62), (0.2, 1.60), (Lh / 2 - 0.15, 1.52), (Lh / 2, 1.44)],
+              bulge_tab=[(0.6, 0.0), (1.6, 0.0)], bulge_max=0.0,
+              rb=0.05, rt=0.10, crown=0.04,
+              breaks=[0.80, 0.92, 1.30],
+              corner_f=(0.16, 0.10, [(0.0, 0.0), (0.4, 0.02), (1.0, 0.10)]),
+              corner_us=[1.0, 0.7, 0.4], max_step=0.5)
+    hood = Body(HP)
+    H = Builder()
+
+    def hmat(c, info):
+        if info["seg"] <= 1:
+            return "trim"
+        if info["zone"] and c.z < 0.80:
+            return "trim"
+        return "paint"
+
+    def hcap(end, y, z):
+        if end == "f":
+            if 0.92 <= z <= 1.30 and abs(y) < 0.48:
+                return "trim"
+            if z < 0.80:
+                return "trim"
+        return "paint"
+    hood.build(H, hmat, hcap, {"f": [-0.48, 0.48], "r": []})
+    grille(H, hood, 0.94, 1.28, 0.47, bars=3)
+    for s in (1, -1):
+        x, _ = hood.end_x(1.10, "f")
+        rbox(H, (x - 0.01, s * 0.78, 1.10), (0.06, 0.26, 0.18), "trim", bevel=0.03)
+        rbox(H, (x + 0.02, s * 0.78, 1.10), (0.03, 0.2, 0.13), "light_front", bevel=0.02)
+    B.merge(H, Matrix.Translation((ch, 0, 0)))
+    rbox(B, (xf + 0.04, 0, 0.68), (0.2, 2.45, 0.22), "trim", bevel=0.04)
+    rbox(B, (-xf - 0.06, 0, 0.78), (0.2, 2.45, 0.22), "trim", bevel=0.04)
+    for s in (1, -1):
+        tube(B, (xf - 0.15, s * 1.0, 1.55), (xf + 0.1, s * 1.05, 1.95), 0.018, "trim", segs=5)
+        rbox(B, (xf + 0.12, s * 1.05, 2.02), (0.16, 0.16, 0.16), "trim", bevel=0.06,
+             mat_fn=lambda n: "glass" if n.x > 0.5 else "trim")
+        tube(B, (xbf - 0.02, s * (W / 2 - 0.02), 2.35), (xbf + 0.15, s * (W / 2 + 0.2), 2.28), 0.016, "trim", 5)
+        rbox(B, (xbf + 0.15, s * (W / 2 + 0.24), 2.05), (0.06, 0.16, 0.38), "trim", bevel=0.02,
+             mat_fn=lambda n: "glass" if n.x < -0.8 else "trim")
+    Wf = wheel(R, 0.30, segs=18, style="steel", rim_frac=0.6)
+    Wr = wheel(R, 0.42, segs=18, style="steel", rim_frac=0.6)
+    for s in (1, -1):
+        add_wheel(B, Wf, ax_f, hood.w - 0.0, R, s)
+        add_wheel(B, Wr, ax_r, body.w - 0.02, R, s)
+    return B
+
+
+def build_tourbus():
+    L, W, R = 12.0, 2.6, 0.5
+    xf = L / 2
+    ax_f, ax_r = xf - 2.6, xf - 2.6 - 6.0
+    deck = 2.45
+    win = (1.05, 2.15)
+    pillars = [-4.8, -3.5, -2.2, -0.9, 0.4, 1.7, 2.95]
+    door = (4.15, 5.25)
+    P = dict(L=L, W=W, R=R, tw=0.30,
+             arches=[(ax_f, R + 0.09), (ax_r, R + 0.09)], arch_steps=8,
+             zb_tab=[(-xf, 0.42), (-xf + 0.5, 0.34), (xf - 0.5, 0.33), (xf, 0.38)],
+             zt_tab=[(-xf, deck), (xf, deck)],
+             bulge_tab=[(0.3, -0.01), (0.6, 0.0), (1.2, 0.012), (2.5, 0.0)], bulge_max=0.012,
+             rb=0.06, rt=0.08, crown=0.0,
+             breaks=[0.62, 0.95, win[0], win[1], 2.30],
+             corner_f=(0.22, 0.10, [(0.0, 0.04), (0.12, 0.0), (0.5, 0.0), (1.0, 0.10)]),
+             corner_r=(0.22, 0.03, [(0.0, 0.03), (0.15, 0.0), (1.0, 0.02)]),
+             corner_us=[1.0, 0.7, 0.4], max_step=1.6)
+    body = Body(P)
+    B = Builder()
+    dm = (door[0] + door[1]) / 2
+
+    def mat_fn(c, info):
+        seg, zone, u = info["seg"], info["zone"], info["u"]
+        xm = (info["x0"] + info["x1"]) / 2
+        if seg <= 1:
+            return "trim"
+        side = abs(c.y) > body.w - 0.12
+        if c.z > deck - 0.03 and abs(c.y) < body.w - 0.1:
+            return "trim"   # upper-deck floor
+        if zone == "r" and u >= 0.6 and 0.62 <= c.z <= 0.95:
+            return "light_rear"
+        if c.z < 0.62 and zone:
+            return "trim"
+        if side and c.y < 0 and door[0] < xm < door[1] and c.z < 2.30:
+            if abs(xm - door[0]) < 0.02 or abs(xm - door[1]) < 0.02 or abs(xm - dm) < 0.012:
+                return "trim"
+            return "glass" if c.z > 0.95 else "trim"
+        if side and win[0] <= c.z <= win[1]:
+            for p in pillars:
+                if abs(xm - p) < 0.06:
+                    return "trim"
+            if xm < -xf + 0.3:
+                return "paint"
+            return "glass"
+        if zone == "f" and u >= 0.7 and 0.95 < c.z < 2.30:
+            return "glass"
+        return "paint"
+
+    def cap_fn(end, y, z):
+        ay = abs(y)
+        if end == "f":
+            if 0.95 <= z <= 2.30:
+                return "glass"
+            if z < 0.62:
+                return "trim"
+            return "paint"
+        if z < 0.62:
+            return "trim"
+        if 0.62 <= z <= 0.95 and ay > 0.9:
+            return "light_rear"
+        if 0.95 <= z <= 2.15 and ay < 0.75:
+            return "trim"
+        return "paint"
+    extra = []
+    for p in pillars:
+        extra += [p - 0.06, p + 0.06]
+    for v in (door[0], door[0] + 0.02, door[1] - 0.02, door[1], dm - 0.012, dm + 0.012, -xf + 0.3):
+        extra.append(v)
+    body.build(B, mat_fn, cap_fn, {"f": [], "r": [-0.9, -0.75, 0.75, 0.9]}, extra_stations=extra)
+
+    # upper deck: walls, front canopy + screen, railing, seats
+    yw = body.w - 0.04
+    x_back, x_front = -xf + 0.12, xf - 0.36
+    zt_w = 3.45
+    for s in (1, -1):
+        rbox(B, ((x_back + x_front) / 2, s * yw, (deck + zt_w) / 2 - 0.02), (x_front - x_back, 0.08, zt_w - deck + 0.04),
+             "paint", bevel=0.03)
+    rbox(B, (x_front + 0.02, 0, deck + 0.2), (0.08, 2.3, 0.44), "paint", bevel=0.03)
+    rbox(B, (x_back, 0, (deck + zt_w) / 2 - 0.02), (0.08, 2.5, zt_w - deck + 0.04), "paint", bevel=0.03)
+    cx0, cx1 = 3.7, x_front + 0.04
+    rbox(B, ((cx0 + cx1) / 2, 0, 4.22), (cx1 - cx0 + 0.1, 2.56, 0.08), "paint", bevel=0.03)
+    rbox(B, (x_front + 0.02, 0, (deck + 0.42 + 4.18) / 2), (0.04, 2.3, 4.18 - deck - 0.42), "glass", bevel=0.0)
+    for s in (1, -1):
+        rbox(B, ((cx0 + cx1) / 2, s * yw, (zt_w + 4.18) / 2), (cx1 - cx0 - 0.1, 0.03, 4.18 - zt_w), "glass", bevel=0.0)
+        for xx in (cx0, cx1 - 0.02):
+            rbox(B, (xx, s * yw, (zt_w + 4.2) / 2), (0.07, 0.07, 4.2 - zt_w), "paint", bevel=0.0)
+    rz = 3.92
+    for s in (1, -1):
+        tube(B, (x_back, s * yw, rz), (cx0, s * yw, rz), 0.025, "chrome", segs=6)
+        n = int((cx0 - x_back) / 1.05)
+        for i in range(n + 1):
+            x = x_back + i * (cx0 - x_back) / n
+            tube(B, (x, s * yw, zt_w), (x, s * yw, rz), 0.018, "chrome", segs=4)
+    tube(B, (x_back, -yw, rz), (x_back, yw, rz), 0.025, "chrome", segs=6)
+    blue = lv_uv("blue")
+    x = -5.45
+    while x < 5.0:
+        for s in (1, -1):
+            rbox(B, (x, s * 0.64, deck + 0.24), (0.42, 0.92, 0.48), "livery", bevel=0.0, uvfn=blue)
+            rbox(B, (x - 0.21, s * 0.64, deck + 0.70), (0.08, 0.92, 0.46), "livery", bevel=0.0, uvfn=blue)
+        x += 0.92
+    side_text(B, "CITY TOURS", -0.8, 2.96, 0.40, lambda x, z: yw + 0.04)
+    # front lamps, bumpers, mirrors
+    for s in (1, -1):
+        x, _ = body.end_x(0.78, "f")
+        rbox(B, (x - 0.01, s * 0.82, 0.78), (0.06, 0.40, 0.24), "trim", bevel=0.03)
+        for dy in (-0.09, 0.09):
+            rbox(B, (x + 0.02, s * (0.82 + dy), 0.79), (0.03, 0.15, 0.13), "light_front", bevel=0.02)
+        tube(B, (xf - 0.15, s * (body.w - 0.05), 2.2), (xf + 0.25, s * (body.w + 0.13), 2.1), 0.02, "trim", segs=5)
+        rbox(B, (xf + 0.28, s * (body.w + 0.15), 1.85), (0.07, 0.22, 0.42), "trim", bevel=0.03,
+             mat_fn=lambda n: "glass" if n.x < -0.8 else "trim")
+        y = body.side_y(0.0, 0.70)
+        rbox(B, ((ax_r + ax_f) / 2, s * (y + 0.01), 0.70), (ax_f - ax_r - 1.44, 0.03, 0.06), "trim", bevel=0.012)
+    rbox(B, (xf - 0.02, 0, 0.47), (0.16, 2.3, 0.22), "trim", bevel=0.05, segs=2)
+    rbox(B, (-xf + 0.02, 0, 0.50), (0.14, 2.4, 0.22), "trim", bevel=0.05, segs=2)
+    Wf = wheel(R, 0.30, segs=18, style="steel", rim_frac=0.6)
+    Wr = wheel(R, 0.42, segs=18, style="steel", rim_frac=0.6)
+    for s in (1, -1):
+        add_wheel(B, Wf, ax_f, body.w - 0.01, R, s)
+        add_wheel(B, Wr, ax_r, body.w - 0.01, R, s)
+    return B
+
+
 # ============================================================ materials, export, previews
 
 def make_materials():
@@ -1362,14 +2410,19 @@ def make_materials():
             tex.image = image
             tex.interpolation = "Linear"
             nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-            nt.links.new(tex.outputs["Color"], bsdf.inputs["Emission Color"])
+            if strength > 0:
+                nt.links.new(tex.outputs["Color"], bsdf.inputs["Emission Color"])
             bsdf.inputs["Emission Strength"].default_value = strength
         return m
 
     build_atlas()
+    build_livery()
     img = bpy.data.images.load(ATLAS_PNG)
     img.name = "sign_atlas"
     img.pack()
+    liv = bpy.data.images.load(LIVERY_PNG)
+    liv.name = "livery_atlas"
+    liv.pack()
     return {
         "paint": principled("paint", (0.85, 0.85, 0.85), 0.32, 0.0),
         "glass": principled("glass", (0.025, 0.035, 0.045), 0.06, 0.4),
@@ -1379,6 +2432,8 @@ def make_materials():
         "light_front": principled("light_front", (1.0, 0.95, 0.85), 0.2, 0.0, emit=(1.0, 0.92, 0.75)),
         "light_rear": principled("light_rear", (0.6, 0.02, 0.02), 0.25, 0.0, emit=(1.0, 0.05, 0.03)),
         "sign": principled("sign", (1, 1, 1), 0.4, 0.0, image=img),
+        "livery": principled("livery", (1, 1, 1), 0.35, 0.0, image=liv, strength=0.0),
+        "chrome": principled("chrome", (0.9, 0.9, 0.92), 0.12, 1.0),
     }
 
 
@@ -1413,10 +2468,21 @@ def clean_scene():
 
 
 BUILDERS = [("cab", build_cab), ("sedan", build_sedan), ("suv", build_suv),
-            ("bus", build_bus), ("truck", build_truck), ("van", build_van)]
+            ("bus", build_bus), ("truck", build_truck), ("van", build_van),
+            ("police", build_police), ("ambulance", build_ambulance), ("firetruck", build_firetruck),
+            ("garbage", build_garbage), ("schoolbus", build_schoolbus), ("tourbus", build_tourbus),
+            ("foodtruck", build_foodtruck), ("pickup", build_pickup), ("hatch", build_hatch),
+            ("limo", build_limo), ("sports", build_sports), ("scooter", build_scooter)]
 
 PREVIEW_PAINT = {"cab": (0.95, 0.62, 0.02), "sedan": (0.05, 0.12, 0.30), "suv": (0.06, 0.06, 0.07),
-                 "bus": (0.85, 0.86, 0.88), "truck": (0.86, 0.86, 0.86), "van": (0.40, 0.25, 0.12)}
+                 "bus": (0.85, 0.86, 0.88), "truck": (0.86, 0.86, 0.86), "van": (0.40, 0.25, 0.12),
+                 "police": (0.90, 0.90, 0.92), "ambulance": (0.92, 0.92, 0.92), "firetruck": (0.62, 0.03, 0.03),
+                 "garbage": (0.12, 0.30, 0.14), "schoolbus": (0.95, 0.58, 0.02), "tourbus": (0.60, 0.04, 0.05),
+                 "foodtruck": (0.05, 0.42, 0.45), "pickup": (0.35, 0.05, 0.05), "hatch": (0.45, 0.60, 0.25),
+                 "limo": (0.02, 0.02, 0.025), "sports": (0.85, 0.20, 0.03), "scooter": (0.70, 0.08, 0.06)}
+
+LINEUP_SMALL = ["scooter", "hatch", "sedan", "cab", "police", "sports", "suv", "pickup", "limo"]
+LINEUP_BIG = ["van", "ambulance", "foodtruck", "truck", "garbage", "firetruck", "schoolbus", "bus", "tourbus"]
 
 
 def export(objs):
@@ -1489,20 +2555,38 @@ def previews(objs, only=None):
         if only and ob.name not in only:
             continue
         shoot(os.path.join(PREV_DIR, f"{ob.name}.png"), tgt, size * 1.75 + 1.5, 35, 14)
-        shoot(os.path.join(PREV_DIR, f"{ob.name}_rear.png"), tgt, size * 1.75 + 1.5, 150, 16)
+        shoot(os.path.join(PREV_DIR, f"{ob.name}_rear.png"), tgt, size * 1.75 + 1.5, -150, 16)
         shoot(os.path.join(PREV_DIR, f"{ob.name}_side.png"), tgt, size * 1.6 + 1.5, 90, 2, lens=50)
     if only:
         return
-    # lineup: side by side, all facing the camera-ish
-    x = 0.0
+    # lineups: small vehicles in front, big ones behind, all facing the camera
+    by = {ob.name: ob for ob in objs}
+
+    def place(names, y):
+        x = 0.0
+        for n in names:
+            ob = by[n]
+            w = ob.dimensions.x
+            ob.location = (x + w / 2, y, 0)
+            x += w + 1.0
+        total = x - 1.0
+        for n in names:
+            by[n].location.x -= total / 2
+        return total
+
+    for ob in objs:
+        ob.hide_render = True
+    ws = place(LINEUP_SMALL, -6.0)
+    wb = place(LINEUP_BIG, 8.0)
+    for n in LINEUP_SMALL:
+        by[n].hide_render = False
+    shoot(os.path.join(PREV_DIR, "lineup_small.png"), Vector((0, -6.0, 0.8)), ws * 1.55, 8, 14, res=(1800, 600))
+    for ob in objs:
+        ob.hide_render = ob.name not in LINEUP_BIG
+    shoot(os.path.join(PREV_DIR, "lineup_big.png"), Vector((0, 8.0, 1.6)), wb * 1.4, 8, 14, res=(1800, 600))
     for ob in objs:
         ob.hide_render = False
-        w = ob.dimensions.x
-        ob.location = (x + w / 2, 0, 0)
-        x += w + 1.2
-    total = x - 1.2
-    tgt = Vector((total / 2, 0, 1.2))
-    shoot(os.path.join(PREV_DIR, "lineup.png"), tgt, total * 1.5, 12, 16, res=(1800, 700), lens=50)
+    shoot(os.path.join(PREV_DIR, "lineup.png"), Vector((0, 2.0, 1.2)), max(ws, wb) * 1.45, 8, 22, res=(2000, 1000))
     for ob in objs:
         ob.location = (0, 0, 0)
 

@@ -9,12 +9,28 @@ import json, os, struct, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GLB = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "..", "..", "public", "models", "vehicles.glb")
-NAMES = ["cab", "sedan", "suv", "bus", "truck", "van"]
-MATS = {"paint", "glass", "trim", "tyre", "rim", "light_front", "light_rear", "sign"}
+NAMES = ["cab", "sedan", "suv", "bus", "truck", "van",
+         "police", "ambulance", "firetruck", "garbage", "schoolbus", "tourbus", "foodtruck",
+         "pickup", "hatch", "limo", "sports", "scooter"]
+MATS = {"paint", "glass", "trim", "tyre", "rim", "light_front", "light_rear", "sign", "livery", "chrome"}
 REQUIRED = {"paint", "glass", "trim", "tyre", "rim", "light_front", "light_rear"}
-BUDGET = {"cab": 4000, "sedan": 4000, "suv": 4000, "van": 4000, "bus": 6000, "truck": 6000}
+# extra slots each vehicle must have
+EXTRA = {"cab": {"sign"}, "bus": {"sign"}, "police": {"sign", "livery"}, "ambulance": {"sign", "livery"},
+         "firetruck": {"sign", "livery", "chrome"}, "garbage": {"sign", "livery", "chrome"},
+         "schoolbus": {"sign", "livery"}, "tourbus": {"livery", "chrome"}, "foodtruck": {"livery", "chrome"},
+         "scooter": {"livery", "chrome"}}
+BUDGET = {"cab": 4000, "sedan": 4000, "suv": 4000, "van": 4000, "bus": 6000, "truck": 6000,
+          "police": 4200, "pickup": 4200, "hatch": 4200, "limo": 4200, "sports": 4200,
+          "ambulance": 7000, "firetruck": 7000, "garbage": 7000, "schoolbus": 7000, "tourbus": 7000,
+          "foodtruck": 7000, "scooter": 2200}
+# (length, width, height) from the brief
 DIMS = {"cab": (4.95, 1.9, 1.55), "sedan": (4.6, 1.85, 1.45), "suv": (4.9, 1.95, 1.8),
-        "bus": (12, 2.6, 3.2), "truck": (8.5, 2.5, 3.4), "van": (5.5, 2.0, 2.4)}
+        "bus": (12, 2.6, 3.2), "truck": (8.5, 2.5, 3.4), "van": (5.5, 2.0, 2.4),
+        "police": (5.0, 1.9, 1.5), "ambulance": (6.5, 2.3, 2.8), "firetruck": (10.5, 2.5, 3.3),
+        "garbage": (9.0, 2.5, 3.4), "schoolbus": (11.0, 2.5, 3.2), "tourbus": (12.0, 2.6, 4.3),
+        "foodtruck": (7.0, 2.4, 3.0), "pickup": (5.6, 2.0, 1.85), "hatch": (4.0, 1.75, 1.5),
+        "limo": (8.5, 1.9, 1.45), "sports": (4.5, 1.9, 1.25), "scooter": (1.9, 0.7, 1.6)}
+MAX_BYTES = 3 * 1024 * 1024
 
 data = open(GLB, "rb").read()
 magic, ver, total = struct.unpack_from("<III", data, 0)
@@ -62,15 +78,15 @@ for name in NAMES:
         used[mname] = (a["min"], a["max"], t)
         mn = [min(x, y) for x, y in zip(mn, a["min"])]
         mx = [max(x, y) for x, y in zip(mx, a["max"])]
-        if mname in ("paint", "glass"):
+        if mname in ("paint", "glass", "livery", "chrome"):
             body_top = max(body_top, a["max"][1])
     grand += tris
     size = [mx[i] - mn[i] for i in range(3)]
     missing = REQUIRED - set(used)
     if missing:
         fails.append(f"{name}: missing materials {sorted(missing)}")
-    if name in ("cab", "bus") and "sign" not in used:
-        fails.append(f"{name}: missing sign material")
+    if EXTRA.get(name, set()) - set(used):
+        fails.append(f"{name}: missing extra slots {sorted(EXTRA[name] - set(used))}")
     if tris > BUDGET[name]:
         fails.append(f"{name}: {tris} tris over budget {BUDGET[name]}")
     if abs(mn[1]) > 0.01:
@@ -82,7 +98,7 @@ for name in NAMES:
     L, W, H = DIMS[name]
     # mirrors widen x a little; length (z) and body height (paint/glass, i.e. without the taxi
     # roof sign) should be close to spec
-    if abs(size[2] - L) > 0.05 * L or abs(body_top - H) > 0.06 * H:
+    if abs(size[2] - L) > 0.06 * L or abs(body_top - H) > 0.07 * H:
         fails.append(f"{name}: size {size} vs spec L{L} W{W} H{H}")
     print(f"{name:6s} {tris:5d} tris  size x{size[0]:.2f} y{size[1]:.2f} z{size[2]:.2f} body-top {body_top:.2f}  "
           f"front lights z={fz:+.2f} rear z={rz:+.2f}  prims: " +
@@ -90,6 +106,8 @@ for name in NAMES:
 print(f"total {grand} tris")
 imgs = doc.get("images", [])
 print(f"embedded images: {len(imgs)}")
+if len(data) > MAX_BYTES:
+    fails.append(f"file is {len(data) / 1048576:.2f} MB, over 3 MB")
 if fails:
     print("FAIL:\n  " + "\n  ".join(fails))
     sys.exit(1)

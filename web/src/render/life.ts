@@ -161,12 +161,14 @@ export class TrafficView {
     for (const [k, parts] of this.parts) {
       for (const part of parts) {
         part.mesh.count = counts.get(k) ?? 0;
+        part.mesh.visible = part.mesh.count > 0;
         part.mesh.instanceMatrix.needsUpdate = true;
         if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
       }
     }
     for (const [k, far] of this.far) {
       far.count = farCounts.get(k) ?? 0;
+      far.visible = far.count > 0;
       far.instanceMatrix.needsUpdate = true;
       if (far.instanceColor) far.instanceColor.needsUpdate = true;
     }
