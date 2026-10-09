@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Far From the Tree - intro cutscene pipeline (run from this folder in Git Bash).
 # 1) python audio/make_audio.py          # synthesise wind/lapse/rustle/music stems (stdlib + ffmpeg)
+#    python audio/make_scene_audio.py    # ambience + people/harbour one-shots from web/public/audio, synced to people.py
 #    (re-imported stems need NEW asset ids: tsrct refuses to overwrite sfx-* ids; update audio/stems.json)
 # 2) python build.py --audio             # regenerate .tesseract-work/editable.json from code
 # 3) tsrct project commit --project intro.tsrct --file .tesseract-work/editable.json

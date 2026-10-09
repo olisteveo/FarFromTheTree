@@ -28,3 +28,6 @@ code/Properties/*
 # Exported / standalone games
 Exports/
 web/tools/audio/__pycache__
+web/tools/cutscene/*.tsrct
+web/tools/cutscene/intro.mp4
+web/tools/cutscene/.tesseract-work/
