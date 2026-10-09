@@ -15,6 +15,7 @@ import { SubwayArt } from "./render/subwayArt";
 import { CentralPark } from "./render/centralPark";
 import { SubwaySigns } from "./render/subwaySigns";
 import { WindDebris } from "./render/windDebris";
+import { Minimap } from "./game/minimap";
 import { TouchControls, isTouchDevice } from "./game/touch";
 import { useTouchWording } from "./game/tutorial";
 import { PeopleView, type PeopleWalker } from "./render/people";
@@ -135,6 +136,8 @@ const subwaySigns = new SubwaySigns(city, flow.under, hudEl);
 const debris = new WindDebris(flow);
 stage.scene.add(debris.mesh);
 let lastGust = -1;
+// the minimap, bottom right (top left on touch screens)
+const minimap = new Minimap(hudEl, city, flow.under, flow.blockers, { x: city.raw.landmarks.sheepMeadow[0], z: city.raw.landmarks.sheepMeadow[1] });
 stage.scene.add(subwaySigns.root);
 const audio = new Audio(city);
 const leafMeter = new LeafMeter(hudEl);
@@ -401,6 +404,8 @@ function tick(dt: number, render: boolean) {
   hud.update(dt, leaf, bestS);
   touch?.show(leaf.state === "flying" || leaf.state === "attached");
   subwaySigns.update(wall, leaf.pos, ns.s, leaf.state === "flying" && leaf.lane === "street" && !replay, cam, dt);
+  minimap.el.classList.toggle("away", leaf.state === "attached");
+  if (leaf.state !== "attached") minimap.update(dt, leaf.pos.x, leaf.pos.y, leaf.pos.z, leaf.heading, leaf.lane === "subway", ns.s, subwaySigns.next);
   if (leaf.state === "planted" && !replay) leaderboard.showWon(leaf.time);
   leaderboard.showMini(leaf.state === "attached" && !introPlaying);
   leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);

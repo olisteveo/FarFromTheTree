@@ -38,6 +38,8 @@ export class SubwaySigns {
   private chevron: THREE.Mesh;
   private pointer: HTMLElement;
   private target: Shaft | null = null;
+  /** the way in the beam and pointer are showing (for the minimap) */
+  get next(): Shaft | null { return this.target; }
   private pick = 0;
   private v = new THREE.Vector3();
 

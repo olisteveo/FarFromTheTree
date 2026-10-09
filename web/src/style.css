@@ -126,3 +126,12 @@ body.is-touch .keys { display: none; }
 .screen .intro-again:hover { background: rgba(255, 176, 74, 0.25); }
 .leafmeter { transition: opacity 0.4s; }
 .leafmeter.away { opacity: 0; }
+
+/* the minimap: bottom right above the key hints (top left on touch screens) */
+.minimap { position: absolute; right: 20px; bottom: 58px; width: 190px; height: 190px; pointer-events: none; transition: opacity 0.4s; filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.45)); }
+.minimap canvas { width: 190px; height: 190px; display: block; }
+.minimap.away { opacity: 0; }
+.minimap-label { position: absolute; left: 0; right: 0; bottom: -18px; text-align: center; font: 700 11px Inter, system-ui, sans-serif; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255, 240, 225, 0.8); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7); }
+body.is-touch .minimap { right: auto; left: calc(10px + env(safe-area-inset-left)); bottom: auto; top: calc(48px + env(safe-area-inset-top)); width: 130px; height: 130px; }
+body.is-touch .minimap canvas { width: 130px; height: 130px; }
+@media (max-width: 640px) { .minimap { width: 130px; height: 130px; } .minimap canvas { width: 130px; height: 130px; } }
