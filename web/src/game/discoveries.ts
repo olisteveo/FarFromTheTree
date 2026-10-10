@@ -2,7 +2,7 @@
 // and drawn on the minimap from then on) and the dust devils you've caught.
 
 import type { Glider } from "../sim/glider";
-import { JET_SPEC, type WindFeatures } from "../world/windFeatures";
+import { JET_SPEC, JET_GRADE, type WindFeatures } from "../world/windFeatures";
 
 export class Discoveries {
   readonly found = new Set<number>();
@@ -28,7 +28,7 @@ export class Discoveries {
       if (!this.found.has(j)) {
         this.found.add(j);
         try { localStorage.setItem("fftt.jets", JSON.stringify([...this.found])); } catch { /* ignore */ }
-        this.onFind(`<b>Hidden current found</b><br/><span style="opacity:.85">${jet.name}: a ${JET_SPEC[jet.kind].label} · ${this.found.size} / ${this.total}</span>`, "jet");
+        this.onFind(`<b>Hidden current found</b><br/><span style="opacity:.85">${jet.name}: a ${JET_GRADE[jet.grade].label} ${JET_SPEC[jet.kind].label} · ${this.found.size} / ${this.total}</span>`, "jet");
       } else this.onFind("", "jet");
     }
     this.inJet = j;

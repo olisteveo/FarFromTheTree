@@ -19,6 +19,7 @@
 import type { CityData } from "./data";
 import { Grid } from "./data";
 import { project } from "./landmarks";
+import type { Barrier } from "./blockers";
 
 export type JetKind = "canyon" | "sky" | "plunge" | "gutter";
 
@@ -32,6 +33,8 @@ export interface Jet {
   /** radius of the tube and the speed on its axis */
   r: number;
   speed: number;
+  /** 0 breeze, 1 stream, 2 gale (see JET_GRADE) */
+  grade: number;
   /** route position of its start and end (for the minimap and the pilots) */
   s0: number;
   s1: number;
@@ -40,7 +43,15 @@ export interface Jet {
 export interface Devil { id: number; name: string; x: number; z: number; wander: number; core: number; height: number; phase: number }
 export interface Lee { x: number; z: number; r: number; h: number; len: number }
 
-export interface WindHit { x: number; y: number; z: number; jet: number; devil: number; lee: boolean }
+export interface WindHit { x: number; y: number; z: number; jet: number; devil: number; lee: boolean; guide?: number }
+
+/** Not every current is equal: a breeze nudges you, a gale grabs you and carries you (its
+ *  grip is how firmly, see Glider guide). Grade 0..2, from the current's id. */
+export const JET_GRADE = [
+  { label: "breeze", speed: 0.85, grip: 0.3 },
+  { label: "stream", speed: 1.05, grip: 0.6 },
+  { label: "gale", speed: 1.35, grip: 0.95 },
+];
 
 const STEP = 6;
 const WIND = { x: -0.96, z: -0.28 }; // the winter wind over the roofs, from the north-west
@@ -62,13 +73,36 @@ export class WindFeatures {
   private leeGrid = new Grid<Lee>(48);
   private scratch: [number, number][] = [];
 
-  constructor(private city: CityData) {
+  /** barriers: the closed streets (world/blockers.ts). A current that would run through one stops
+   *  short of it, or it would carry you into the barrier and hold you there. */
+  constructor(private city: CityData, barriers: Barrier[] = []) {
     this.buildCanyons();
     this.buildSky();
     this.buildPlunges();
     this.buildGutters();
+    for (const j of this.jets) {
+      const p = j.pts, n = p.length / 3;
+      let cut = n;
+      for (let k = 0; k < n - 1 && cut === n; k++) {
+        for (const b of barriers) {
+          const ya = p[k * 3 + 1], yb = p[k * 3 + 4];
+          if (Math.min(ya, yb) > b.height + 3) continue;
+          const da = (p[k * 3] - b.x) * b.nx + (p[k * 3 + 2] - b.z) * b.nz, db = (p[k * 3 + 3] - b.x) * b.nx + (p[k * 3 + 5] - b.z) * b.nz;
+          if (da * db > 0 && Math.min(Math.abs(da), Math.abs(db)) > j.r) continue;
+          const ax = Math.abs((p[k * 3] - b.x) * b.ax + (p[k * 3 + 2] - b.z) * b.az);
+          if (ax > b.half + j.r) continue;
+          cut = Math.max(2, k - 2); break;
+        }
+      }
+      if (cut < n) { j.pts = p.slice(0, cut * 3); j.length = (cut - 1) * STEP; }
+    }
+    this.jets.splice(0, this.jets.length, ...this.jets.filter((j) => j.length > 40));
     this.jets.forEach((j, i) => {
       j.id = i;
+      // a spread of grades: about a third gales, the sky currents mostly gales, gutter runs never
+      const h = h01(i * 7919 + 13);
+      j.grade = j.kind === "gutter" ? (h < 0.5 ? 0 : 1) : j.kind === "sky" ? (h < 0.25 ? 1 : 2) : h < 0.3 ? 0 : h < 0.65 ? 1 : 2;
+      j.speed *= JET_GRADE[j.grade].speed;
       for (let k = 0; k < j.pts.length / 3 - 1; k++) {
         const ax = j.pts[k * 3], az = j.pts[k * 3 + 2], bx = j.pts[k * 3 + 3], bz = j.pts[k * 3 + 5];
         this.jetGrid.add([i, k], Math.min(ax, bx) - j.r, Math.min(az, bz) - j.r, Math.max(ax, bx) + j.r, Math.max(az, bz) + j.r);
@@ -96,7 +130,7 @@ export class WindFeatures {
     const spec = JET_SPEC[kind];
     const r = this.city.route;
     this.jets.push({
-      id: -1, kind, name, pts: new Float32Array(out), length: len, r: spec.r, speed: spec.speed,
+      id: -1, kind, name, pts: new Float32Array(out), length: len, r: spec.r, speed: spec.speed, grade: 1,
       s0: r.nearest(path[0][0], path[0][2]).s, s1: r.nearest(last[0], last[2]).s,
     });
   }
@@ -251,7 +285,7 @@ export class WindFeatures {
 
   /** Add the features' wind at (x, y, z) to `out` (which holds the base wind). */
   apply(x: number, y: number, z: number, t: number, out: WindHit): WindHit {
-    out.jet = -1; out.devil = -1; out.lee = false;
+    out.jet = -1; out.devil = -1; out.lee = false; out.guide = 0;
     if (y < -0.4) return out;
     // hidden currents
     let bestK = 0;
@@ -277,6 +311,8 @@ export class WindFeatures {
       out.y = out.y * (1 - blend) + (dy / L) * j.speed * kk + (cy - y) * 3.2 * kk + 2.2 * kk;
       out.z = out.z * (1 - blend) + (dz / L) * j.speed * kk + (cz - z) * 3.2 * kk;
       if (kk > 0.3) out.jet = ji;
+      // (the gutter runs never take hold: down among the cabs, being carried is how you die)
+      out.guide = j.kind === "gutter" ? 0 : JET_GRADE[j.grade].grip * Math.min(1, kk);
     }
     // dust devils
     for (const dv of this.devils) {

@@ -46,6 +46,8 @@ export const FLIGHT = {
   safeImpact: 4.5,
   /** how hard the air drags the leaf along with it (per second): normal, spread, curled */
   catch: 0.7, catchSpread: 1.5, catchCurl: 0.15,
+  /** how firmly a guided stream (the ways in and out of the subway) carries you, per second */
+  guide: 6,
   damage: 0.029,      // integrity lost per m/s of impact over the safe speed (tanky enough to learn on)
   dropRoofStreet: 0.8,
   dropStreetSubway: 1.15,
@@ -185,6 +187,7 @@ export class Glider {
     }
 
     // ---- the air
+    this.air.vx = this.vel.x; this.air.vy = this.vel.y; this.air.vz = this.vel.z;
     const W = this.flow.sample(this.pos.x, this.pos.y, this.pos.z, this.clock, this.air);
     const a = tmp.set(this.vel.x - W.x, this.vel.y - W.y, this.vel.z - W.z);
     let V = a.length();
@@ -252,6 +255,11 @@ export class Glider {
       this.vel.z += rz * kAll + sz * kSide * (1 - sail);
       // it lifts you with rising air, but never drags you down faster than you'd fall
       if (W.y > this.vel.y) this.vel.y += (W.y - this.vel.y) * Math.max(kAll, kSide * 0.5) * 0.5;
+      // in a guided stream (down a way in, up a way out) the air simply carries you, fast or slow
+      if (this.air.guide) {
+        const kg = 1 - Math.exp(-T.guide * this.air.guide * dt);
+        this.vel.x += (W.x - this.vel.x) * kg; this.vel.y += (W.y - this.vel.y) * kg; this.vel.z += (W.z - this.vel.z) * kg;
+      }
     }
 
     // ---- layer drops pay
@@ -413,7 +421,9 @@ export class Glider {
         else { const s2 = Math.sign(lu) || 1; this.contact(f.tx * s2, 0, f.tz * s2, du, PROP_NAME[f.kind]); }
       }
     }
-    // blockers: lantern curtains and crowd barriers close the street layer
+    // blockers: lantern curtains and crowd barriers close the street layer (paper lanterns, plastic
+    // barriers: you glance off them)
+    this.soft = true;
     if (p.y < 12 && p.y > -0.4) {
       for (const bar of this.flow.blockers.barriers) {
         if (p.y > bar.height) continue;

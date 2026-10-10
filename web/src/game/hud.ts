@@ -3,6 +3,7 @@
 // and planted screens. Integrity shows on the leaf itself, not here.
 
 import type { CityData } from "../world/data";
+import { isTouchDevice } from "./touch";
 import type { Glider } from "../sim/glider";
 
 const fmt = (t: number) => {
@@ -103,7 +104,7 @@ export class Hud {
     if (this.toastTimer > 0 && (this.toastTimer -= dt) <= 0) this.toast.classList.remove("show");
 
     if (leaf.state === "attached") {
-      this.setScreen("start", `<div class="title">Far From the Tree</div><div class="sub">Battery Park, late November. Every other leaf in the city has fallen.<br/>Ride the wind uptown and plant your seed in Central Park.</div><div class="cta">${document.body.classList.contains("is-touch") ? "tap" : "press any key"} to let go</div><button class="intro-again">▶ Watch the story</button>`);
+      this.setScreen("start", `<div class="title">Far From the Tree</div><div class="sub">Battery Park, late November. Every other leaf in the city has fallen.<br/>Ride the wind uptown and plant your seed in Central Park.</div><div class="cta">${isTouchDevice() ? "tap the screen" : "press any key"} to let go</div><button class="intro-again">▶ Watch the story</button>`);
     } else if (leaf.state === "dead") {
       this.setScreen("dead", `<div class="title small">${leaf.failure}</div><div class="sub">${fmt(leaf.time)} · ${((progressS / this.city.route.length) * 100).toFixed(0)}% of the way to the park</div><div class="cta">${document.body.classList.contains("is-touch") ? "tap ↻" : "R"} to fall again</div>`);
     } else if (leaf.state === "planted") {

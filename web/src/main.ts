@@ -41,6 +41,9 @@ import { LeafView } from "./render/leaf";
 import { FacadePropsView } from "./render/facadeProps";
 import { Pigeons } from "./render/pigeons";
 import { blockerMeshes } from "./render/blockers";
+import { Chinatown } from "./render/chinatown";
+import { EdgeWall } from "./render/edgeWall";
+import { PauseMenu } from "./game/pauseMenu";
 import { CrowdView, SteamView, TrafficView, TrainsView, WindStreaks, lastTree, streetHazards } from "./render/life";
 import { Input } from "./game/input";
 import { Hud } from "./game/hud";
@@ -156,6 +159,15 @@ const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
 const blockerView = blockerMeshes(flow.blockers);
+// ---- chinatown (render/chinatown.ts): paifang gates close the festival streets (they replace the stand-in lantern
+// curtains once loaded), lanterns over the streets, neon signs, and the modelled Manhattan Bridge with its arch
+const chinatown = new Chinatown(city, flow.blockers, { quality: stage.quality, festival: blockerView.userData.festival, farCity: LOW ? null : farCity });
+chinatown.load().catch((e) => console.warn("chinatown didn't load", e));
+stage.scene.add(chinatown.root);
+// ---- the edge of the corridor: a wall of wind you can see when you get near it
+const edgeWall = new EdgeWall(city);
+stage.scene.add(edgeWall.root);
+// ----
 stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, people.root, facadeProps.root, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 // ---- street furniture (render/streetFurniture.ts): lamps, live signals, street name blades, hydrants,
 // mailboxes, baskets, newsstands, carts, bike docks, bus stops, kiosks, sheds, plaza bollards, steam
@@ -252,6 +264,26 @@ const freeCam = params.get("cam")?.split(",").map(Number);
 let freeYaw = 0, freePitch = 0;
 const freePos = new THREE.Vector3();
 if (freeCam) { freePos.set(freeCam[0], freeCam[1], freeCam[2]); freeYaw = THREE.MathUtils.degToRad(freeCam[3] ?? 0); freePitch = THREE.MathUtils.degToRad(freeCam[4] ?? 0); }
+// The title screen: a different view of the city behind it every time (x, y, z, yaw, pitch in degrees),
+// drifting slowly; letting go cuts to the leaf on its tree.
+const SHOWCASE: number[][] = [
+  [-860, 8, 2150, -90, 8],      // Chinatown: a red bus up the street, the bridge arch beyond
+  [-331, 45, 2038, 84, -8],     // over the rooftops toward the towers
+  [-601, 7, 2331, -172, -5],    // a festival gate across Mulberry St
+  [-738, 7, 2103, 94, -4],      // the wide gate
+  [-560, 60, 2200, -150, -25],  // high over Chinatown
+  [-1380, 55, 1700, -128, 4],   // the Manhattan Bridge's tower
+  [-930, 5, 2085, -119, 10],    // the arch and colonnade at Canal St
+  [700, 7, 6679, -90, -5],      // Times Square, packed solid
+  [760, 9, 7505, 21, -2],       // the parade and its turkey
+];
+let showcase = !freeCam && !params.get("at") && !params.get("sub") && !params.get("replay") && params.get("fly") !== "1" && params.get("showcase") !== "0";
+let showT = 0, showYaw = 0;
+if (showcase) {
+  const v = SHOWCASE[Math.floor(Math.random() * SHOWCASE.length)];
+  freePos.set(v[0], v[1], v[2]); showYaw = freeYaw = THREE.MathUtils.degToRad(v[3]); freePitch = THREE.MathUtils.degToRad(v[4]);
+}
+const viewing = () => !!freeCam || showcase;
 
 function blocked(p: THREE.Vector3): boolean {
   if (leaf.pos.y > -0.4 && p.y < 0.3 && !flow.under.openingAt(p.x, p.z)) return true;
@@ -261,6 +293,17 @@ function blocked(p: THREE.Vector3): boolean {
 }
 
 function updateCamera(dt: number, t: number) {
+  if (showcase) {
+    // a slow look around
+    showT += dt;
+    const yaw = showYaw + Math.sin(showT * 0.07) * 0.12;
+    const f = new THREE.Vector3(Math.sin(yaw) * Math.cos(freePitch), Math.sin(freePitch), Math.cos(yaw) * Math.cos(freePitch));
+    cam.position.copy(freePos);
+    cam.lookAt(freePos.clone().add(f));
+    cam.fov = 50;
+    cam.updateProjectionMatrix();
+    return;
+  }
   if (freeCam) {
     const f = new THREE.Vector3(Math.sin(freeYaw) * Math.cos(freePitch), Math.sin(freePitch), Math.cos(freeYaw) * Math.cos(freePitch));
     const r = new THREE.Vector3(-Math.cos(freeYaw), 0, Math.sin(freeYaw));
@@ -357,7 +400,11 @@ let lastHint = "";
 function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  tick(dt, true);
+  // Esc / P pauses a run (and resumes); while paused the world stands still and only draws
+  if ((input.hit("Escape") || input.hit("KeyP")) && leaf.state === "flying" && !replay) setPaused(!pause.open);
+  pause.update(leaf.state === "flying" && !replay && !introPlaying);
+  if (pause.open) input.endFrame();
+  tick(pause.open ? 0 : dt, true);
   stage.adapt(dt); // drop the resolution if the frame rate sags (phones)
   requestAnimationFrame(frame);
 }
@@ -375,20 +422,10 @@ function tick(dt: number, render: boolean) {
     if (input.hit("BracketRight")) replaySpeed *= 2;
     if (input.hit("BracketLeft")) replaySpeed /= 2;
   }
-  if (input.hit("KeyR") && !replay) {
-    recorder.finish(leaf, "restart");
-    achievements.reset();
-    discoveries.reset();
-    leaf.reset();
-    hud.reset();
-    leaderboard.hide();
-    audio.reset();
-    bestS = 0;
-    placeAt();
-  }
+  if (input.hit("KeyR") && !replay) restartRun();
   if (input.anyKey) {
     audio.start();
-    if (leaf.state === "attached" && !input.hit("KeyG") && !freeCam) { leaf.detach(); recorder.start(leaf); leaderboard.startRun(); }
+    if (leaf.state === "attached" && !input.hit("KeyG") && !freeCam) { showcase = false; leaf.detach(); recorder.start(leaf); leaderboard.startRun(); }
   }
   if (autopilot) {
     if (leaf.state === "attached") { leaf.detach(); recorder.start(leaf); }
@@ -416,7 +453,7 @@ function tick(dt: number, render: boolean) {
   } else if (!freeCam) {
     acc += dt;
     // (on low quality the traffic and the crowd move every other frame: phones' CPUs are slow)
-    if (!LOW || (lowFrame ^= 1)) {
+    if (!showcase && (!LOW || (lowFrame ^= 1))) {
       flow.traffic.update(leaf.clock, leaf.pos.x, leaf.pos.z, LOW ? 260 : 400);
       flow.crowd.update(leaf.clock, leaf.pos.x, leaf.pos.z, LOW ? 110 : 170);
     }
@@ -434,10 +471,10 @@ function tick(dt: number, render: boolean) {
   if (leaf.state === "flying") bestS = Math.max(bestS, ns.s);
 
   updateCamera(dt, wall);
-  const focus = freeCam ? freePos : leaf.pos;
+  const focus = viewing() ? freePos : leaf.pos;
   leafView.update(leaf.pos, leaf.q, wall, leaf.airspeed, leaf.integrity);
-  streaks.update(dt, freeCam ? freePos : cam.position.clone().lerp(leaf.pos, 0.6), leaf.clock);
-  debris.update(dt, freeCam ? freePos : leaf.pos, freeCam ? leaf.clock + wall : leaf.clock);
+  streaks.update(dt, viewing() ? freePos : cam.position.clone().lerp(leaf.pos, 0.6), viewing() ? leaf.clock + wall : leaf.clock);
+  debris.update(dt, viewing() ? freePos : leaf.pos, viewing() ? leaf.clock + wall : leaf.clock);
   // a gust front coming up behind you: you hear it first
   if (leaf.state === "flying" && leaf.lane !== "subway") {
     const s = city.route.nearest(leaf.pos.x, leaf.pos.z).s;
@@ -449,7 +486,7 @@ function tick(dt: number, render: boolean) {
   if (!subwayArtReady) trains.update(leaf.clock, focus);
   buildings.update(focus);
   facadeProps.update(focus);
-  if (freeCam) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, 400); }
+  if (viewing()) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, LOW ? 260 : 400); }
   if (peopleReady) {
     // the people near the camera; anyone the leaf whooshes past flinches and looks up
     peopleList.length = 0;
@@ -488,11 +525,13 @@ function tick(dt: number, render: boolean) {
       o.x = hd.x; o.z = hd.z; o.tx = Math.sin(hd.yaw); o.tz = Math.cos(hd.yaw); o.phase = 0; o.speed = 0; o.v = 0; o.seed = hd.seed; o.h = 1.78;
       o.pet = o.pets = o.y = o.flinch = undefined; o.idle = undefined; o.act = "hail"; o.char = hd.seed % 2 ? "banker" : "commuter";
     }
-    people.update(peopleList, freeCam ? leaf.clock + wall : leaf.clock, cam);
+    people.update(peopleList, viewing() ? leaf.clock + wall : leaf.clock, cam);
   } else crowdView.update();
   pigeons.update(dt, leaf.pos, wall);
   blockerView.userData.update(wall);
   centralPark.update(cam.position, wall);
+  chinatown.update(cam.position, wall);
+  edgeWall.update(wall, cam.position);
   streetFurniture.update(cam.position, focus, wall); // street furniture: refill near the focus, signal clock
   ground.update(wall);
   ground.updateFocus(focus);
@@ -502,7 +541,7 @@ function tick(dt: number, render: boolean) {
   stage.hemi.intensity = 0.6 * (1 - underMix) + 0.07 * underMix; // the tunnels are dark: the lamps do the lighting
   stage.hemi.color.setRGB(0.66 + underMix * 0.2, 0.7 + underMix * 0.1, 0.78 - underMix * 0.2);
   subway.update(leaf.clock, cam.position, underMix);
-  entrances.update(freeCam ? leaf.clock + wall : leaf.clock, cam.position, window.innerHeight);
+  entrances.update(viewing() ? leaf.clock + wall : leaf.clock, cam.position, window.innerHeight);
   if (subwayArtReady) subwayArt.update(cam.position, underMix, flow.trainsAt(leaf.clock), focus);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
@@ -536,6 +575,30 @@ function tick(dt: number, render: boolean) {
   input.endFrame();
 }
 requestAnimationFrame(frame);
+function restartRun() {
+  recorder.finish(leaf, "restart");
+  achievements.reset();
+  discoveries.reset();
+  leaf.reset();
+  hud.reset();
+  leaderboard.hide();
+  audio.reset();
+  bestS = 0;
+  placeAt();
+}
+function setPaused(on: boolean) { pause.show(on); }
+const pause = new PauseMenu(hudEl, {
+  onRestart: () => restartRun(),
+  onShow: (on) => audio.pause(on),
+  onStory: () => {
+    restartRun();
+    introPlaying = true;
+    playIntro(document.body, () => audio.start(), true).then(() => { introPlaying = false; input.endFrame(); });
+  },
+  setVolume: (v) => audio.setVolume(v),
+});
+// away from the game (another tab, the phone locked): pause the run
+document.addEventListener("visibilitychange", () => { if (document.hidden && leaf.state === "flying" && !replay) setPaused(true); });
 // the story first (skippable); the game keeps drawing the leaf on its branch underneath
 let introPlaying = !replay && !freeCam && !params.get("at") && !params.get("sub") && !autopilot;
 if (introPlaying) playIntro(document.body, () => audio.start()).then(() => { introPlaying = false; input.endFrame(); });
@@ -579,5 +642,5 @@ function shrinkTextures(max: number) {
 if (LOW) for (const ms of [6000, 15000, 30000]) setTimeout(() => shrinkTextures(512), ms);
 
 // the views, for timing and debugging from the console
-Object.assign(window, { ffttViews: { traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
+Object.assign(window, { ffttViews: { chinatown, traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
 Object.assign(window, { fftt: { THREE, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances } });

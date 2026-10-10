@@ -4,12 +4,15 @@
 // Once per session; restarts go straight to the tree.
 
 /** again: replaying it from the title screen (a click already happened, so straight into the film) */
+import { isTouchDevice } from "./touch";
+
 export function playIntro(root: HTMLElement, onGesture?: () => void, again = false): Promise<void> {
   let seen = false;
   try { seen = sessionStorage.getItem("fftt.intro") === "seen"; } catch { /* ignore */ }
   if (!again && (seen || new URLSearchParams(location.search).has("nointro"))) return Promise.resolve();
 
   return new Promise((done) => {
+    const touch = isTouchDevice();
     const el = document.createElement("div");
     el.className = "intro";
     el.innerHTML = `
@@ -17,8 +20,8 @@ export function playIntro(root: HTMLElement, onGesture?: () => void, again = fal
         <source src="./video/intro.webm" type="video/webm" />
         <source src="./video/intro.mp4" type="video/mp4" />
       </video>
-      <div class="intro-gate"><div class="title">Far From the Tree</div><div class="cta">press any key</div></div>
-      <div class="intro-skip">any key to skip</div>`;
+      <div class="intro-gate"><div class="title">Far From the Tree</div><div class="cta">${touch ? "tap the screen" : "press any key"}</div></div>
+      <div class="intro-skip">${touch ? "tap to skip" : "any key to skip"}</div>`;
     root.appendChild(el);
     const video = el.querySelector("video")!;
     let stage: "gate" | "film" | "out" = "gate";

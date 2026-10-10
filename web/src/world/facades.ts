@@ -5,6 +5,7 @@
 
 import { Grid, type Building, type CityData } from "./data";
 import { TILES } from "../render/facades";
+import { isModelled } from "./modelled";
 
 export type PropKind = "ac" | "balcony" | "cat" | "line" | "solid";
 
@@ -40,7 +41,7 @@ export class Facades {
   readonly grid = new Grid<FacadeProp>(16);
 
   constructor(city: CityData) {
-    for (const b of city.buildings) this.decorate(b, city);
+    for (const b of city.buildings) if (!isModelled(b.cx, b.cz)) this.decorate(b, city);
     this.washingLines(city);
     for (const p of this.props) {
       const r = Math.max(p.hw, p.hd) + 1;

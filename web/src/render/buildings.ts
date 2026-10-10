@@ -19,6 +19,7 @@ import { ArchitectureKit } from "./architectureKit";
 import { facadeRegistry } from "./facadeProps";
 import { loadKitModels } from "./architectureModels";
 import { LotsView } from "./architectureLots";
+import { isModelled } from "../world/modelled";
 
 const CHUNK = 280;
 
@@ -500,7 +501,7 @@ export class BuildingsMesh {
       const k = `${Math.floor(b.cx / CHUNK)},${Math.floor(b.cz / CHUNK)}`;
       (by.get(k) ?? by.set(k, []).get(k)!).push({ list: [b], sky });
     };
-    for (const b of city.buildings) put(b, false);
+    for (const b of city.buildings) if (!isModelled(b.cx, b.cz)) put(b, false);
     // the distant skyline: towers outside the playable corridor, chunked like the rest
     city.raw.skyline.forEach((s, i) => {
       const st: Style = s.y >= 1985 ? "glass" : s.y >= 1950 ? "modern" : s.h > 120 ? "deco" : "prewar";

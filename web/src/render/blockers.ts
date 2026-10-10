@@ -1,4 +1,5 @@
-// Draws the blockers: curtains of lanterns across each street into the Chinatown festival;
+// Draws the blockers: curtains of lanterns across each street into the Chinatown festival (a stand-in:
+// render/chinatown.ts puts up paifang gates there and hides these, userData.festival, once it loads);
 // blue police barriers with a packed crowd behind them around Times Square and along the
 // Thanksgiving parade (with its giant turkey balloon); a curtain of spray from the burst
 // water main in FiDi; rows of red-roofed stalls under strings of lights at Union Square.
@@ -72,6 +73,8 @@ export function blockerMeshes(b: Blockers): THREE.Group {
   const wires: number[] = [];                         // string-light wires (segment pairs)
   const jets: { x: number; z: number; vx: number; vy: number; vz: number; ph: number; T: number }[] = [];
   const floods: THREE.Mesh[] = [];
+  /** the festival's lantern curtains and banners: render/chinatown.ts swaps them for its gates once those load */
+  const festival: THREE.Object3D[] = [];
   const addBanner = (mat: THREE.Material, bar: { x: number; z: number; half: number }, yaw: number, y: number, h: number) => {
     // two faces back to back, so the text reads right from both sides
     for (const flip of [0, Math.PI]) {
@@ -79,6 +82,7 @@ export function blockerMeshes(b: Blockers): THREE.Group {
       ban.position.set(bar.x, y, bar.z);
       ban.rotation.y = yaw + Math.PI / 2 + flip;
       g.add(ban);
+      if (mat === festivalBanner) festival.push(ban);
     }
   };
   let seed = 3;
@@ -213,10 +217,13 @@ export function blockerMeshes(b: Blockers): THREE.Group {
     g.add(im);
     const lg = new THREE.BufferGeometry();
     lg.setAttribute("position", new THREE.Float32BufferAttribute(strings, 3));
-    g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x2a1a14 })));
+    const ls = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x2a1a14 }));
+    g.add(ls);
+    festival.push(im, ls);
   }
   if (barrierGeo.length) g.add(new THREE.Mesh(mergeGeometries(barrierGeo.map((x) => x.toNonIndexed()))!, new THREE.MeshStandardMaterial({ color: 0x2a5ab0, roughness: 0.6 })));
   g.userData.handlers = handlers;
+  g.userData.festival = festival;
   g.userData.update = (t: number) => {
     if (spray) {
       const a = spray.geometry.attributes.position as THREE.BufferAttribute;

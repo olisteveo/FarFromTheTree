@@ -19,7 +19,7 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { STAIRS, STAIRS_FOOT, TUNNEL, VENT, type Shaft, type Underground } from "../world/underground";
+import { STAIRS, STAIRS_FOOT, TUNNEL, VENT, stairsBelow, type Shaft, type Underground } from "../world/underground";
 
 // ------------------------------------------------------------------ shared geometry rules
 
@@ -153,7 +153,8 @@ export function subwayCuts(u: Underground): { ceil: Rect[]; walls: WallHole[] } 
     // the ceiling: where the stair enclosure (0.5 m under the steps, 0.25 m over its ceiling) crosses it
     const aLo = -STAIRS.half + (STAIRS.top + 0.55 - cl) / STAIRS.slope;
     const aHi = -STAIRS.half + (STAIRS.top + STAIRS.headroom + 0.25 - cl) / STAIRS.slope;
-    const A0 = Math.max(aStart, aLo - 0.05), A1 = Math.min(aHi + 0.05, STAIRS_FOOT);
+    // (stairs that open straight into the hall: the hole runs on to where their air ends)
+    const A0 = Math.max(aStart, aLo - 0.05), A1 = s.aCut !== undefined ? s.aCut + 0.05 : Math.min(aHi + 0.05, STAIRS_FOOT);
     if (A1 > A0) ceil.push({ x: s.x + s.ux * (A0 + A1) / 2, z: s.z + s.uz * (A0 + A1) / 2, ux: s.ux, uz: s.uz, ha: (A1 - A0) / 2, hb: STAIRS.halfWidth + 0.18 });
     // the side wall, where the stairwell or the passage comes through it
     if (c.aw > -STAIRS.half && isFinite(c.aw)) {
@@ -780,7 +781,12 @@ export class SubwayEntrances {
     const HW = STAIRS.halfWidth, PW = STAIRS.passageHalfWidth;
     // where the stair is in the open hall of a tunnel or station (and so not drawn): per a
     const passEnd = cut.aw === Infinity ? cut.L : Math.min(cut.L, Math.max(cut.aw, -STAIRS.half)) + (cut.blocked ? 0 : 0.15);
-    const hasPassage = passEnd > P0 + 0.3;
+    // stairs over the hall open straight into it through its ceiling (or wall): the steps stop where
+    // they reach the hall's ceiling and the stairwell ends at aCut, with nothing of it in the hall
+    const intoHall = s.aCut !== undefined;
+    const hallCeil = intoHall ? cut.inside(Math.max(s.aw!, 0)).ceil : 0;
+    const stepsEnd = intoHall ? Math.min(STAIRS_FOOT, Math.max(s.aw!, stairsBelow(hallCeil, 0))) : Infinity;
+    const hasPassage = !intoHall && passEnd > P0 + 0.3;
     // side-by-side entrances share their air: leave out any surface of this one that lies inside another's
     const others = this.u.shafts.filter((o) => o !== s && o.kind === "stairs" && Math.hypot(o.x - s.x, o.z - s.z) < Math.hypot(s.tx, s.tz) + Math.hypot(o.tx, o.tz) + 12);
     const keep = others.length ? (X: number, Y: number, Z: number) => {
@@ -796,11 +802,16 @@ export class SubwayEntrances {
     // ---- steps, stringers, underside. Where the stairwell runs into a station or the tunnel it carries
     // on as a tiled stair enclosure down to a landing (the leaf flies out of its open end)
     const LAND = 1.4;
-    const aEnd = hasPassage ? P0 : STAIRS_FOOT + LAND;
+    const aEnd = intoHall ? s.aCut! : hasPassage ? P0 : STAIRS_FOOT + LAND;
     const lineC = (a: number) => line(Math.min(a, STAIRS_FOOT));
     const ceilC = (a: number) => stairCeil(Math.min(a, STAIRS_FOOT));
     for (let i = 0; i < N_STEPS; i++) {
       const a0 = -STAIRS.half + i * RUN, a1 = a0 + RUN, yT = line(a1), yN = line(a0);
+      if (a0 >= stepsEnd - 1e-4) {
+        // the last step's edge, where the stairs drop away into the hall
+        if (a0 < stepsEnd + RUN) quadR(at, [[-HW, yN - 0.5, a0], [HW, yN - 0.5, a0], [HW, yN, a0], [-HW, yN, a0]], "yellow", [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, 1]);
+        continue;
+      }
       const w = a1 > P0 && hasPassage ? PW : HW;
       // the riser drops from the tread above (at a0) to this one; the yellow nosing is on this tread's far edge
       quadR(at, [[-w, yT, a0], [w, yT, a0], [w, yN, a0], [-w, yN, a0]], "riser", [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, 1]);
@@ -812,7 +823,11 @@ export class SubwayEntrances {
           [[0, 1], [0.5, 1], [0.5, 0], [0, 0]], [-sx, 0, 0]);
       }
     }
-    if (!hasPassage) {
+    if (intoHall) {
+      // the end of the stairwell, up above the hall's ceiling
+      const C = ceilC(aEnd);
+      if (C > hallCeil) wall.quad([[HW, hallCeil, aEnd], [-HW, hallCeil, aEnd], [-HW, C, aEnd], [HW, C, aEnd]], [wallUV(-1, 0), wallUV(1, 0), wallUV(1, C - hallCeil), wallUV(-1, C - hallCeil)], [0, 0, -1]);
+    } else if (!hasPassage) {
       // the landing at the foot, and the rim of the enclosure's open end
       const F = STAIRS.passageFloor, A0 = STAIRS_FOOT, A1 = aEnd;
       floor.quad([[-HW, F, A0], [HW, F, A0], [HW, F, A1], [-HW, F, A1]], [[-HW / 4, A0 / 4], [HW / 4, A0 / 4], [HW / 4, A1 / 4], [-HW / 4, A1 / 4]], [0, 1, 0]);
@@ -834,9 +849,11 @@ export class SubwayEntrances {
       if (a1 - a0 < 1e-4) continue;
       const mid = (a0 + a1) / 2, open = mid < STAIRS.half;
       const top = (a: number) => (open ? STAIRS.top : ceilC(a));
-      const bot = (a: number) => (a > STAIRS_FOOT ? STAIRS.passageFloor - 0.5 : lineC(a) - RISE - 0.3);
+      const bot0 = (a: number) => (a > STAIRS_FOOT ? STAIRS.passageFloor - 0.5 : lineC(a) - RISE - 0.3);
+      // (over the hall the walls stop at its ceiling)
+      const bot = intoHall ? (a: number) => (a >= s.aw! - 1e-4 ? Math.max(bot0(a), hallCeil) : bot0(a)) : bot0;
       const c = cut.inside(mid);
-      const lat = mid >= cut.aw && c.inside;
+      const lat = !intoHall && mid >= cut.aw && c.inside;
       for (const sx of [-1, 1]) {
         const x = sx * HW;
         // in rows, so the baked light has vertices to live on
@@ -886,7 +903,7 @@ export class SubwayEntrances {
     for (const sx of [-1, 1]) {
       const x = sx * (HW - 0.09);
       const aA = -STAIRS.half + 0.15;
-      const aB = hasPassage ? STAIRS_FOOT + 0.3 : aEnd - 0.1;
+      const aB = intoHall ? stepsEnd - 0.15 : hasPassage ? STAIRS_FOOT + 0.3 : aEnd - 0.1;
       const yAt = (a: number) => Math.max(line(Math.min(a, STAIRS_FOOT)), STAIRS.passageFloor) + 0.9;
       bar(metal, [x, yAt(aA), aA], [x, yAt(Math.min(aB, STAIRS_FOOT)), Math.min(aB, STAIRS_FOOT)], 0.024, steel, 8);
       if (aB > STAIRS_FOOT) bar(metal, [x, yAt(STAIRS_FOOT), STAIRS_FOOT], [x, yAt(aB), aB], 0.024, steel, 8);
@@ -904,9 +921,9 @@ export class SubwayEntrances {
       this.opts.onLamp?.(s.x + s.ux * a, y - 0.4, s.z + s.uz * a);
     };
     putFixture(2.42, STAIRS.roofUnder, 0, true);
-    for (let a = 3.9; a < STAIRS_FOOT - 0.6; a += 2.4) putFixture(a, stairCeil(a) - 0.02, Math.atan(STAIRS.slope));
-    if (!hasPassage) putFixture(STAIRS_FOOT + 0.7, ceilC(STAIRS_FOOT) - 0.02, 0);
-    {
+    for (let a = 3.9; a < Math.min(STAIRS_FOOT - 0.6, aEnd - 0.3); a += 2.4) putFixture(a, stairCeil(a) - 0.02, Math.atan(STAIRS.slope));
+    if (!hasPassage && !intoHall) putFixture(STAIRS_FOOT + 0.7, ceilC(STAIRS_FOOT) - 0.02, 0);
+    if (stepsEnd > 3.7) {
       const sx = hash2(s.z, s.x) < 0.5 ? -1 : 1, x = sx * (HW - 0.012);
       quadR(at, [[x, line(3.0) + 1.25, 3.0], [x, line(3.6) + 1.25, 3.6], [x, line(3.6) + 1.85, 3.6], [x, line(3.0) + 1.85, 3.0]], "mosaic_plaque", [[0, 0], [1, 0], [1, 1], [0, 1]], [-sx, 0, 0]);
     }

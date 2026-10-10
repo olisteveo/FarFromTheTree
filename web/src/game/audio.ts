@@ -47,6 +47,19 @@ export class Audio {
   constructor(private city: CityData) {}
 
   /** Call on the first user gesture (browsers only allow sound after one). */
+  private volume = 0.9;
+  /** the overall volume, 0..1 (the pause menu) */
+  setVolume(v: number) {
+    this.volume = v;
+    if (this.master) this.master.gain.setTargetAtTime(v, this.ctx!.currentTime, 0.05);
+  }
+  /** everything stops while the game's paused */
+  pause(on: boolean) {
+    if (!this.ctx) return;
+    if (on) this.ctx.suspend().catch(() => {});
+    else this.ctx.resume().catch(() => {});
+  }
+
   get running() { return !!this.ctx && this.ctx.state === "running"; }
 
   /** Call from inside a tap/click/key handler: phones only let sound start in the gesture itself.
@@ -60,12 +73,18 @@ export class Audio {
   }
 
   start() {
-    if (this.ctx) { if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {}); return; }
+    // iPhones: play as media, not as "ambient" sound, which the ring/silent switch mutes (the intro
+    // film still had sound, then the game went quiet). Safari 16.4+.
+    const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+    if (session) try { session.type = "playback"; } catch { /* older Safari */ }
+    if (this.ctx) { if (this.ctx.state !== "running") this.ctx.resume().catch(() => {}); return; }
     const ctx = (this.ctx = new AudioContext());
+    // back from another app or a locked screen (iOS leaves the context "interrupted"): pick up again
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && ctx.state !== "running") ctx.resume().catch(() => {}); });
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;
     this.master = ctx.createGain();
-    this.master.gain.value = 0.9;
+    this.master.gain.value = this.volume;
     this.master.connect(comp).connect(ctx.destination);
     this.ambBus = ctx.createGain(); this.ambBus.connect(this.master);
     this.worldFilter = ctx.createBiquadFilter(); this.worldFilter.type = "lowpass"; this.worldFilter.frequency.value = 20000;

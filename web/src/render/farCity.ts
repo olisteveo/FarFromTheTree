@@ -19,6 +19,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { CityData, Style } from "../world/data";
 import type { FarIn, FarOut, FarTile } from "./farCity.worker";
 import { projLL } from "./farData";
+import { isModelled } from "../world/modelled";
 
 const GATE_MARGIN = 30; // buildings.ts shows a chunk when any of it is within the draw distance of the focus (the leaf, a few metres from the camera)
 const STYLE_TYPE: Record<Style, number> = { tenement: 0, brick: 0, castiron: 1, prewar: 1, civic: 1, deco: 2, modern: 3, glass: 4 };
@@ -166,6 +167,8 @@ export class FarCity {
   private low: boolean;
   private landMesh: THREE.Mesh | null = null;
   private bridgeMesh: THREE.Mesh | null = null;
+  /** the Manhattan Bridge's box version, apart so the modelled one (render/chinatown.ts) can replace it */
+  private manhattanMesh: THREE.Mesh | null = null;
 
   constructor(private city: CityData, private sun: THREE.DirectionalLight, private hemi: THREE.HemisphereLight, private opts: FarCityOptions) {
     this.low = opts.quality === "low";
@@ -219,7 +222,7 @@ export class FarCity {
   private corridorSet(): FarIn["corridor"] {
     const raw = this.city.raw;
     const list: { p: number[]; h: number; t: number; k: number }[] = [];
-    for (const b of raw.buildings) list.push({ p: b.p[0], h: b.h, t: STYLE_TYPE[b.st] ?? 1, k: b.k });
+    for (const b of this.city.buildings) if (b.id < raw.buildings.length && !isModelled(b.cx, b.cz)) list.push({ p: b.poly[0], h: b.h, t: STYLE_TYPE[b.style] ?? 1, k: b.seed });
     raw.skyline.forEach((s, i) => list.push({ p: s.p[0], h: s.h, t: s.y >= 1985 ? 4 : s.y >= 1950 ? 3 : s.h > 120 ? 2 : 1, k: i * 7919 + 13 }));
     let nv = 0;
     for (const b of list) nv += b.p.length / 2;
@@ -346,7 +349,10 @@ export class FarCity {
       { mid: [40.75700, -73.95480], dir: [40.7518 - 40.7600, -73.9437 + 73.9625], span: 360, side: 300, approach: 350, deck: 41, tower: 95, width: 27, c: 0x5f6a6a, cantilever: true },
       { mid: [40.85170, -73.95270], dir: [40.8540 - 40.8495, -73.9617 + 73.9440], span: 1067, side: 186, approach: 300, deck: 65, tower: 184, width: 36, c: 0x7a8288 },
     ];
+    let manhattan: THREE.BufferGeometry[] = [], i0 = 0;
     for (const s of specs) {
+      if (s === specs[1]) i0 = parts.length;
+      else if (s === specs[2]) manhattan = parts.splice(i0);
       const [mx, mz] = projLL(s.mid[0], s.mid[1]);
       const p2 = projLL(s.mid[0] + s.dir[0], s.mid[1] + s.dir[1]);
       const ux = p2[0] - mx, uz = p2[1] - mz, L = Math.hypot(ux, uz);
@@ -399,12 +405,28 @@ export class FarCity {
         }
       }
     }
-    const g = mergeGeometries(parts.map((p) => { p.deleteAttribute("uv"); return p; }))!;
-    g.computeVertexNormals();
-    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.1 }));
+    const merged = (list: THREE.BufferGeometry[]) => {
+      const g = mergeGeometries(list.map((p) => { p.deleteAttribute("uv"); return p; }))!;
+      g.computeVertexNormals();
+      return g;
+    };
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.1 });
+    const mesh = new THREE.Mesh(merged(parts), mat);
     mesh.name = "farBridges";
     this.bridgeMesh = mesh;
+    // (the loop above parked the Manhattan Bridge's parts in `manhattan`)
+    this.manhattanMesh = new THREE.Mesh(merged(manhattan), mat);
+    this.manhattanMesh.name = "farBridgeManhattan";
+    mesh.add(this.manhattanMesh);
     return mesh;
+  }
+
+  /** The modelled Manhattan Bridge is in (render/chinatown.ts): drop the box one. */
+  hideManhattanBridge() {
+    if (!this.manhattanMesh) return;
+    this.manhattanMesh.removeFromParent();
+    this.manhattanMesh.geometry.dispose();
+    this.manhattanMesh = null;
   }
 
   setDetailDistance(m: number) {

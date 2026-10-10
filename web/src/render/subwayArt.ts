@@ -438,23 +438,15 @@ export class SubwayArt {
   // --- the stations ------------------------------------------------------------------
 
   private buildStations() {
-    const u = this.u, sub = u.city.subway, F = TUNNEL.floor, PY = SUBWAY_ART.platformTop;
+    const u = this.u, F = TUNNEL.floor, PY = SUBWAY_ART.platformTop;
     for (const st of u.stations) {
       if (u.isBlocked(st.ss)) continue;
       const placed: Placed[] = [];
       const put = (name: string, s: number, off: number, y: number, turn = 0, remap?: [string, string][], scale?: THREE.Vector3) =>
         placed.push({ name, m: this.at(s, off, y, turn, scale), remap });
       // fare control at the foot of each entrance's passage, one per platform side within 30 m
-      const areas: { s: number; side: number }[] = [];
-      const shafts = u.shafts.filter((sh) => sh.kind === "stairs" && Math.abs(sh.ss - st.ss) < TUNNEL.stationHalfLength + 40)
-        .sort((a, b) => Math.abs(a.ss - st.ss) - Math.abs(b.ss - st.ss));
-      for (const sh of shafts) {
-        const n = sub.nearest(sh.x, sh.z);
-        const side = n.off >= 0 ? 1 : -1;
-        const s = Math.max(st.ss - 58, Math.min(st.ss + 58, n.s));
-        if (areas.some((a) => a.side === side && Math.abs(a.s - s) < 30)) continue;
-        areas.push({ s, side });
-      }
+      // (worked out in world/underground.ts, which makes them solid)
+      const areas = u.fareAreas.filter((a) => a.station === st.name);
       for (const { s, side } of areas) { this.fareArea(put, s, side); this.fareAreas.push({ s, side, station: st.name }); }
       const clear = (s: number, side: number, r = 11) => !areas.some((a) => a.side === side && Math.abs(a.s - s) < r);
 
