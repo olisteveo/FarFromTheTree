@@ -32,13 +32,16 @@ export class TouchControls {
     this.knob = this.el.querySelector(".touch-knob")!;
     const zone = this.el.querySelector(".touch-stick-zone") as HTMLElement;
 
-    // the stick appears wherever the left thumb lands
+    // the stick lives just below the leaf (so your thumb never covers it); touch anywhere in the
+    // lower part of the screen and it's measured from there
+    const home = () => { this.ox = innerWidth / 2; this.oy = innerHeight * 0.84; this.base.style.left = `${this.ox}px`; this.base.style.top = `${this.oy}px`; };
+    home();
+    addEventListener("resize", home);
     zone.addEventListener("pointerdown", (e) => {
       if (this.stickId !== null) return;
       this.stickId = e.pointerId;
       zone.setPointerCapture(e.pointerId);
-      this.ox = e.clientX; this.oy = e.clientY;
-      this.base.style.left = `${this.ox}px`; this.base.style.top = `${this.oy}px`;
+      home();
       this.base.classList.add("on");
       this.move(e.clientX, e.clientY);
       input.touchStart();

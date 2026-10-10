@@ -167,3 +167,10 @@ body.is-touch .screen .intro-again { padding: 14px 26px; font-size: 15px; margin
 .subway-pointer.exit b { color: #ffd0c8; }
 body.is-touch .tutorial { pointer-events: auto; z-index: 6; }
 body.is-touch .tutorial .skip { margin-top: 4px; font-size: 11px; color: var(--amber); text-decoration: underline; }
+
+/* phones: the stick sits just below the leaf, faint until touched; the map a touch lower */
+body.is-touch .touch-stick-zone { left: 0; right: 230px; width: auto; bottom: 0; height: 42%; }
+body.is-touch .touch-stick { opacity: 0.35; }
+body.is-touch .touch-stick.on { opacity: 1; }
+body.is-touch .minimap { top: calc(70px + env(safe-area-inset-top)); }
+@media (orientation: portrait) { body.is-touch .touch-stick-zone { right: 0; height: 30%; } body.is-touch .tutorial { top: calc(208px + env(safe-area-inset-top)); } }
