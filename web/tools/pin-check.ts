@@ -5,7 +5,7 @@ const city = new CityData(JSON.parse(fs.readFileSync("public/city.json", "utf8")
 const flow = new Airflow(city);
 const sub = city.subway, a = sub.at(1935.3);
 const x = a.x + a.tz * 12.4, z = a.z - a.tx * 12.4, y = -2.6;
-const info = { ss: 0, off: 0, inShaft: null as unknown };
+const info = { ss: 0, off: 0, inShaft: null as import("../src/world/underground").Shaft | null };
 console.log("sdf", flow.under.sdf(x, y, z, info).toFixed(2), "inShaft", (info.inShaft as { name?: string; kind?: string } | null)?.kind, (info.inShaft as { out?: boolean } | null)?.out);
 for (const s of flow.under.shafts) {
   if (!s.exitPath) continue;
