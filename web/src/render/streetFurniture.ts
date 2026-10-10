@@ -218,7 +218,7 @@ export class StreetFurniture {
 
   constructor(readonly city: CityData, private opts: StreetFurnitureOptions = {}) {
     this.root.name = "street-furniture";
-    this.scale = opts.quality === "low" ? 0.7 : opts.quality === "medium" ? 0.85 : 1;
+    this.scale = opts.quality === "low" ? 0.5 : opts.quality === "medium" ? 0.85 : 1;
     this.layout = opts.layout ?? streetLayout(city, { traffic: opts.traffic, life: opts.life, blockers: opts.blockers });
     this.ready = this.load().catch((e) => console.warn("street furniture didn't load", e));
   }

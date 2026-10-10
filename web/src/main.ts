@@ -95,7 +95,7 @@ const ground = new GroundMesh(city, { skipTree: (x, z) => x > parkBounds.x0 && x
 // frame; the detailed buildings stop at the detail distance and the far versions take over beyond it.
 const farCity = new FarCity(city, stage.sun, stage.hemi, { quality: stage.quality, waterMaterial: ground.water.material as THREE.Material, clear: flow.streetLayout.courts.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hd: c.hd, yaw: c.yaw })) });
 {
-  const detail = stage.quality === "low" ? 550 : stage.quality === "medium" ? 750 : 900;
+  const detail = stage.quality === "low" ? 380 : stage.quality === "medium" ? 750 : 900;
   farCity.setDetailDistance(detail);
   if ("setDrawDistance" in buildings) (buildings as { setDrawDistance(m: number): void }).setDrawDistance(detail);
   stage.scene.add(farCity.root);
@@ -141,7 +141,9 @@ flow.crowd.attach(city, { street: flow.streetLayout });
 const people = new PeopleView(900);
 people.quality = stage.quality;
 let peopleReady = false;
-people.load().then(() => { peopleReady = true; crowdView.root.visible = false; people.setProps(flow.crowd.props); }).catch((e) => console.warn("people didn't load", e));
+// (phones keep the simple crowd: the animated people are heavy, and on iPhones their animation
+// textures came out garbled into shards across the screen; ?people=1 forces them on to test)
+if (!LOW || params.get("people") === "1") people.load().then(() => { peopleReady = true; crowdView.root.visible = false; people.setProps(flow.crowd.props); }).catch((e) => console.warn("people didn't load", e));
 const flinchAt = new Map<number, number>();
 const peopleList: PeopleWalker[] = [];
 const peoplePool: PeopleWalker[] = [];
