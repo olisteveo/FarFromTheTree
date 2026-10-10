@@ -162,6 +162,12 @@
   "fence": 26,
   "crane": 374,
   "cabin": 18,
+  "bench_nyc": 144,
+  "hoop": 66,
+  "jungle_gym": 262,
+  "handball_wall": 14,
+  "trash_can": 40,
+  "planter": 14,
   "bridge_main": 28014,
   "bridge_arch": 9898
  }

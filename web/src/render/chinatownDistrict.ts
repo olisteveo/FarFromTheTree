@@ -15,11 +15,13 @@
 
 import * as THREE from "three";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
+import { loadParkAssets } from "./centralPark";
 
 interface DistrictFile {
   box: { x0: number; x1: number; z0: number; z1: number };
   buildings: { p: number[]; h: number; t: number; k: number }[];
-  props?: { lamps: number[][]; cars: number[][]; lot_cars: number[][]; rail: number[][]; esp_lamps: number[][]; barrier: number[][]; hoardings: number[][]; fences: number[][]; cranes: number[][]; cabins: number[][] };
+  props?: { lamps: number[][]; cars: number[][]; lot_cars: number[][]; rail: number[][]; esp_lamps: number[][]; barrier: number[][]; hoardings: number[][]; fences: number[][]; cranes: number[][]; cabins: number[][];
+    courts?: number[][]; playgrounds?: number[][]; walls?: number[][]; benches?: number[][]; cans?: number[][]; planters?: number[][]; trees?: number[][]; plaza_lamps?: number[][] };
 }
 export interface DistrictMeta { size: number; rects: Record<string, [number, number, number, number]>; metres: Record<string, [number, number]> }
 
@@ -211,7 +213,12 @@ export class ChinatownDistrict {
     const mat = districtMaterial(atlas);
     for (const c of chunks) {
       if (!c.idx.length) continue;
-      const mesh = new THREE.Mesh(c.geometry(), mat);
+      const geo = c.geometry();
+      // (counted now: the arrays are dropped once they're on the GPU)
+      for (const a of Object.values(geo.attributes)) this.stats.geometryBytes += (a as THREE.BufferAttribute).array.byteLength;
+      this.stats.geometryBytes += geo.index!.array.byteLength;
+      this.stats.tris += geo.index!.count / 3;
+      const mesh = new THREE.Mesh(geo, mat);
       mesh.name = "ct_district_buildings";
       mesh.castShadow = !this.low; mesh.receiveShadow = !this.low;
       mesh.matrixAutoUpdate = false;
@@ -288,12 +295,67 @@ export class ChinatownDistrict {
       place("fence", (pr.fences ?? []).filter((_, i) => !this.medium || i % 2 === 0).map((q) => [q[0], 0, q[1], q[2]]), this.medium ? () => [2, 1, 1] : undefined);
       place("cabin", (pr.cabins ?? []).map((q) => [q[0], 0, q[1], q[2]]));
       place("crane", (pr.cranes ?? []).map((q) => [q[0], 0, q[1], q[2], q[3]]), (q) => [q[4] / 60, q[4] / 60, q[4] / 60], undefined, true);
+      // the plazas between the towers: fenced basketball courts (their surfaces are painted into the ground),
+      // playgrounds, handball walls, benches, bins, planters, lamps and a few bare trees
+      const hoops: number[][] = [], courtFence: number[][] = [];
+      for (const [x, z, a] of pr.courts ?? []) {
+        const ca = Math.cos(a), sa = Math.sin(a);
+        for (const sg of [-1, 1]) {
+          const dx = -sg * ca, dz = -sg * sa;      // the rim reaches in toward the middle
+          hoops.push([x + sg * 14.35 * ca, 0, z + sg * 14.35 * sa, Math.atan2(-dz, dx)]);
+        }
+        // chain-link round the 31 x 19 m pad, 2.4 m panels, 3.4 m high
+        for (const [u0, v0, u1, v1] of [[-15.5, -9.5, 15.5, -9.5], [15.5, -9.5, 15.5, 9.5], [15.5, 9.5, -15.5, 9.5], [-15.5, 9.5, -15.5, -9.5]]) {
+          const L = Math.hypot(u1 - u0, v1 - v0), n = Math.round(L / 2.4);
+          for (let k = 0; k < n; k++) {
+            const f = (k + 0.5) / n, u = u0 + (u1 - u0) * f, v = v0 + (v1 - v0) * f;
+            const ex = ((u1 - u0) * ca - (v1 - v0) * sa) / L, ez = ((u1 - u0) * sa + (v1 - v0) * ca) / L;
+            courtFence.push([x + u * ca - v * sa, 0, z + u * sa + v * ca, Math.atan2(-ez, ex), L / n / 2.4]);
+          }
+        }
+      }
+      place("hoop", hoops);
+      // the courts' surfaces: crisp Tesseract-painted quads over the ground's blurrier version
+      if (pr.courts?.length) {
+        const ct = await tl.loadAsync(url("textures/chinatown/court.webp"));
+        ct.flipY = false; ct.colorSpace = THREE.SRGBColorSpace; ct.anisotropy = 8;
+        const geo = new THREE.PlaneGeometry(31, 19).rotateX(-Math.PI / 2);
+        const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ map: ct, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 }), pr.courts.length);
+        pr.courts.forEach((q, i) => im.setMatrixAt(i, Mx.compose(P.set(q[0], 0.06, q[1]), Q.setFromAxisAngle(Y, Math.atan2(-Math.sin(q[2]), Math.cos(q[2]))), Sc.set(1, 1, 1))));
+        im.computeBoundingSphere(); im.receiveShadow = true; im.name = "ct_district_courts";
+        this.root.add(im);
+        this.stats.textureBytes += 512 * 314 * 4 * 1.33;
+      }
+      place("fence", courtFence, (q) => [q[4], 1.8, 1]);
+      place("jungle_gym", (pr.playgrounds ?? []).map((q) => [q[0], 0, q[1], -q[2]]));
+      place("handball_wall", (pr.walls ?? []).map((q) => [q[0], 0, q[1], -q[2]]));
+      place("bench_nyc", (pr.benches ?? []).map((q) => [q[0], 0, q[1], q[2]]));
+      place("trash_can", (pr.cans ?? []).map((q) => [q[0], 0, q[1], 0]));
+      place("planter", (pr.planters ?? []).map((q) => [q[0], 0, q[1], q[2]]));
+      place("lamp", (pr.plaza_lamps ?? []).map((q) => [q[0], 0, q[1], q[2]]));
+      if (pr.trees?.length) {
+        // bare winter trees, the park's (render/centralPark.ts: the assets are loaded once and shared)
+        const park = await loadParkAssets().catch(() => null);
+        if (park) {
+          const sp = ["elm", "oak", "plane"];
+          for (let k = 0; k < 3; k++) {
+            const list = pr.trees.filter((q) => q[3] === k);
+            if (!list.length) continue;
+            for (const p of park.parts(`tree_${sp[k]}_lod1`)) {
+              const im = new THREE.InstancedMesh(p.geo, p.mat, list.length);
+              list.forEach((q, i) => im.setMatrixAt(i, Mx.compose(P.set(q[0], 0, q[1]), Q.setFromAxisAngle(Y, q[2]), Sc.setScalar(0.75 + h01(q[0] + q[1]) * 0.3))));
+              im.computeBoundingSphere(); im.name = "ct_district_trees";
+              this.root.add(im);
+            }
+          }
+        }
+      }
     }
     // ---- what this costs
     const seen = new Set<THREE.BufferGeometry>();
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!m.geometry || seen.has(m.geometry)) return;
+      if (!m.geometry || seen.has(m.geometry) || m.name === "ct_district_buildings") return;
       seen.add(m.geometry);
       for (const a of Object.values(m.geometry.attributes)) this.stats.geometryBytes += (a as THREE.BufferAttribute).array.byteLength;
       if (m.geometry.index) this.stats.geometryBytes += m.geometry.index.array.byteLength;

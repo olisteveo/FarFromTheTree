@@ -1020,6 +1020,8 @@ def textures():
     dsmall = dsrc.copy()
     dsmall.scale(512, 512)
     dsmall.save_render(os.path.join(TEXOUT, "district_512.webp"), scene=s)
+    court = load("Court")
+    court.save_render(os.path.join(TEXOUT, "court.webp"), scene=s)
     dtiny = dsrc.copy()
     dtiny.scale(256, 256)
     dtiny.save_render(os.path.join(TEXOUT, "district_256.webp"), scene=s)
@@ -1182,6 +1184,10 @@ def previews(imgs):
     shoot("district_kit", (0, 2.5, -2), 30, 200, 14, res=(1600, 800))
     place("crane", 0, 0, 30)
     shoot("district_crane", (15, 35, 30), 110, 200, 8, res=(1200, 900))
+    show(["bench_nyc", "hoop", "jungle_gym", "handball_wall", "trash_can", "planter"])
+    for i, n in enumerate(["bench_nyc", "hoop", "jungle_gym", "handball_wall", "trash_can", "planter"]):
+        place(n, -12 + i * 5, 0, 60)
+    shoot("district_plaza_kit", (-2, 1.5, 60), 26, 195, 16, res=(1600, 800))
     # the bridge
     show(["bridge_main", "bridge_arch"])
     place("bridge_main", 0, 0, 0)
@@ -1365,9 +1371,89 @@ def cabin():
     g.build("cabin")
 
 
+def bench_nyc():
+    """the NYC park bench: green wooden slats (seat and back) on cast-iron ends, 1.8 m, facing +z"""
+    g = Geo()
+    green, iron = A("pole_green"), A("black")
+    for k in range(3):
+        box(g, (0, 0.44, 0.06 + k * 0.13), (1.8, 0.035, 0.1), "ct", green)
+    for k in range(3):
+        y = 0.6 + k * 0.13
+        box(g, (0, y, -0.12 - k * 0.03), (1.8, 0.1, 0.035), "ct", green)
+    for sx in (-0.78, 0.78):
+        obox(g, (sx, 0.0, 0.3), (sx, 0.44, 0.15), 0.06, 0.06, "ct", iron)
+        obox(g, (sx, 0.0, -0.15), (sx, 0.95, -0.2), 0.06, 0.06, "ct", iron)
+        box(g, (sx, 0.42, 0.08), (0.06, 0.05, 0.45), "ct", iron)
+    g.build("bench_nyc")
+
+
+def hoop():
+    """a basketball hoop: a steel post set back from the baseline, an arm, the backboard and the orange rim
+    (the rim is 3.05 m up, over +x)"""
+    g = Geo()
+    pole, wh, orange = A("pole_grey"), A("white"), A("orange")
+    lathe(g, [(0.08, 3.2), (0.1, 0.0)], 6, "ct", pole)
+    obox(g, (0, 3.1, 0), (1.05, 3.25, 0), 0.08, 0.08, "ct", pole)
+    box(g, (1.1, 3.4, 0), (0.05, 1.05, 1.8), "ct", wh)
+    box(g, (1.13, 3.25, 0), (0.02, 0.45, 0.6), "ct", orange, faces=["+x"])
+    lathe(g, [(0.23, 3.06), (0.23, 3.04)], 8, "ct", orange, cx=1.36)
+    lathe(g, [(0.21, 3.04), (0.13, 2.65)], 6, "ct", wh, cx=1.36)                     # the net
+    g.build("hoop")
+
+
+def jungle_gym():
+    """a playground climber: a red frame of bars, a deck, a yellow slide and a blue tube, about 4 x 3 m"""
+    g = Geo()
+    red, yel, blue, deck = A("red"), A("gold_flat"), A("blue"), A("wood")
+    for sx in (-1.0, 1.0):
+        for sz in (-1.0, 1.0):
+            box(g, (sx, 1.3, sz), (0.1, 2.6, 0.1), "ct", red)
+    box(g, (0, 1.2, 0), (2.2, 0.12, 2.2), "ct", deck)
+    box(g, (0, 2.6, 0), (2.3, 0.1, 2.3), "ct", red)
+    for y in (0.5, 0.85):                                              # a ladder
+        box(g, (-1.0, y, 1.4), (0.06, 0.06, 0.8), "ct", red)
+    quad(g, (1.1, 1.2, 0.45), (1.1, 1.2, -0.45), (3.4, 0.25, -0.45), (3.4, 0.25, 0.45), "ct", yel)       # slide
+    quad(g, (3.4, 0.25, 0.45), (3.4, 0.25, -0.45), (1.1, 1.2, -0.45), (1.1, 1.2, 0.45), "ct", yel)
+    tube(g, [(0, 1.5, -1.1), (0, 1.3, -2.2), (0.6, 0.6, -3.0)], 0.4, 8, "ct", blue)
+    for sz in (-2.0, 2.0):                                             # the swings' A-frames, a top bar, two seats
+        obox(g, (-2.6, 0.0, sz), (-3.2, 2.3, sz), 0.08, 0.08, "ct", blue)
+        obox(g, (-3.8, 0.0, sz), (-3.2, 2.3, sz), 0.08, 0.08, "ct", blue)
+    obox(g, (-3.2, 2.3, -2.0), (-3.2, 2.3, 2.0), 0.08, 0.08, "ct", blue)
+    for sz in (-0.9, 0.9):
+        for dz in (-0.22, 0.22):
+            obox(g, (-3.2, 2.3, sz + dz), (-3.2, 0.5, sz + dz), 0.02, 0.02, "ct", A("black"))
+        box(g, (-3.2, 0.48, sz), (0.25, 0.05, 0.5), "ct", A("black"))
+    g.build("jungle_gym")
+
+
+def handball_wall():
+    """a free-standing handball wall: 9 x 5 m of painted concrete with a line at 0.5 m"""
+    g = Geo()
+    box(g, (0, 2.5, 0), (0.4, 5.0, 9.0), "ct", A("concrete"))
+    box(g, (0.21, 0.5, 0), (0.01, 0.1, 9.0), "ct", A("white"), faces=["+x"])
+    g.build("handball_wall")
+
+
+def trash_can():
+    """an NYC wire litter basket (green), 0.9 m"""
+    g = Geo()
+    lathe(g, [(0.3, 0.92), (0.3, 0.86), (0.26, 0.05), (0.0, 0.0)], 8, "ct", A("pole_green"))
+    g.build("trash_can")
+
+
+def planter():
+    """a square concrete planter with dry winter soil and a dead stalk or two"""
+    g = Geo()
+    box(g, (0, 0.35, 0), (1.4, 0.7, 1.4), "ct", A("concrete"))
+    box(g, (0, 0.71, 0), (1.2, 0.02, 1.2), "ct", A("wood"), faces=["+y"])
+    g.build("planter")
+
+
 def district_kit():
     water_tower(); lamp(); car("car"); car("suv", True); jersey(); railing(); train_car(); hoarding(); fence(); crane(); cabin()
-    names = ["water_tower", "lamp", "car", "suv", "jersey", "railing", "train_car", "hoarding", "fence", "crane", "cabin"]
+    bench_nyc(); hoop(); jungle_gym(); handball_wall(); trash_can(); planter()
+    names = ["water_tower", "lamp", "car", "suv", "jersey", "railing", "train_car", "hoarding", "fence", "crane", "cabin",
+             "bench_nyc", "hoop", "jungle_gym", "handball_wall", "trash_can", "planter"]
     export(os.path.join(MODELS, "ct_district_kit.glb"), names)
 
 

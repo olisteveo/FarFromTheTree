@@ -186,3 +186,43 @@ def district_doc():
 
 
 DISTRICT_DOCS = {"DistrictAtlas": district_doc}
+
+
+def court_doc():
+    """a NYC park basketball court, 31 x 19 m (the fenced pad) on 512 x 314: red-brown surround, the green
+    court, white lines, the keys painted red, a few cracks and patched seams"""
+    d = Doc(51)
+    W, H = 512, 314
+    k = W / 31.0                       # pixels a metre
+    cx, cy = W / 2, H / 2
+    white = (0.93, 0.93, 0.89)
+    L = [d.rect(0, 0, W, H, (0.44, 0.21, 0.16)), d.noise(W, H, op=18, scale=14, seed=3)]
+    L.append(d.rect(cx - 13 * k, cy - 7 * k, 26 * k, 14 * k, (0.16, 0.36, 0.27)))
+    L.append(d.noise(W, H, op=10, scale=30, seed=5))
+    lw = 2.2
+    for sx in (-1, 1):
+        bx = cx + sx * 13 * k
+        # the key, painted, and its outline; the free throw circle; the three-point line
+        x0 = bx - sx * 5.8 * k
+        L.append(d.rect(min(bx, x0), cy - 2.45 * k, 5.8 * k, 4.9 * k, (0.62, 0.22, 0.16)))
+        L.append(d.line([(bx, cy - 2.45 * k), (x0, cy - 2.45 * k), (x0, cy + 2.45 * k), (bx, cy + 2.45 * k)], white, lw))
+        L.append(d.ellipse(x0, cy, 3.6 * k, 3.6 * k, (0, 0, 0), op=0))
+        pts = [(x0 + sx * 0.0 + math.cos(a) * 1.8 * k * -sx, cy + math.sin(a) * 1.8 * k) for a in [i / 16 * math.pi - math.pi / 2 for i in range(17)]]
+        L.append(d.line(pts, white, lw))
+        hx = bx - sx * 1.6 * k
+        arc = [(hx - sx * math.cos(a) * 6.7 * k, cy + math.sin(a) * 6.7 * k) for a in [-1.35 + i / 24 * 2.7 for i in range(25)]]
+        L.append(d.line([(bx, arc[0][1])] + arc + [(bx, arc[-1][1])], white, lw))
+    L.append(d.line([(cx - 13 * k, cy - 7 * k), (cx + 13 * k, cy - 7 * k), (cx + 13 * k, cy + 7 * k), (cx - 13 * k, cy + 7 * k), (cx - 13 * k, cy - 7 * k)], white, lw))
+    L.append(d.line([(cx, cy - 7 * k), (cx, cy + 7 * k)], white, lw))
+    L.append(d.line([(cx + math.cos(a) * 1.8 * k, cy + math.sin(a) * 1.8 * k) for a in [i / 24 * math.tau for i in range(25)]], white, lw))
+    r = d.rng
+    for _ in range(9):   # cracks
+        x, y = r.random() * W, r.random() * H
+        pts = [(x, y)]
+        for _ in range(5):
+            pts.append((pts[-1][0] + (r.random() - 0.5) * 50, pts[-1][1] + (r.random() - 0.5) * 30))
+        L.append(d.line(pts, (0.08, 0.08, 0.08), 1.0, op=60))
+    return W, H, (0.4, 0.2, 0.15, 1), L, d
+
+
+DISTRICT_DOCS["Court"] = court_doc

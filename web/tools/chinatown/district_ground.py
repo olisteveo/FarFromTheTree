@@ -192,7 +192,7 @@ label = [[-1] * gw for _ in range(gw)]
 regions = []
 for gj in range(gw):
     for gi in range(gw):
-        if label[gj][gi] >= 0 or not OP[gi * G4, gj * G4] or not L["paint"][gi * G4, gj * G4]:
+        if label[gj][gi] >= 0 or not OP[gi * G4, gj * G4] or not L["paint"][gi * G4, gj * G4] or L["fdr"][gi * G4, gj * G4] or L["esp"][gi * G4, gj * G4]:
             continue
         rid = len(regions)
         stack, cells = [(gi, gj)], []
@@ -202,7 +202,7 @@ for gj in range(gw):
             cells.append((a, b))
             for da, db in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 c, d = a + da, b + db
-                if 0 <= c < gw and 0 <= d < gw and label[d][c] < 0 and OP[c * G4, d * G4] and L["paint"][c * G4, d * G4]:
+                if 0 <= c < gw and 0 <= d < gw and label[d][c] < 0 and OP[c * G4, d * G4] and L["paint"][c * G4, d * G4] and not L["fdr"][c * G4, d * G4] and not L["esp"][c * G4, d * G4]:
                     label[d][c] = rid
                     stack.append((c, d))
         area = len(cells) * (G4 * MPP) ** 2
@@ -408,6 +408,156 @@ for r in regions:
             a, b = rng.choice(r["cells"])
             x, z = world(a * G4, b * G4)
             props["cabins"].append([round(x, 1), round(z, 1), round(rng.random() * 6.28, 2)])
+# ---- the plazas between the towers, dressed like NYCHA grounds: fenced basketball courts (painted into the
+# ground, hoops, chain-link, benches along the sides), a playground (rubber surfacing, a jungle gym), a
+# handball wall, benches, bins, planters, lamps and a few bare trees along the paths
+for k in ("courts", "playgrounds", "walls", "benches", "cans", "planters", "trees", "plaza_lamps"):
+    props[k] = []
+def bearing_at(x, z):
+    i, j = [int(v) for v in px(x, z)]
+    w = tiles_g.get((min(N - 1, max(0, i)) // TILE, min(N - 1, max(0, j)) // TILE), 0)
+    return math.radians(th1 if w == 0 else th2)
+def cell_of(x, z):
+    i, j = px(x, z)
+    gi, gj = int(i // G4), int(j // G4)
+    if 0 <= gi < gw and 0 <= gj < gw:
+        return label[gj][gi]
+    return -2
+used = set()
+def fits(rid, x, z, ang, L, W, margin=1.5):
+    """is an L x W rectangle (L along ang) inside region rid, clear of anything placed already?"""
+    ca, sa = math.cos(ang), math.sin(ang)
+    cells = set()
+    for u in range(-int(L / 2 + margin), int(L / 2 + margin) + 1, 2):
+        for v in range(-int(W / 2 + margin), int(W / 2 + margin) + 1, 2):
+            px_, pz_ = x + u * ca - v * sa, z + u * sa + v * ca
+            if cell_of(px_, pz_) != rid:
+                return None
+            i, j = px(px_, pz_)
+            cells.add((int(i // G4), int(j // G4)))
+    if cells & used:
+        return None
+    return cells
+def paint_rect(x, z, ang, L, W, fn):
+    """call fn(u, v) -> colour or None for every pixel of the rectangle (u along, v across, metres from the centre)"""
+    ca, sa = math.cos(ang), math.sin(ang)
+    R = math.hypot(L, W) / 2 + 1
+    i0, j0 = px(x - R, z - R); i1, j1 = px(x + R, z + R)
+    for j in range(max(0, int(j0)), min(N, int(j1) + 1)):
+        for i in range(max(0, int(i0)), min(N, int(i1) + 1)):
+            wx, wz = world(i, j)
+            dx, dz = wx - x, wz - z
+            u, v = dx * ca + dz * sa, -dx * sa + dz * ca
+            if abs(u) <= L / 2 and abs(v) <= W / 2:
+                c = fn(u, v)
+                if c:
+                    pa[i, j] = (int(c[0] * 255), int(c[1] * 255), int(c[2] * 255), 255)
+LINE = MPP * 0.75
+def court_px(u, v):
+    """a 26 x 14 m court in a 31 x 19 m fenced pad: green court, red-brown surround, white lines"""
+    au, av = abs(u), abs(v)
+    if au > 13 or av > 7:
+        return (0.42, 0.20, 0.15)
+    w = (0.92, 0.92, 0.88)
+    if abs(au - 13) < LINE or abs(av - 7) < LINE or au < LINE * 0.6:
+        return w
+    if abs(math.hypot(u, v) - 1.8) < LINE:
+        return w
+    k = 13 - au                                          # distance from the baseline
+    if k < 5.8 and abs(abs(v) - 2.45) < LINE:
+        return w                                         # the key's sides
+    if abs(k - 5.8) < LINE and av < 2.45:
+        return w                                         # free throw line
+    if k < 5.8 and av < 2.45:
+        return (0.62, 0.22, 0.16)                        # the painted key
+    if abs(math.hypot(k - 1.6, v) - 6.7) < LINE and k > 1.6:
+        return w                                         # three-point arc
+    if av > 6.6 and k < 1.6 and abs(av - 6.6) < LINE:
+        return w
+    return (0.16, 0.34, 0.26)
+def play_px(u, v):
+    r = math.hypot(u, v)
+    if r > 7.5:
+        return None
+    if r > 6.8:
+        return (0.80, 0.25, 0.18)
+    return (0.16, 0.34, 0.60) if (int((math.atan2(v, u) + 3.2) * 2) % 2) else (0.20, 0.42, 0.66)
+plazas = sorted([(ri, r) for ri, r in enumerate(regions) if r["kind"] == "plaza"], key=lambda t: -t[1]["area"])
+for ri, r in plazas:
+    if r["area"] < 700:
+        continue
+    cells = sorted(r["cells"], key=lambda c: (world(c[0] * G4, c[1] * G4)[0] - r["c"][0]) ** 2 + (world(c[0] * G4, c[1] * G4)[1] - r["c"][1]) ** 2)
+    ncourt = 0 if r["area"] < 1400 else 1 if r["area"] < 6000 else 2
+    nplay = 1 if r["area"] > 1600 and rng.random() < 0.7 else 0
+    for (a, b) in cells:
+        if ncourt <= 0:
+            break
+        x, z = world(a * G4, b * G4)
+        ang = bearing_at(x, z) + (math.pi / 2 if rng.random() < 0.5 else 0)
+        got = fits(ri, x, z, ang, 31, 19) or fits(ri, x, z, ang + math.pi / 2, 31, 19)
+        if not got:
+            continue
+        if not fits(ri, x, z, ang, 31, 19):
+            ang += math.pi / 2
+        used |= got
+        paint_rect(x, z, ang, 31, 19, court_px)
+        props["courts"].append([round(x, 1), round(z, 1), round(ang, 3)])
+        ncourt -= 1
+        # benches along the long sides, outside the fence
+        ca, sa = math.cos(ang), math.sin(ang)
+        for side in (-1, 1):
+            for k in (-7.0, 0.0, 7.0):
+                if rng.random() < 0.75:
+                    bx, bz = x + k * ca - side * 11.3 * sa, z + k * sa + side * 11.3 * ca
+                    # (yaw: the bench's front, +z, turns to (sin, cos): face the court)
+                    props["benches"].append([round(bx, 1), round(bz, 1), round(math.atan2(side * sa, -side * ca), 2)])
+    for (a, b) in cells[::-1]:
+        if nplay <= 0:
+            break
+        x, z = world(a * G4, b * G4)
+        ang = bearing_at(x, z)
+        got = fits(ri, x, z, ang, 16, 16)
+        if not got:
+            continue
+        used |= got
+        paint_rect(x, z, ang, 16, 16, play_px)
+        props["playgrounds"].append([round(x, 1), round(z, 1), round(ang, 2)])
+        nplay -= 1
+        for k in range(4):
+            t = ang + k * math.pi / 2 + 0.4
+            props["benches"].append([round(x + 9.5 * math.cos(t), 1), round(z + 9.5 * math.sin(t), 1), round(math.atan2(-math.cos(t), -math.sin(t)), 2)])
+    # a handball wall in a big one
+    if r["area"] > 3000 and rng.random() < 0.6:
+        for (a, b) in cells[len(cells) // 3:]:
+            x, z = world(a * G4, b * G4)
+            ang = bearing_at(x, z)
+            got = fits(ri, x, z, ang, 10, 14)
+            if got:
+                used |= got
+                paint_rect(x, z, ang, 10, 14, lambda u, v: (0.30, 0.33, 0.30) if abs(u) < 4.8 and v > -6.8 else None)
+                props["walls"].append([round(x, 1), round(z, 1), round(ang, 2)])
+                break
+    # the rest of the plaza: benches in pairs, bins, planters, lamps, a few bare trees
+    free = [c for c in r["cells"] if c not in used]
+    rng.shuffle(free)
+    n = int(r["area"] / 160)
+    for (a, b) in free[:n]:
+        x, z = world(a * G4, b * G4)
+        roll = rng.random()
+        ang = bearing_at(x, z) + rng.choice((0, math.pi / 2, math.pi, -math.pi / 2))
+        if roll < 0.40:
+            props["benches"].append([round(x, 1), round(z, 1), round(ang, 2)])
+            if rng.random() < 0.5:
+                props["cans"].append([round(x + 1.6 * math.cos(ang), 1), round(z + 1.6 * math.sin(ang), 1), 0])
+        elif roll < 0.55:
+            props["planters"].append([round(x, 1), round(z, 1), round(ang, 2)])
+        elif roll < 0.72:
+            props["plaza_lamps"].append([round(x, 1), round(z, 1), round(ang, 2)])
+        elif roll < 0.80:
+            props["trees"].append([round(x, 1), round(z, 1), round(rng.random() * 6.28, 2), rng.randrange(3)])
+        else:
+            props["cans"].append([round(x, 1), round(z, 1), 0])
+        used.add((a, b))
 for k, v in props.items():
     print(k, len(v))
 
