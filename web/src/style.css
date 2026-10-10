@@ -135,3 +135,29 @@ body.is-touch .keys { display: none; }
 body.is-touch .minimap { right: auto; left: calc(10px + env(safe-area-inset-left)); bottom: auto; top: calc(48px + env(safe-area-inset-top)); width: 130px; height: 130px; }
 body.is-touch .minimap canvas { width: 130px; height: 130px; }
 @media (max-width: 640px) { .minimap { width: 130px; height: 130px; } .minimap canvas { width: 130px; height: 130px; } }
+
+/* the district line: names alternate above and below it so they never overlap */
+.route { height: 40px; }
+.route .seg { top: 18px; }
+.route .seg span { top: -16px; left: 4px; }
+.route .seg:nth-of-type(even) span { top: 7px; }
+.route .marker { top: 12px; }
+
+/* phones: keep the middle of the screen clear. No text-selection pop-ups when holding a button,
+   a compact tutorial at the top, smaller titles, and quieter controls until you touch them. */
+body.is-touch * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+body.is-touch .board input { -webkit-user-select: text; user-select: text; }
+body.is-touch .tutorial { top: calc(54px + env(safe-area-inset-top)); bottom: auto; left: auto; right: calc(10px + env(safe-area-inset-right)); transform: none; width: min(300px, 46vw); padding: 8px 10px; font-size: 12px; line-height: 1.35; background: rgba(18, 12, 9, 0.45); }
+body.is-touch .tutorial .key { font-size: 10px; padding: 1px 5px; }
+body.is-touch .card { top: 14%; }
+body.is-touch .card .name { font-size: clamp(26px, 6vw, 44px); }
+body.is-touch .card .sub { font-size: 10px; letter-spacing: 0.18em; }
+body.is-touch .callout { top: 24%; font-size: 15px; }
+body.is-touch .toast { font-size: 12px; padding: 7px 12px; top: 50px; }
+body.is-touch .subway-pointer { font-size: 11px; padding: 4px 9px 4px 6px; }
+body.is-touch .screen .title { font-size: clamp(30px, 8vw, 56px); }
+body.is-touch .screen .sub { font-size: 13px; }
+body.is-touch .touch button { opacity: 0.55; transition: opacity 0.2s; }
+body.is-touch .touch button.down { opacity: 1; }
+body.is-touch .route .seg span { font-size: 8px; letter-spacing: 0.08em; }
+@media (orientation: portrait) { body.is-touch .tutorial { left: 10px; right: 10px; width: auto; top: calc(186px + env(safe-area-inset-top)); } }
