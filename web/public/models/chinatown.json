@@ -41,6 +41,73 @@
    ]
   }
  },
+ "district": {
+  "size": 1024,
+  "rects": {
+   "tenement_red": [
+    0,
+    0,
+    512,
+    512
+   ],
+   "tenement_tan": [
+    512,
+    0,
+    512,
+    512
+   ],
+   "project": [
+    0,
+    512,
+    512,
+    512
+   ],
+   "modern": [
+    512,
+    512,
+    512,
+    256
+   ],
+   "store_a": [
+    512,
+    768,
+    512,
+    128
+   ],
+   "store_b": [
+    512,
+    896,
+    512,
+    128
+   ]
+  },
+  "metres": {
+   "tenement_red": [
+    10.4,
+    12.4
+   ],
+   "tenement_tan": [
+    10.4,
+    12.4
+   ],
+   "project": [
+    12.0,
+    10.8
+   ],
+   "modern": [
+    12.0,
+    6.0
+   ],
+   "store_a": [
+    16.0,
+    4.0
+   ],
+   "store_b": [
+    16.0,
+    4.0
+   ]
+  }
+ },
  "bridge": {
   "arch": [
    -974.79,
@@ -54,12 +121,22 @@
    719.0,
    1167.0
   ],
+  "anchorages": [
+   497.0,
+   1389.0
+  ],
+  "ramp": [
+   40.0,
+   1846.0
+  ],
   "deck": [
    38.0,
    41.0,
    45.0
   ],
-  "height": 103.0
+  "height": 103.0,
+  "deckHalf": 17.6,
+  "truss": 7.3
  },
  "tris": {
   "gate_1": 3342,
@@ -74,7 +151,18 @@
   "barricade": 84,
   "sign_closed": 60,
   "lion": 358,
-  "bridge_main": 22622,
+  "water_tower": 190,
+  "lamp": 74,
+  "car": 70,
+  "suv": 70,
+  "jersey": 14,
+  "railing": 48,
+  "train_car": 68,
+  "hoarding": 30,
+  "fence": 26,
+  "crane": 374,
+  "cabin": 18,
+  "bridge_main": 28014,
   "bridge_arch": 9898
  }
 }

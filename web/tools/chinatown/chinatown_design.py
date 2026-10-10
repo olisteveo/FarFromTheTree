@@ -56,6 +56,17 @@ SWATCHES = {
 for i, k in enumerate(SWATCHES):
     R["sw_" + k] = (896 + 32 * (i % 4), 512 + 32 * (i // 4), 32, 32)
 R["lion"] = (768, 512, 128, 128)
+# more swatches (the district kit: water towers, cars, the subway train): the spare 4x1 row under the
+# first ones, and a 4x4 block in the free cell beside the lion's face
+SWATCHES2 = {
+    "tank_wood": (0.36, 0.24, 0.15), "silver": (0.72, 0.74, 0.76), "car_white": (0.85, 0.86, 0.86), "car_black": (0.05, 0.05, 0.06),
+    "car_silver": (0.55, 0.57, 0.59), "car_blue": (0.10, 0.20, 0.42), "car_red": (0.55, 0.06, 0.05), "yellow_cab": (0.95, 0.72, 0.08),
+    "glass_dark": (0.08, 0.10, 0.12), "window_lit": (1.0, 0.82, 0.50), "concrete": (0.55, 0.54, 0.51), "rust": (0.42, 0.22, 0.12),
+    "tar": (0.12, 0.12, 0.12), "train_blue": (0.10, 0.22, 0.55), "headlight": (1.0, 0.95, 0.80), "tail_red": (0.9, 0.08, 0.05),
+    "jersey": (0.70, 0.69, 0.66), "lamp_head": (1.0, 0.85, 0.55), "pole_green": (0.12, 0.20, 0.15), "pole_grey": (0.30, 0.31, 0.32),
+}
+for i, k in enumerate(SWATCHES2):
+    R["sw_" + k] = (896 + 32 * i, 608, 32, 32) if i < 4 else (384 + 32 * ((i - 4) % 4), 640 + 32 * ((i - 4) // 4), 32, 32)
 
 # the bridge's alpha atlas (BridgeTruss, 512x256); its stone and steel are separate repeating textures
 BR = {
@@ -67,7 +78,9 @@ BR = {
 
 
 def layout_json():
-    return {"atlas": {"size": 1024, "rects": R, "swatches": SWATCHES}, "bridge": {"size": [512, 256], "rects": BR}}
+    from district_design import DR, DR_METRES
+    return {"atlas": {"size": 1024, "rects": R, "swatches": {**SWATCHES, **SWATCHES2}}, "bridge": {"size": [512, 256], "rects": BR},
+            "district": {"size": 1024, "rects": DR, "metres": DR_METRES}}
 
 
 def T(d, x, y, s, size, c, font=LATIN, just="center", tracking=0.0, name="text"):
@@ -376,7 +389,7 @@ def atlas_doc():
     for name, fn in painters.items():
         x, y, w, h = R[name]
         layers.append(d.group(name, x, y, w, h, fn(d, w, h)))
-    for k, c in SWATCHES.items():
+    for k, c in {**SWATCHES, **SWATCHES2}.items():
         x, y, w, h = R["sw_" + k]
         layers.append(d.group("sw_" + k, x, y, w, h, swatch(d, w, h, c)))
     return 1024, 1024, (0.5, 0.5, 0.5, 1), layers, d
@@ -493,3 +506,8 @@ def build_doc(name):
     return {"$schema": "https://jerboa.dev/schemas/fx-composition/editable/v1/document.schema.json", "formatVersion": 1,
             "dimensions": {"width": W, "height": H}, "duration": 3.0, "backgroundColor": list(bg),
             "composition": {"id": "main", "name": "Chinatown " + name, "layers": layers}}
+
+# the bridge district's facade atlas (district_design.py)
+from district_design import DISTRICT_DOCS  # noqa: E402
+DOCS.update(DISTRICT_DOCS)
+NEEDS_FONT.add("DistrictAtlas")

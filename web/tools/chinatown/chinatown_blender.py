@@ -16,7 +16,9 @@ Writes
                                bridge's frame: origin at the arch centre, +x along the axis toward Brooklyn, +z
                                to the left (see bridge_layout.json, made by layout.ts from city.json)
   MODELS/chinatown.json        the gate openings (for the lantern curtains), the bridge frame, triangle counts
-  TEXOUT/atlas.webp, atlas_512.webp, bridge.webp   the Tesseract atlases
+  MODELS/ct_district_kit.glb   the bridge district's kit: water_tower, lamp (cobra head), car, suv, jersey,
+                               railing, hoarding, fence, crane, cabin, train_car (an R160 car for the bridge)
+  TEXOUT/atlas*.webp, district*.webp, granite/limestone/steel/truss.webp   the Tesseract textures
 Materials go out by name only (ct, ct_glow, br, br_alpha): the game binds the textures itself.
 All coordinates below are three.js ones (x, y up, z) and converted to Blender's (x, -z, y) on the way in.
 """
@@ -123,7 +125,7 @@ class Metric:
 
 
 MSCALE = {"br_granite": 2.6, "br_lime": 2.2, "br_steel": 3.2, "br_deck": 4.0}
-MATCOL = {"br_granite": (0.6, 0.57, 0.52), "br_lime": (0.8, 0.78, 0.72), "br_steel": (0.5, 0.56, 0.6), "br_deck": (0.2, 0.2, 0.2),"ct": (0.6, 0.1, 0.1), "ct_glow": (1, 0.3, 0.1), "br": (0.5, 0.56, 0.6), "br_alpha": (0.5, 0.56, 0.6)}
+MATCOL = {"dk": (0.5, 0.4, 0.3), "br_granite": (0.6, 0.57, 0.52), "br_lime": (0.8, 0.78, 0.72), "br_steel": (0.5, 0.56, 0.6), "br_deck": (0.2, 0.2, 0.2),"ct": (0.6, 0.1, 0.1), "ct_glow": (1, 0.3, 0.1), "br": (0.5, 0.56, 0.6), "br_alpha": (0.5, 0.56, 0.6)}
 
 
 def material(name):
@@ -151,6 +153,15 @@ def A(name):
     r = RA["sw_" + name] if ("sw_" + name) in RA else RA[name]
     ins = 6 if ("sw_" + name) in RA else 2
     return lambda u, v: uvr(r, 1024, u, v, ins)
+
+
+RD = LAY["district"]["rects"]
+
+
+def D(name):
+    """UV function for a district atlas cell (the arcade shopfronts)"""
+    r = RD[name]
+    return lambda u, v: uvr(r, 1024, u, v, 2)
 
 
 def B(name):
@@ -673,6 +684,18 @@ def approach(g, t0, t1, sgn):
                         quad(g, (xx, -0.5, -hw - 0.6), (xx, -0.5, hw + 0.6), (xx, spring, hw + 0.6), (xx, spring, -hw - 0.6), "br", gr)
                 if spring > 0.05:
                     quad(g, (o1, -0.5, hw + 0.6), (o1, -0.5, -hw - 0.6), (o1, spring, -hw - 0.6), (o1, spring, hw + 0.6), "br", gr)
+                # shops tucked into the arches: a shopfront set back in each opening, the vault's dark mouth above
+                if s > 0 and spring > 1.5 and span > 12:
+                    inset = hw + 0.6 - 1.4
+                    for side in (1, -1):
+                        z = side * inset
+                        cx = (o0 + o1) / 2
+                        sw = min(16.0, span - 2.0)
+                        st = "store_a" if (int(ta) // 24) % 2 == 0 else "store_b"
+                        a_, b_ = (cx - sw / 2, cx + sw / 2) if side > 0 else (cx + sw / 2, cx - sw / 2)
+                        quad(g, (a_, 0.0, z), (b_, 0.0, z), (b_, 4.0, z), (a_, 4.0, z), "dk", D(st))
+                        top = spring + span / 2 * 0.92
+                        quad(g, (a_, 4.0, z), (b_, 4.0, z), (b_, top, z), (a_, top, z), "br", dk)
             # a cornice band along the top of the wall
             if max(ya, yb) < 0.3:
                 continue
@@ -805,8 +828,45 @@ def cables(g):
             obox(g, (t, cable_y(t), s), (t + d * 8, DECK_ANCH - 1, s), 1.6, 1.6, "br", st)
 
 
+def deck_dressing(g, t0, t1):
+    """lane markings on the upper roadway (white dashes, a double yellow up the middle) and lamp posts"""
+    w, yel = A("white"), A("gold_flat")
+    t = t0
+    while t < t1:
+        a, b = t, min(t1, t + 3.0)
+        ya, yb = deck_y(a) + 0.05, deck_y(b) + 0.05
+        if max(ya, yb) > 0.3:
+            for s in (-7.0, -3.5, 3.5, 7.0):
+                quad(g, (a, ya, s + 0.07), (b, yb, s + 0.07), (b, yb, s - 0.07), (a, ya, s - 0.07), "ct", w)
+        t += 9.0
+    t = t0
+    while t < t1:
+        b = min(t1, t + 8.0)
+        ya, yb = deck_y(t) + 0.05, deck_y(b) + 0.05
+        if max(ya, yb) > 0.3:
+            for s in (-0.18, 0.18):
+                quad(g, (t, ya, s + 0.06), (b, yb, s + 0.06), (b, yb, s - 0.06), (t, ya, s - 0.06), "ct", yel)
+        t = b
+    pole = A("pole_grey")
+    t = t0 + 20
+    while t < t1:
+        y = deck_y(t)
+        if y > 3:
+            for sg in (-1, 1):
+                z = sg * (DECK_HALF - 0.8)
+                lathe(g, [(0.09, 7.5), (0.11, 0.0)], 5, "ct", pole, cx=t, cz=z, y0=y)
+                obox(g, (t, y + 7.4, z), (t, y + 7.6, z - sg * 1.8), 0.1, 0.1, "ct", pole)
+                box(g, (t, y + 7.55, z - sg * 2.0), (0.8, 0.2, 0.4), "ct", pole)
+                q = [(t + 0.35, y + 7.44, z - sg * 1.85), (t - 0.35, y + 7.44, z - sg * 1.85), (t - 0.35, y + 7.44, z - sg * 2.15), (t + 0.35, y + 7.44, z - sg * 2.15)]
+                if sg < 0:
+                    q = [q[1], q[0], q[3], q[2]]
+                quad(g, *q, "ct_glow", A("lamp_head"))
+        t += 45.0
+
+
 def bridge_main():
     g = Geo()
+    deck_dressing(g, T_RAMP0, T_END_B)
     approach(g, 3.0, T_ANCH_M - 28, 1)
     anchorage(g, T_ANCH_M)
     truss_deck(g, T_ANCH_M + 28, T_ANCH_B - 28)
@@ -955,6 +1015,15 @@ def textures():
     small.scale(512, 512)
     small.save_render(os.path.join(TEXOUT, "atlas_512.webp"), scene=s)
     out["atlas"] = src
+    dsrc = load("DistrictAtlas")
+    dsrc.save_render(os.path.join(TEXOUT, "district.webp"), scene=s)
+    dsmall = dsrc.copy()
+    dsmall.scale(512, 512)
+    dsmall.save_render(os.path.join(TEXOUT, "district_512.webp"), scene=s)
+    dtiny = dsrc.copy()
+    dtiny.scale(256, 256)
+    dtiny.save_render(os.path.join(TEXOUT, "district_256.webp"), scene=s)
+    out["district"] = dsrc
     for name, f in (("BridgeGranite", "granite"), ("BridgeLimestone", "limestone"), ("BridgeSteel", "steel")):
         im = load(name)
         im.save_render(os.path.join(TEXOUT, f + ".webp"), scene=s)
@@ -997,10 +1066,12 @@ def preview_materials(imgs):
         material(n).use_backface_culling = True
     setup(material("ct"), imgs["atlas"], rough=0.55)
     setup(material("ct_glow"), imgs["atlas"], emit=2.5)
+    setup(material("dk"), imgs["district"], emit=0.6)
     setup(material("br_granite"), imgs["granite"], rough=0.8)
     setup(material("br_lime"), imgs["limestone"], rough=0.7)
     setup(material("br_steel"), imgs["steel"], rough=0.6, metal=0.2)
     setup(material("br_alpha"), imgs["truss"], alpha=True, rough=0.6, metal=0.2)
+    setup(material("crane_alpha"), imgs["truss"], alpha=True, rough=0.6, metal=0.2)
     dm = material("br_deck")
     dm.use_nodes = True
     dm.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = (0.05, 0.05, 0.05, 1)
@@ -1103,6 +1174,14 @@ def previews(imgs):
     place("lion", -2.5, 0, 0, 0.5)
     place("stall", -6.5, 0, 0)
     shoot("kit_close", (-0.5, 1.3, 0), 9, 190, 8)
+    # the district kit
+    show(["water_tower", "lamp", "car", "suv", "jersey", "railing", "train_car", "hoarding", "fence", "cabin", "crane"])
+    for i, n in enumerate(["water_tower", "lamp", "car", "suv", "jersey", "railing", "hoarding", "fence", "cabin"]):
+        place(n, -16 + i * 4, 0, 0)
+    place("train_car", 0, 0, -6)
+    shoot("district_kit", (0, 2.5, -2), 30, 200, 14, res=(1600, 800))
+    place("crane", 0, 0, 30)
+    shoot("district_crane", (15, 35, 30), 110, 200, 8, res=(1200, 900))
     # the bridge
     show(["bridge_main", "bridge_arch"])
     place("bridge_main", 0, 0, 0)
@@ -1116,6 +1195,182 @@ def previews(imgs):
     shoot("arch_above", (-10, 5, 0), 90, 250, 40, res=(1600, 900))
 
 
+# ================================================================================ the bridge district's kit
+
+def water_tower():
+    """a rooftop water tank: steel legs, a wooden tank with hoops, a conical roof (about 7 m tall)"""
+    g = Geo()
+    iron, wood = A("iron"), A("tank_wood")
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            box(g, (sx * 1.2, 1.4, sz * 1.2), (0.16, 2.8, 0.16), "ct", iron)
+    box(g, (0, 2.8, 0), (2.9, 0.18, 2.9), "ct", iron)
+    lathe(g, [(1.75, 6.0), (1.75, 2.9)], 10, "ct", wood, u_rep=3.0)
+    for y in (3.4, 4.3, 5.2):
+        lathe(g, [(1.79, y + 0.05), (1.79, y - 0.05)], 10, "ct", iron)
+    lathe(g, [(0.0, 7.3), (0.12, 7.1), (1.95, 6.0), (1.75, 5.95)], 10, "ct", iron)
+    g.build("water_tower")
+
+
+def lamp():
+    """a NYC cobra-head street light, 9 m, the head over the street (+z)"""
+    g = Geo()
+    pole = A("pole_grey")
+    lathe(g, [(0.10, 8.6), (0.12, 1.0), (0.2, 0.9), (0.22, 0.0)], 6, "ct", pole)
+    obox(g, (0, 8.4, 0), (0, 8.9, 1.6), 0.12, 0.12, "ct", pole)
+    obox(g, (0, 8.9, 1.6), (0, 8.95, 2.6), 0.12, 0.12, "ct", pole)
+    box(g, (0, 8.9, 3.0), (0.45, 0.22, 0.95), "ct", pole)
+    quad(g, (0.2, 8.78, 3.4), (-0.2, 8.78, 3.4), (-0.2, 8.78, 2.6), (0.2, 8.78, 2.6), "ct_glow", A("lamp_head"))
+    g.build("lamp")
+
+
+def car(name, suv=False):
+    """a parked car (or SUV), 4.6 m long along +z: body in white (tinted per instance), dark glass, black tyres"""
+    g = Geo()
+    body, glass, tyre = A("car_white"), A("glass_dark"), A("car_black")
+    L, W = (4.9, 1.95) if suv else (4.6, 1.8)
+    h0, h1, h2 = 0.32, (1.0 if suv else 0.85), (1.75 if suv else 1.42)
+    box(g, (0, (h0 + h1) / 2, 0), (W, h1 - h0, L), "ct", body)
+    # the cabin: a tapered box with glass sides
+    c0, c1 = (-1.7, 1.5) if suv else (-1.1, 1.0)
+    t0, t1 = (c0 + 0.15, c1 - 0.1) if suv else (c0 + 0.45, c1 - 0.35)
+    w0, w1 = W / 2 - 0.05, W / 2 - 0.2
+    P = [(-w0, h1, c0), (w0, h1, c0), (w0, h1, c1), (-w0, h1, c1), (-w1, h2, t0), (w1, h2, t0), (w1, h2, t1), (-w1, h2, t1)]
+    quad(g, P[1], P[0], P[4], P[5], "ct", glass)      # rear
+    quad(g, P[3], P[2], P[6], P[7], "ct", glass)      # windscreen
+    quad(g, P[2], P[1], P[5], P[6], "ct", glass)      # sides
+    quad(g, P[0], P[3], P[7], P[4], "ct", glass)
+    quad(g, P[4], P[7], P[6], P[5], "ct", body)       # roof
+    for sz in (-L * 0.32, L * 0.32):
+        for sx in (-1, 1):
+            box(g, (sx * (W / 2 - 0.1), 0.33, sz), (0.24, 0.66, 0.66), "ct", tyre, faces=["+x", "-x", "+z", "-z", "+y"])
+    for sx in (-0.6, 0.6):
+        box(g, (sx, h1 - 0.2, L / 2 + 0.01), (0.3, 0.12, 0.02), "ct_glow", A("headlight"), faces=["+z"])
+        box(g, (sx, h1 - 0.2, -L / 2 - 0.01), (0.3, 0.12, 0.02), "ct_glow", A("tail_red"), faces=["-z"])
+    g.build(name)
+
+
+def jersey():
+    """1 m of concrete median barrier along +x (the game stretches it)"""
+    g = Geo()
+    c = A("jersey")
+    prof = [(0.3, 0.0), (0.28, 0.08), (0.12, 0.33), (0.075, 0.81), (-0.075, 0.81), (-0.12, 0.33), (-0.28, 0.08), (-0.3, 0.0)]
+    for k in range(len(prof) - 1):
+        (z0, y0), (z1, y1) = prof[k], prof[k + 1]
+        quad(g, (0.5, y0, z0), (-0.5, y0, z0), (-0.5, y1, z1), (0.5, y1, z1), "ct", c)
+    g.build("jersey")
+
+
+def railing():
+    """2 m of esplanade railing along +x: a post, a top rail, three lower rails (dark green iron)"""
+    g = Geo()
+    c = A("pole_green")
+    box(g, (-0.95, 0.55, 0), (0.08, 1.1, 0.08), "ct", c)
+    box(g, (0, 1.08, 0), (2.0, 0.07, 0.09), "ct", c)
+    for y in (0.3, 0.55, 0.8):
+        box(g, (0, y, 0), (2.0, 0.03, 0.03), "ct", c, faces=["+y", "-y", "+z", "-z"])
+    g.build("railing")
+
+
+def train_car():
+    """an R160 subway car, 18.4 m along +x: silver body, a dark window band, the blue stripe, end lights"""
+    g = Geo()
+    s, glass, blue = A("silver"), A("glass_dark"), A("train_blue")
+    L, W, H = 18.4, 3.0, 3.6
+    box(g, (0, 0.25 + 1.45, 0), (L, 2.9, W), "ct", s)                      # body
+    box(g, (0, 0.25 + 3.15, 0), (L - 0.4, 0.5, W - 0.3), "ct", s)          # roof
+    for sz in (1, -1):
+        z = sz * (W / 2 + 0.01)
+        f = (lambda p: p) if sz > 0 else (lambda p: [p[1], p[0], p[3], p[2]])
+        q = f([(-L / 2 + 0.6, 1.6, z), (L / 2 - 0.6, 1.6, z), (L / 2 - 0.6, 2.55, z), (-L / 2 + 0.6, 2.55, z)])
+        quad(g, *q, "ct", glass)
+        q = f([(-L / 2, 1.2, z), (L / 2, 1.2, z), (L / 2, 1.38, z), (-L / 2, 1.38, z)])
+        quad(g, *q, "ct", blue)
+        for k in range(4):   # doors (darker)
+            x = -L / 2 + 2.3 + k * 4.6
+            zd = sz * (W / 2 + 0.03)
+            q = f([(x - 0.65, 0.45, zd), (x + 0.65, 0.45, zd), (x + 0.65, 2.75, zd), (x - 0.65, 2.75, zd)])
+            quad(g, *q, "ct", A("pole_grey"))
+    for sx in (1, -1):
+        for zz in (-0.9, 0.9):
+            box(g, (sx * (L / 2 + 0.01), 0.9, zz), (0.02, 0.2, 0.3), "ct_glow", A("headlight"), faces=["+x" if sx > 0 else "-x"])
+    box(g, (0, 0.15, 0), (L - 1.0, 0.3, W - 0.6), "ct", A("black"))      # running gear
+    g.build("train_car")
+
+
+def hoarding():
+    """a 2.4 m panel of painted plywood site hoarding on two posts (white: the game paints it per panel), a poster"""
+    g = Geo()
+    box(g, (0, 1.25, 0), (2.4, 2.5, 0.06), "ct", A("white"))
+    for sx in (-1.15, 1.15):
+        box(g, (sx, 1.25, -0.12), (0.1, 2.5, 0.1), "ct", A("white"), faces=["+x", "-x", "-z", "+z"])
+    quad(g, (-0.7, 0.9, 0.035), (0.5, 0.9, 0.035), (0.5, 2.0, 0.035), (-0.7, 2.0, 0.035), "ct", A("neon_2"))   # a fly-poster
+    g.build("hoarding")
+
+
+def fence():
+    """2.4 m of chain-link on steel posts (the lattice reads as the mesh)"""
+    g = Geo()
+    lat = B("lattice")
+    quad(g, (-1.2, 0.05, 0), (1.2, 0.05, 0), (1.2, 1.9, 0), (-1.2, 1.9, 0), "br_alpha", lat)
+    quad(g, (1.2, 0.05, 0), (-1.2, 0.05, 0), (-1.2, 1.9, 0), (1.2, 1.9, 0), "br_alpha", lat)
+    box(g, (-1.2, 1.0, 0), (0.07, 2.0, 0.07), "ct", A("silver"))
+    box(g, (0, 1.92, 0), (2.4, 0.05, 0.05), "ct", A("silver"))
+    g.build("fence")
+
+
+def crane():
+    """a tower crane, 60 m to the jib: lattice mast, the slewing unit and cab, a 50 m jib and the counter jib
+    with its weights, the A-frame and ties (yellow: the game tints the lattice)"""
+    g = Geo()
+    lat, y, blk = B("lattice"), A("gold_flat"), A("iron")
+    H, w = 60.0, 2.0
+    for k in range(20):
+        y0, y1 = k * 3.0, (k + 1) * 3.0
+        for (ax, az, bx, bz) in ((-1, 1, 1, 1), (1, 1, 1, -1), (1, -1, -1, -1), (-1, -1, -1, 1)):
+            p = [(ax * w / 2, y0, az * w / 2), (bx * w / 2, y0, bz * w / 2), (bx * w / 2, y1, bz * w / 2), (ax * w / 2, y1, az * w / 2)]
+            quad(g, *p, "crane_alpha", lat)
+            quad(g, p[1], p[0], p[3], p[2], "crane_alpha", lat)
+    box(g, (0, H + 1.0, 0), (2.6, 2.0, 2.6), "ct", y)                      # slewing unit
+    box(g, (1.6, H + 1.4, 1.2), (1.6, 2.0, 1.4), "ct", y)                  # the cab
+    quad(g, (2.41, H + 1.0, 0.6), (2.41, H + 1.0, 1.8), (2.41, H + 2.1, 1.8), (2.41, H + 2.1, 0.6), "ct", A("glass_dark"))
+    # the jib along +x and the counter jib along -x: triangular lattice booms
+    for (x0, x1) in ((1.3, 50.0), (-1.3, -15.0)):
+        n = int(abs(x1 - x0) / 3.0)
+        for k in range(n):
+            a, b = x0 + (x1 - x0) * k / n, x0 + (x1 - x0) * (k + 1) / n
+            lo, hi = H + 2.0, H + 3.8
+            for zz in (-0.9, 0.9):
+                p = [(a, lo, zz), (b, lo, zz), (b, hi, 0), (a, hi, 0)]
+                quad(g, *p, "crane_alpha", lat)
+                quad(g, p[1], p[0], p[3], p[2], "crane_alpha", lat)
+    box(g, (-13.0, H + 1.6, 0), (4.0, 2.4, 2.2), "ct", A("concrete"))     # counterweights
+    for sz in (-0.6, 0.6):                                                  # the A-frame
+        obox(g, (-1.0, H + 2.0, sz), (0.0, H + 9.0, 0), 0.25, 0.25, "ct", y)
+        obox(g, (1.0, H + 2.0, sz), (0.0, H + 9.0, 0), 0.25, 0.25, "ct", y)
+    obox(g, (0.0, H + 9.0, 0), (34.0, H + 3.9, 0), 0.08, 0.08, "ct", blk)  # ties
+    obox(g, (0.0, H + 9.0, 0), (-14.0, H + 3.9, 0), 0.08, 0.08, "ct", blk)
+    obox(g, (30.0, H + 2.0, 0), (30.0, H - 22.0, 0), 0.05, 0.05, "ct", blk)   # the hook line
+    box(g, (30.0, H - 22.5, 0), (0.5, 0.8, 0.4), "ct", y)
+    g.build("crane")
+
+
+def cabin():
+    """a site office: a 6 m container cabin with windows and a door"""
+    g = Geo()
+    box(g, (0, 1.35, 0), (6.0, 2.6, 2.4), "ct", A("orange"))
+    for x in (-1.8, 0.4):
+        quad(g, (x, 1.1, 1.21), (x + 1.2, 1.1, 1.21), (x + 1.2, 2.0, 1.21), (x, 2.0, 1.21), "ct", A("glass_dark"))
+    quad(g, (2.0, 0.1, 1.21), (2.8, 0.1, 1.21), (2.8, 2.2, 1.21), (2.0, 2.2, 1.21), "ct", A("pole_grey"))
+    g.build("cabin")
+
+
+def district_kit():
+    water_tower(); lamp(); car("car"); car("suv", True); jersey(); railing(); train_car(); hoarding(); fence(); crane(); cabin()
+    names = ["water_tower", "lamp", "car", "suv", "jersey", "railing", "train_car", "hoarding", "fence", "crane", "cabin"]
+    export(os.path.join(MODELS, "ct_district_kit.glb"), names)
+
+
 def main():
     for ob in list(bpy.data.objects):
         bpy.data.objects.remove(ob)
@@ -1127,11 +1382,14 @@ def main():
         neon_geo(k).build("neon_%d" % k)
     stall(); barricade(); sign_closed(); lion()
     kit = [n for n in TRIS]
+    META["district"] = LAY["district"]
     export(os.path.join(MODELS, "chinatown.glb"), kit)
+    district_kit()
     bridge_main(); bridge_arch()
     export(os.path.join(MODELS, "chinatown_bridge.glb"), ["bridge_main"])
     export(os.path.join(MODELS, "chinatown_arch.glb"), ["bridge_arch"])
-    META["bridge"] = {"arch": BL["arch"], "axis": BL["axis"], "towers": [T_TOW_M, T_TOW_B], "deck": [DECK_ANCH, DECK_TOW, DECK_MID], "height": TOWER_H}
+    META["bridge"] = {"arch": BL["arch"], "axis": BL["axis"], "towers": [T_TOW_M, T_TOW_B], "anchorages": [T_ANCH_M, T_ANCH_B], "ramp": [T_RAMP0, T_END_B],
+                      "deck": [DECK_ANCH, DECK_TOW, DECK_MID], "height": TOWER_H, "deckHalf": DECK_HALF, "truss": 7.3}
     META["tris"] = TRIS
     with open(os.path.join(MODELS, "chinatown.json"), "w") as f:
         json.dump(META, f, indent=1)

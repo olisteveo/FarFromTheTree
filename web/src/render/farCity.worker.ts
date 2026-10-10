@@ -12,6 +12,8 @@ export interface FarIn {
   low: boolean;
   /** rectangles to keep clear (the basketball courts): no far building with a corner or its centre inside */
   clear?: { x: number; z: number; hw: number; hd: number; yaw: number }[];
+  /** a ring (x, z pairs): far.dat buildings with their centre inside are drawn elsewhere (render/chinatownDistrict.ts) */
+  dropZone?: number[];
 }
 export interface FarTile {
   gated: boolean;
@@ -142,6 +144,16 @@ function spire(g: Geo, x: number, z: number, y0: number, r: number, tip: number,
   prism(g, 0, xs, zs, y0, tip, T_SPIRE, 1, 0, cx, cz, true, txs, tzs);
 }
 
+/** point in a ring of x, z pairs */
+function inFlatRing(r: number[], x: number, z: number) {
+  let inside = false;
+  for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
+    const xi = r[i], zi = r[i + 1], xj = r[j], zj = r[j + 1];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 function inRing(xs: number[], zs: number[], x: number, z: number) {
   let c = false;
   for (let i = 0, j = xs.length - 1; i < xs.length; j = i++)
@@ -197,6 +209,11 @@ function build(msg: FarIn, far: ReturnType<typeof decodeFar>): FarOut {
     const s = far.start[i] * 2, n = far.count[i];
     const xs: number[] = [], zs: number[] = [];
     for (let k = 0; k < n; k++) { xs.push(far.verts[s + k * 2]); zs.push(far.verts[s + k * 2 + 1]); }
+    if (msg.dropZone) {
+      let cx = 0, cz = 0;
+      for (let k = 0; k < n; k++) { cx += xs[k]; cz += zs[k]; }
+      if (inFlatRing(msg.dropZone, cx / n, cz / n)) continue;
+    }
     one(false, xs, zs, far.height[i], far.type[i], far.seed[i] + i);
   }
   // the corridor's buildings: far versions, hidden near the camera where the detailed ones are

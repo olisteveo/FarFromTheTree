@@ -5,8 +5,11 @@ neon signs and the Manhattan Bridge with its arch and colonnade).
     python web/tools/chinatown/build_chinatown.py --skip-textures  # models only (reuse the rendered PNGs)
     python web/tools/chinatown/build_chinatown.py --only BridgeTruss
     python web/tools/chinatown/build_chinatown.py --no-previews
+    python web/tools/chinatown/build_chinatown.py --skip-district  # don't redo the district's footprints and ground
 
-  1. chinatown_design.py -> Tesseract compositions tesseract/<Name>/<Name>.tsrct (editable sources),
+  0. district.ts (far.dat -> the bridge district's footprints, models/ct_district.json) and district_ground.py
+     (the painted street plan, textures/chinatown/district_ground*.webp, and the street furniture positions)
+  1. chinatown_design.py (+ district_design.py) -> Tesseract compositions tesseract/<Name>/<Name>.tsrct (editable sources),
      rendered with `tsrct preview` to tesseract/<Name>/<Name>.png; the atlas layout to tesseract/layout.json
   2. chinatown_blender.py (headless Blender 5.2, 8 threads): models the gate kit, lanterns, stalls and the
      bridge, writes web/public/models/chinatown.glb + chinatown_bridge.glb, converts the atlases to WebP
@@ -23,7 +26,8 @@ TEXOUT = os.path.join(WEB, "public", "textures", "chinatown")
 TS = os.path.join(HERE, "tesseract")
 PREV = os.path.join(HERE, "previews")
 sys.path.insert(0, os.path.join(HERE, "..", "park"))
-from build_park import find_tsrct, find_blender, run  # noqa: E402  (idle priority runner)
+from build_park import find_tsrct, find_blender, run, IDLE  # noqa: E402  (idle priority runner)
+import subprocess  # noqa: E402
 
 
 def build_textures(only=None):
@@ -60,12 +64,21 @@ def build_models(args):
          MODELS, TEXOUT, TS, PREV] + args)
 
 
+def build_district():
+    """the bridge district: its footprints out of far.dat (district.ts), then the painted ground (district_ground.py)"""
+    npx = "npx.cmd" if os.name == "nt" else "npx"
+    subprocess.run([npx, "tsx", "tools/chinatown/district.ts"], cwd=WEB, creationflags=IDLE, check=True)
+    subprocess.run([sys.executable, os.path.join(HERE, "district_ground.py")], cwd=WEB, creationflags=IDLE, check=True)
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     only = set(a[a.index("--only") + 1].split(",")) if "--only" in a else None
+    if not only and "--skip-district" not in a:
+        build_district()
     if "--skip-textures" not in a:
         build_textures(only)
     if not only and "--skip-models" not in a:
         build_models([x for x in a if x.startswith("--no-") or x.startswith("--prev=")])
-    for f in sorted(glob.glob(os.path.join(MODELS, "chinatown*")) + glob.glob(os.path.join(TEXOUT, "*"))):
+    for f in sorted(glob.glob(os.path.join(MODELS, "chinatown*")) + glob.glob(os.path.join(MODELS, "ct_district*")) + glob.glob(os.path.join(TEXOUT, "*"))):
         print("%-44s %8.1f KB" % (os.path.relpath(f, WEB), os.path.getsize(f) / 1024))

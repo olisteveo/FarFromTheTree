@@ -23,6 +23,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { CityData } from "../world/data";
 import type { Barrier, Blockers } from "../world/blockers";
+import { ChinatownDistrict, type DistrictMeta } from "./chinatownDistrict";
 
 // ================================================================== layout (pure data)
 
@@ -226,12 +227,23 @@ export class Chinatown {
   private uSwayCurtain = { value: new THREE.Vector2(0, 0.05) };
   private uSwayString = { value: new THREE.Vector2(0, 0.14) };
   private centre = new THREE.Vector3(-690, 0, 2070);
+  /** the bridge district east of the Bowery (render/chinatownDistrict.ts) */
+  readonly district: ChinatownDistrict;
+  /** subway trains crossing the bridge's lower deck: car instances and their track */
+  private trains: { meshes: THREE.InstancedMesh[]; deckY: (t: number) => number; t0: number; t1: number } | null = null;
+  /** cars on the upper roadway: instances, the road's height along the axis, its length */
+  private traffic: { meshes: THREE.InstancedMesh[]; road: (t: number) => number; end: number; n: number } | null = null;
+  private tq2 = new THREE.Quaternion(); private zAxis = new THREE.Vector3(0, 0, 1); private yAxis = new THREE.Vector3(0, 1, 0);
+  private tm = new THREE.Matrix4(); private tq = new THREE.Quaternion(); private tp = new THREE.Vector3(); private ts = new THREE.Vector3(); private te = new THREE.Euler();
 
   constructor(city: CityData, blockers: Blockers, private opts: ChinatownOptions) {
     this.root.name = "chinatown";
     this.bridge.name = "manhattanBridge";
     this.layout = chinatownLayout(city, blockers, opts.quality);
     this.root.add(this.bridge);
+    // (on phones the district's buildings stop where the fog does: ~650 m from the route)
+    this.district = new ChinatownDistrict(opts.quality, (x, z) => { const a = city.route.at(city.route.nearest(x, z).s); return Math.hypot(a.x - x, a.z - z) < 650; });
+    this.root.add(this.district.root);
   }
 
   async load() {
@@ -250,11 +262,13 @@ export class Chinatown {
     };
     const gl = new GLTFLoader();
     // (phones get the arch and colonnade, not the bridge itself: they don't draw the far city either)
-    const [atlas, granite, lime, kit, arch, br, steel, truss] = await Promise.all([
+    const [atlas, granite, lime, kit, arch, br, steel, truss, dkit, dtex] = await Promise.all([
       tex(low ? "atlas_512.webp" : "atlas.webp", false), tex("granite.webp", true), tex("limestone.webp", true),
       gl.loadAsync(url("models/chinatown.glb")), gl.loadAsync(url("models/chinatown_arch.glb")),
       low ? Promise.resolve(null) : gl.loadAsync(url("models/chinatown_bridge.glb")),
       low ? Promise.resolve(null) : tex("steel.webp", true), low ? Promise.resolve(null) : tex("truss.webp", false),
+      low ? Promise.resolve(null) : gl.loadAsync(url("models/ct_district_kit.glb")),
+      tex(low ? "district_256.webp" : this.opts.quality === "medium" ? "district_512.webp" : "district.webp", false),
     ]);
     // ---- materials
     const std = new THREE.MeshStandardMaterial({ map: atlas, roughness: 0.62, metalness: 0.0 });
@@ -270,10 +284,12 @@ export class Chinatown {
       br_steel: new THREE.MeshStandardMaterial({ map: steel, roughness: 0.62, metalness: 0.25, color: 0xd8e2ea }),
       br_deck: new THREE.MeshStandardMaterial({ color: 0x2b2c2d, roughness: 0.9 }),
       br_alpha: new THREE.MeshStandardMaterial({ map: truss, roughness: 0.6, metalness: 0.25, alphaTest: 0.45, side: THREE.DoubleSide, color: 0xd8e2ea }),
+      // the shops in the approach's arches (the district's storefront cells, lit from inside)
+      dk: new THREE.MeshStandardMaterial({ map: dtex, emissiveMap: dtex, emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.7 }),
     };
     // ---- the kit's parts (geometry baked in the node's frame)
     const lib = new Map<string, Part[]>();
-    for (const g of [kit, arch, br]) {
+    for (const g of [kit, arch, br, dkit]) {
       if (!g) continue;
       g.scene.updateMatrixWorld(true);
       for (const node of g.scene.children) {
@@ -324,14 +340,15 @@ export class Chinatown {
     this.stats.lanterns = L.curtain.length + L.strings.length + L.awning.length;
     this.root.add(kitGroup);
     // ---- the Manhattan Bridge, in its frame (origin at the arch, +x toward Brooklyn)
-    const meta = (await fetch(url("models/chinatown.json")).then((r) => r.json()).catch(() => null)) as { bridge?: { arch: [number, number]; axis: [number, number] } } | null;
+    type BridgeMeta = { arch: [number, number]; axis: [number, number]; towers: [number, number]; anchorages: [number, number]; ramp: [number, number]; deck: [number, number, number]; truss: number };
+    const meta = (await fetch(url("models/chinatown.json")).then((r) => r.json()).catch(() => null)) as { bridge?: BridgeMeta; district?: DistrictMeta } | null;
     if (meta?.bridge) {
       const [ax, az] = meta.bridge.arch, [ux, uz] = meta.bridge.axis;
       this.bridge.position.set(ax, 0, az);
       this.bridge.rotation.y = Math.atan2(-uz, ux);
       for (const name of low ? ["bridge_arch"] : ["bridge_arch", "bridge_main"]) {
         for (const p of parts(name)) {
-          const mesh = new THREE.Mesh(p.geo, brMats[p.mat] ?? brMats.br_granite);
+          const mesh = new THREE.Mesh(p.geo, brMats[p.mat] ?? (p.mat === "ct" ? std : p.mat === "ct_glow" ? glow : brMats.br_granite));
           mesh.name = "ct_" + name;
           mesh.castShadow = name === "bridge_arch" && !low;
           mesh.receiveShadow = !low;
@@ -340,12 +357,47 @@ export class Chinatown {
       }
       this.bridge.updateMatrixWorld(true);
       if (!low) this.opts.farCity?.hideManhattanBridge();
+      // two B/D trains crossing on the lower deck, one each way (chinatown_blender.py deck_y, in the bridge's frame)
+      if (!low && parts("train_car").length) {
+        const b = meta.bridge, [tm, tb] = b.towers, [am, ab] = b.anchorages, [dA, dT, dM] = b.deck;
+        const deckY = (t: number) => t < tm ? dA + (dT - dA) * (t - am) / (tm - am)
+          : t <= tb ? dM - (dM - dT) * ((t - (tm + tb) / 2) / ((tb - tm) / 2)) ** 2
+          : dT + (dA - dT) * (t - tb) / (ab - tb);
+        const meshes = parts("train_car").map((p) => {
+          const im = new THREE.InstancedMesh(p.geo, p.mat === "ct_glow" ? glow : std, 16);
+          im.frustumCulled = false; im.name = "ct_train";
+          this.bridge.add(im);
+          return im;
+        });
+        this.trains = { meshes, deckY: (t) => deckY(t) - b.truss + 0.8, t0: am + 28, t1: ab - 28 };
+        // and traffic on the roadway, up the approach from the arch and over to Brooklyn
+        const [r0, r1] = b.ramp;
+        const road = (t: number) => t <= r0 ? 0 : t < am ? dA * ((t - r0) / (am - r0)) ** 1.15 : t <= ab ? deckY(t) : t < r1 ? dA * ((r1 - t) / (r1 - ab)) ** 1.15 : 0;
+        const n = this.opts.quality === "high" ? 44 : 24;
+        const palette = [0xd8dadb, 0x101012, 0x8c9094, 0x1c3366, 0x8a1410, 0xf2b814, 0xf2b814, 0x5a5f52];
+        const carMeshes: THREE.InstancedMesh[] = [];
+        for (const p of parts("car")) {
+          const im = new THREE.InstancedMesh(p.geo, p.mat === "ct_glow" ? glow : std, n);
+          if (p.mat !== "ct_glow") for (let i = 0; i < n; i++) im.setColorAt(i, new THREE.Color(palette[(i * 5 + 3) % palette.length]));
+          im.frustumCulled = false; im.name = "ct_bridge_traffic";
+          this.bridge.add(im);
+          carMeshes.push(im);
+        }
+        this.traffic = { meshes: carMeshes, road, end: r1, n };
+      }
+    }
+    // ---- the bridge district east of the Bowery
+    if (meta?.district) {
+      const crane = (brMats.br_alpha as THREE.MeshStandardMaterial).clone();
+      crane.color.setRGB(2.2, 1.55, 0.2); // the grey lattice tinted to a crane's yellow
+      await this.district.build(url, meta.district, dkit, { ct: std, ct_glow: glow, br_alpha: brMats.br_alpha, crane_alpha: crane }, dtex)
+        .catch((e) => console.warn("chinatown district didn't build", e));
     }
     // ---- the CPU copies of the geometry go once uploaded; count what this costs
     const seen = new Set<THREE.BufferGeometry>();
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!m.geometry || seen.has(m.geometry)) return;
+      if (!m.geometry || seen.has(m.geometry) || o.name.startsWith("ct_district")) return;
       seen.add(m.geometry);
       for (const a of Object.values(m.geometry.attributes)) this.stats.geometryBytes += (a as THREE.BufferAttribute).array.byteLength;
       if (m.geometry.index) this.stats.geometryBytes += m.geometry.index.array.byteLength;
@@ -364,7 +416,50 @@ export class Chinatown {
     this.uSwayString.value.x = t;
     const under = cam.y < -1;
     this.bridge.visible = !under;
+    this.district.root.visible = !under;
     const near = !under && Math.hypot(cam.x - this.centre.x, cam.z - this.centre.z) < 1100 + Math.max(0, cam.y) * 2;
-    for (const c of this.root.children) if (c !== this.bridge) c.visible = near;
+    for (const c of this.root.children) if (c !== this.bridge && c !== this.district.root) c.visible = near;
+    if (this.trains && !under) this.moveTrains(t);
+    if (this.traffic && !under) this.moveTraffic(t);
+  }
+
+  /** cars in four lanes (two each way), each its own speed; hidden where the roadway meets the plaza */
+  private moveTraffic(time: number) {
+    const T = this.traffic!, span = T.end + 80;
+    for (let i = 0; i < T.n; i++) {
+      const lane = i % 4, dir = lane < 2 ? 1 : -1, v = 12 + ((i * 7) % 5) * 1.3;
+      const d = ((time * v + i * 97.3) % span) - 40;
+      const t = dir > 0 ? d : T.end - d;
+      const on = t > 6 && t < T.end - 6;
+      const y = T.road(t), slope = (T.road(t + 1) - T.road(t - 1)) / 2;
+      this.tq.setFromAxisAngle(this.yAxis, dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      this.tq2.setFromAxisAngle(this.zAxis, Math.atan(slope));
+      this.tq.premultiply(this.tq2);
+      this.tp.set(t, y + 0.02, [-5.25, -1.75, 1.75, 5.25][lane]);
+      this.ts.setScalar(on ? 1 : 0);
+      this.tm.compose(this.tp, this.tq, this.ts);
+      for (const m of T.meshes) m.setMatrixAt(i, this.tm);
+    }
+    for (const m of T.meshes) m.instanceMatrix.needsUpdate = true;
+  }
+
+  /** the two trains: 8 cars each, 14 m/s, a gap between runs; cars off the deck are hidden (scale 0) */
+  private moveTrains(time: number) {
+    const T = this.trains!, len = T.t1 - T.t0, CAR = 18.6, cycle = len + 8 * CAR + 400;
+    for (let k = 0; k < 2; k++) {
+      const head = ((time * 14 + k * cycle * 0.5) % cycle) - 8 * CAR;
+      for (let c = 0; c < 8; c++) {
+        const d = head + 8 * CAR - c * CAR;                      // distance along the run of this car's centre
+        const t = k === 0 ? T.t0 + d : T.t1 - d;
+        const on = t > T.t0 + 9.3 && t < T.t1 - 9.3;
+        const y = T.deckY(t), slope = (T.deckY(t + 1) - T.deckY(t - 1)) / 2;
+        this.tp.set(t, y, k === 0 ? -11.5 : 11.5);
+        this.tq.setFromEuler(this.te.set(0, 0, Math.atan(slope)));
+        this.ts.setScalar(on ? 1 : 0);
+        this.tm.compose(this.tp, this.tq, this.ts);
+        for (const m of T.meshes) m.setMatrixAt(k * 8 + c, this.tm);
+      }
+    }
+    for (const m of T.meshes) m.instanceMatrix.needsUpdate = true;
   }
 }

@@ -19,7 +19,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { CityData, Style } from "../world/data";
 import type { FarIn, FarOut, FarTile } from "./farCity.worker";
 import { projLL } from "./farData";
-import { isModelled } from "../world/modelled";
+import { isModelled, DISTRICT_ZONE } from "../world/modelled";
 
 const GATE_MARGIN = 30; // buildings.ts shows a chunk when any of it is within the draw distance of the focus (the leaf, a few metres from the camera)
 const STYLE_TYPE: Record<Style, number> = { tenement: 0, brick: 0, castiron: 1, prewar: 1, civic: 1, deco: 2, modern: 3, glass: 4 };
@@ -200,7 +200,8 @@ export class FarCity {
     if (!res.ok) throw new Error(`far.dat: ${res.status}`);
     const buf = await res.arrayBuffer();
     const corridor = this.corridorSet();
-    const msg: FarIn = { buf, corridor, low: this.low, clear: this.opts.clear };
+    // (the bridge district east of the Bowery is drawn by render/chinatownDistrict.ts: its far buildings stay out)
+    const msg: FarIn = { buf, corridor, low: this.low, clear: this.opts.clear, dropZone: DISTRICT_ZONE };
     const inline = async () => (await import("./farCity.worker")).runFar(msg);
     // ?farinline=1: build on the main thread (headless screenshots run on virtual time, which workers don't follow)
     const forceInline = typeof location !== "undefined" && new URLSearchParams(location.search).get("farinline") === "1";

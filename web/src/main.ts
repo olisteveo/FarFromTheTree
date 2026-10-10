@@ -279,6 +279,9 @@ const SHOWCASE: number[][] = [
   [-930, 5, 2085, -119, 10],    // the arch and colonnade at Canal St
   [700, 7, 6679, -90, -5],      // Times Square, packed solid
   [760, 9, 7505, 21, -2],       // the parade and its turkey
+  [-930, 32, 2095, -128, -4],   // over the Bowery: the arch, the bridge approach and its tower
+  [-1250, 46, 1790, -128, -3],  // beside the bridge deck: traffic, the river, the Brooklyn Bridge
+  [-600, 45, 2160, -120, -10],  // over Chinatown's roofs toward the bridge
 ];
 let showcase = !freeCam && !params.get("at") && !params.get("sub") && !params.get("replay") && params.get("fly") !== "1" && params.get("showcase") !== "0";
 let showT = 0, showYaw = 0, lastView = -1;

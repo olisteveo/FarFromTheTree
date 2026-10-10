@@ -19,6 +19,6 @@ console.log(JSON.stringify(await ev(`
     if (o.geometry && !seenG.has(o.geometry)) { seenG.add(o.geometry); for (const a of Object.values(o.geometry.attributes)) geo += a.array ? a.array.byteLength : 0; if (o.geometry.index && o.geometry.index.array) geo += o.geometry.index.array.byteLength; }
     for (const m of [].concat(o.material || [])) for (const k in m) { const t = m[k]; if (t && t.isTexture && !seenT.has(t)) { seenT.add(t); const im = t.image; if (im && im.width) tex += im.width * im.height * 4 * (im.depth || 1) * 1.33; } }
   });
-  return { quality: fftt.stage.quality, chinatown: ffttViews.chinatown.stats, sceneGeoMB: +(geo / 1e6).toFixed(1), sceneTexMB: +(tex / 1e6).toFixed(1), gpuGeometries: info.memory.geometries, gpuTextures: info.memory.textures, calls: info.render.calls, tris: info.render.triangles,
+  return { quality: fftt.stage.quality, chinatown: ffttViews.chinatown.stats, district: ffttViews.chinatown.district.stats, sceneGeoMB: +(geo / 1e6).toFixed(1), sceneTexMB: +(tex / 1e6).toFixed(1), gpuGeometries: info.memory.geometries, gpuTextures: info.memory.textures, calls: info.render.calls, tris: info.render.triangles,
     heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1e6).toFixed(0) : null };
 `)));
