@@ -47,6 +47,8 @@ export class Tutorial {
     this.active = force || !seen;
     this.el = document.createElement("div");
     this.el.className = "tutorial";
+    // on a touch screen, tapping the tip box skips the tips
+    this.el.addEventListener("pointerdown", (e) => { if (!document.body.classList.contains("is-touch") || !this.active) return; e.stopPropagation(); e.preventDefault(); this.skip(); });
     root.appendChild(this.el);
   }
 
@@ -78,7 +80,7 @@ export class Tutorial {
     const cur = STEPS[this.i];
     if (this.el.dataset.i !== String(this.i)) {
       this.el.dataset.i = String(this.i);
-      this.el.innerHTML = `<div class="step">${this.i + 1} / ${STEPS.length}</div><div class="text">${cur.html}</div><div class="skip">${key("T")} skip</div>`;
+      this.el.innerHTML = `<div class="step">${this.i + 1} / ${STEPS.length}</div><div class="text">${cur.html}</div><div class="skip">${document.body.classList.contains("is-touch") ? "tap here to skip the tips" : `${key("T")} skip`}</div>`;
     }
     this.el.classList.add("show");
   }
