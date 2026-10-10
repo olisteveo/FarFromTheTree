@@ -2,6 +2,8 @@
 
 **Play it: [farfromthetree.world](https://farfromthetree.world)**
 
+![The title screen: Chinatown, late November](docs/title.png)
+
 Battery Park, late November. Every other leaf in the city has fallen. You're the last one: let go,
 ride the wind uptown through Manhattan and plant your seed in Central Park.
 
