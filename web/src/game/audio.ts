@@ -15,7 +15,16 @@ import { TRAIN } from "../world/underground";
 
 interface Entry { file: string; loop: boolean; gain: number; category: string; duration: number }
 type Bank = Record<string, AudioBuffer>;
-type MusicLayer = "title" | "street" | "roof" | "subway";
+type MusicLayer = "title" | "street" | "roof" | "subway" | "dead" | "planted";
+/** The soundtrack (made with Suno, levelled and trimmed into public/music): a piece per layer, the subway
+ *  two that take turns. They stream (no decoding into memory: phones) and crossfade as you change layer;
+ *  each picks up where it left off when you come back to it, except dying and planting, which start over. */
+const MUSIC_FILES: Record<MusicLayer, string[]> = {
+  title: ["title"], street: ["street"], roof: ["roof"], subway: ["subway_a", "subway_b"], dead: ["dead"], planted: ["planted"],
+};
+interface Track { el: HTMLAudioElement; gain: GainNode | null; quietSince: number }
+/** the soundtrack's level against the city's sounds (the files are levelled to -18 LUFS) */
+const MUSIC_LEVEL = 0.62;
 
 const AMBIENCES = ["amb_harbour", "amb_street", "amb_chinatown", "amb_timessquare", "amb_rooftop", "amb_park", "amb_construction", "amb_tunnel", "amb_station"] as const;
 type Amb = (typeof AMBIENCES)[number];
@@ -44,31 +53,51 @@ export class Audio {
   private wasInVent = false;
   private t = 0;
   private loading: Promise<void> | null = null;
-  // ---- the score (tools/music): layers in time with each other, crossfaded by where you are
+  // ---- the soundtrack: one piece per layer, crossfaded by where you are
   private musicBus!: GainNode;
-  private music = new Map<MusicLayer, GainNode>();
-  private musicT0 = -1;
+  private tracks = new Map<string, Track>();
+  private musicLayer: MusicLayer | null = null;
+  private musicIdx: Partial<Record<MusicLayer, number>> = {};
   /** hold the music (the intro film has its own) */
   musicHold = false;
   private musicRoof = false;
-  /** phones: the score in mono at a low sample rate (four layers decoded in full stereo are ~165 MB) */
+  /** (unused now that the music streams; kept for main.ts) */
   lowMusic = false;
 
-  /** the music files start downloading with the page (decoding has to wait for the first tap or key) */
-  private musicFiles: Promise<{ meta: Record<MusicLayer, { loop: number }>; data: Partial<Record<MusicLayer, Promise<ArrayBuffer>>> } | null>;
   private musicVolume = 1;
+  private primed = false;
 
   constructor(private city: CityData) {
-    this.musicFiles = fetch("./music/music.json").then((r) => r.json()).then((meta) => ({
-      meta,
-      data: Object.fromEntries((["title", "street", "subway", "roof"] as MusicLayer[]).map((n) => [n, fetch(`./music/${n}.mp3`).then((r) => r.arrayBuffer())])),
-    })).catch(() => null);
+    // the theme starts downloading with the page; the rest when first needed
+    for (const [layer, files] of Object.entries(MUSIC_FILES) as [MusicLayer, string[]][]) {
+      for (const f of files) {
+        const el = new window.Audio(`./music/${f}.mp3`);
+        el.preload = layer === "title" ? "auto" : "none";
+        el.loop = files.length === 1;
+        if (files.length > 1) el.addEventListener("ended", () => this.nextInLayer(layer));
+        this.tracks.set(f, { el, gain: null, quietSince: 0 });
+      }
+    }
+  }
+
+  /** a layer with several pieces (the subway): on to the next when one ends */
+  private nextInLayer(layer: MusicLayer) {
+    const files = MUSIC_FILES[layer];
+    this.musicIdx[layer] = ((this.musicIdx[layer] ?? 0) + 1) % files.length;
+    if (this.musicLayer !== layer) return;
+    const t = this.tracks.get(files[this.musicIdx[layer]!])!;
+    t.el.currentTime = 0;
+    t.el.play().catch(() => {});
+  }
+
+  private trackOf(layer: MusicLayer) {
+    return this.tracks.get(MUSIC_FILES[layer][this.musicIdx[layer] ?? 0])!;
   }
 
   /** the music on its own, 0..1 (the pause menu) */
   setMusicVolume(v: number) {
     this.musicVolume = v;
-    if (this.musicBus) this.musicBus.gain.setTargetAtTime(1.25 * v, this.ctx!.currentTime, 0.05);
+    if (this.musicBus) this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * v, this.ctx!.currentTime, 0.05);
   }
 
   /** Call on the first user gesture (browsers only allow sound after one). */
@@ -81,8 +110,9 @@ export class Audio {
   /** everything stops while the game's paused */
   pause(on: boolean) {
     if (!this.ctx) return;
-    if (on) this.ctx.suspend().catch(() => {});
-    else this.ctx.resume().catch(() => {});
+    const t = this.musicLayer ? this.trackOf(this.musicLayer) : null;
+    if (on) { this.ctx.suspend().catch(() => {}); t?.el.pause(); }
+    else { this.ctx.resume().catch(() => {}); t?.el.play().catch(() => {}); }
   }
 
   get running() { return !!this.ctx && this.ctx.state === "running"; }
@@ -91,6 +121,12 @@ export class Audio {
    *  Creates (or resumes) the context and plays one silent sample, which unlocks iOS. */
   unlock() {
     this.start();
+    // phones only let a media element start inside a tap: start and stop each one now, once
+    if (!this.primed) {
+      this.primed = true;
+      const active = this.musicLayer ? this.trackOf(this.musicLayer) : null;
+      for (const t of this.tracks.values()) if (t.el.paused && t !== active) { t.el.play().catch(() => {}); t.el.pause(); }
+    }
     const ctx = this.ctx!;
     if (ctx.state !== "running") ctx.resume().catch(() => {});
     const b = ctx.createBuffer(1, 1, 22050), src = ctx.createBufferSource();
@@ -116,10 +152,13 @@ export class Audio {
     this.worldBus = ctx.createGain(); this.worldBus.connect(this.worldFilter).connect(this.master);
     this.sfxBus = ctx.createGain(); this.sfxBus.connect(this.master);
     // the music sits on top (the city's noise buries strings), with its own volume apart from the sound's
-    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 1.25 * this.musicVolume;
+    this.musicBus = ctx.createGain(); this.musicBus.gain.value = MUSIC_LEVEL * this.musicVolume;
     this.musicBus.connect(comp);
+    for (const t of this.tracks.values()) {
+      t.gain = ctx.createGain(); t.gain.gain.value = 0;
+      ctx.createMediaElementSource(t.el).connect(t.gain).connect(this.musicBus);
+    }
     this.loading = this.load();
-    this.loadMusic();
   }
 
   private async load() {
@@ -188,43 +227,6 @@ export class Audio {
     return { src, panner };
   }
 
-  /** The score's layers: each file is its loop with the first second appended (tools/music/export.py),
-   *  looped from 0.5 s for exactly the loop's length, so it's seamless. All start on one beat grid. */
-  private async loadMusic() {
-    const ctx = this.ctx!;
-    const files = await this.musicFiles;
-    if (!files) return;
-    const meta = files.meta;
-    for (const name of ["title", "street", "subway", "roof"] as MusicLayer[]) {
-      try {
-        let buf = await ctx.decodeAudioData(await files.data[name]!);
-        if (this.lowMusic) buf = this.squash(buf, 22050);
-        const L = meta[name].loop;
-        const src = ctx.createBufferSource();
-        src.buffer = buf; src.loop = true; src.loopStart = 0.5; src.loopEnd = 0.5 + L;
-        const g = ctx.createGain(); g.gain.value = 0;
-        src.connect(g).connect(this.musicBus);
-        const now = ctx.currentTime + 0.05;
-        if (this.musicT0 < 0) this.musicT0 = now;
-        src.start(now, 0.5 + ((now - this.musicT0) % L));
-        this.music.set(name, g);
-      } catch { /* no music: the city's own sound */ }
-    }
-  }
-
-  /** mono at a lower sample rate (the context resamples it on playback) */
-  private squash(b: AudioBuffer, rate: number): AudioBuffer {
-    const n = Math.floor((b.length * rate) / b.sampleRate), out = this.ctx!.createBuffer(1, n, rate), o = out.getChannelData(0);
-    const chans = Array.from({ length: b.numberOfChannels }, (_, i) => b.getChannelData(i)), k = b.sampleRate / rate;
-    for (let i = 0; i < n; i++) {
-      const x = i * k, j = Math.floor(x), f = x - j;
-      let v = 0;
-      for (const c of chans) v += c[j] * (1 - f) + (c[j + 1] ?? c[j]) * f;
-      o[i] = v / chans.length;
-    }
-    return out;
-  }
-
   reset() { this.lastIntegrity = 1; this.lastState = ""; }
 
   update(dt: number, leaf: Glider, cam: { position: { x: number; y: number; z: number }; matrixWorld: { elements: number[] } }, district: string) {
@@ -268,13 +270,26 @@ export class Audio {
       if (!this.musicRoof && lp.y > roofline + 8) this.musicRoof = true;
       else if (this.musicRoof && lp.y < roofline - 3) this.musicRoof = false;
       const layer: MusicLayer | null = this.musicHold ? null
-        : leaf.state === "attached" || leaf.state === "planted" ? "title"
-        : leaf.state === "dead" ? "title"
+        : leaf.state === "attached" ? "title" : leaf.state === "planted" ? "planted" : leaf.state === "dead" ? "dead"
         : under ? "subway" : this.musicRoof ? "roof" : "street";
-      const fast = under || layer === "subway" ? 0.35 : 1.6; // dropping into the subway hits at once
-      for (const [name, g] of this.music) {
-        const lvl = name === layer ? (leaf.state === "dead" ? 0.45 : 1) : 0;
-        g.gain.setTargetAtTime(lvl, now, lvl > 0 && name === "subway" ? 0.25 : fast);
+      if (layer !== this.musicLayer) {
+        this.musicLayer = layer;
+        if (layer) {
+          const t = this.trackOf(layer);
+          if (layer === "dead" || layer === "planted") t.el.currentTime = 0;
+          t.el.preload = "auto";
+          t.el.play().catch(() => {});
+        }
+      }
+      const active = layer ? this.trackOf(layer) : null;
+      const fade = layer === "subway" || layer === "dead" ? 0.35 : 1.2; // dropping into the subway hits at once
+      for (const t of this.tracks.values()) {
+        if (!t.gain) continue;
+        const on = t === active;
+        t.gain.gain.setTargetAtTime(on ? 1 : 0, now, on ? fade : 0.9);
+        // a layer you've left stops once it's faded out (it carries on from there when you come back)
+        if (on) t.quietSince = 0;
+        else if (!t.el.paused) { if (!t.quietSince) t.quietSince = this.t; else if (this.t - t.quietSince > 4) t.el.pause(); }
       }
     }
 
