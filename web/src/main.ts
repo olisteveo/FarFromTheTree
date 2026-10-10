@@ -164,7 +164,7 @@ const blockerView = blockerMeshes(flow.blockers);
 // ---- chinatown (render/chinatown.ts): paifang gates close the festival streets (they replace the stand-in lantern
 // curtains once loaded), lanterns over the streets, neon signs, and the modelled Manhattan Bridge with its arch
 const chinatown = new Chinatown(city, flow.blockers, { quality: stage.quality, festival: blockerView.userData.festival, farCity: LOW ? null : farCity });
-chinatown.load().catch((e) => console.warn("chinatown didn't load", e));
+const chinatownLoaded = chinatown.load().catch((e) => console.warn("chinatown didn't load", e));
 stage.scene.add(chinatown.root);
 // ---- the edge of the corridor: a wall of wind you can see when you get near it
 const edgeWall = new EdgeWall(city);
@@ -175,6 +175,8 @@ stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.
 // mailboxes, baskets, newsstands, carts, bike docks, bus stops, kiosks, sheds, plaza bollards, steam
 // stacks, parked cars. Its colliders are streetFurniture.layout.colliders (not wired into the sim here).
 const streetFurniture = new StreetFurniture(city, { traffic: flow.traffic, life: flow.life, blockers: flow.blockers, quality: stage.quality, layout: flow.streetLayout });
+// people shooting hoops on the bridge district's courts too
+chinatownLoaded.then(() => streetFurniture.addCourtPlayers(chinatown.district.courts));
 stage.scene.add(streetFurniture.root);
 
 // ------------------------------------------------------------------ the start: the last leaf on the last tree

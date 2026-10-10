@@ -16,6 +16,7 @@
 import * as THREE from "three";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { loadParkAssets } from "./centralPark";
+import type { Court } from "./streetLayout";
 
 interface DistrictFile {
   box: { x0: number; x1: number; z0: number; z1: number };
@@ -108,6 +109,9 @@ class Builder {
 
 export class ChinatownDistrict {
   readonly root = new THREE.Group();
+  /** the plazas' basketball courts, as the street's courts are described (render/streetFurniture.ts
+   *  puts players on them): two shooters, one at each hoop, and two or three dribbling about */
+  readonly courts: Court[] = [];
   stats = { buildings: 0, tris: 0, geometryBytes: 0, textureBytes: 0 };
   private low: boolean;
 
@@ -269,6 +273,19 @@ export class ChinatownDistrict {
     };
     if (!this.low && data.props) {
       const pr = data.props;
+      (pr.courts ?? []).forEach(([x, z, a], ci) => {
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const C: Court = { name: "district court", x, z, hw: 15.5, hd: 9.5, yaw: Math.atan2(-sa, ca), fence: 3.4, half: false, site: -1, hoops: [], players: [] };
+        for (const sg of [-1, 1]) C.hoops.push({ x: x + sg * 14.35 * ca, z: z + sg * 14.35 * sa, rot: Math.atan2(-sg * ca, -sg * sa) });
+        const at = (u: number, v: number) => [x + u * ca - v * sa, z + u * sa + v * ca];
+        const n = 4 + (ci % 2);
+        for (let k = 0; k < n; k++) {
+          const hoop = k % 2, sg = hoop === 0 ? -1 : 1;
+          const [px, pz] = k < 2 ? at(sg * 9.6, (k ? 1.5 : -1.2)) : at(sg * (3 + (k % 3) * 2.2), (k % 2 ? 3 : -3.5));
+          C.players.push({ x: px, z: pz, mode: k < 2 ? "shoot" : "dribble", hoop, seed: 50000 + ci * 10 + k });
+        }
+        this.courts.push(C);
+      });
       place("water_tower", towers, undefined, undefined, true);
       // bulkheads: plain brick-dark boxes
       if (bulk.length) {

@@ -24,7 +24,7 @@ import { VEHICLE_SIZE, type Traffic, type VehicleKind } from "../world/traffic";
 import type { StreetLife } from "../world/streetlife";
 import type { Blockers } from "../world/blockers";
 import { loadParkAssets } from "./centralPark";
-import { SIGNAL, streetLayout, type StreetKind, type StreetLayout } from "./streetLayout";
+import { SIGNAL, streetLayout, type StreetKind, type StreetLayout, type Court } from "./streetLayout";
 import type { Quality } from "./stage";
 
 export interface StreetFurnitureOptions {
@@ -212,7 +212,34 @@ export class StreetFurniture {
   private pools?: { placed: Placed; mesh: THREE.InstancedMesh };
   private figures: { placed: Placed; batch: Batch }[] = [];
   private steamPuffs?: { placed: Placed; mesh: THREE.InstancedMesh; mat: THREE.ShaderMaterial };
-  private courtView?: { players: Batch; balls: THREE.InstancedMesh; root: THREE.Group; playerCols: Float32Array };
+  private courtViews: { courts: Court[]; players: Batch; balls: THREE.InstancedMesh; root: THREE.Group; playerCols: Float32Array }[] = [];
+  private standParts: Part[] | null = null;
+  private pendingCourts: Court[][] = [];
+
+  /** more courts to put players on (the bridge district's plazas): their fences and surfaces are drawn elsewhere */
+  addCourtPlayers(courts: Court[]) {
+    if (!courts.length) return;
+    if (!this.standParts) { this.pendingCourts.push(courts); return; }
+    const root = new THREE.Group();
+    root.name = "street:court-players";
+    this.root.add(root);
+    this.courtViews.push({ courts, root, ...this.playersFor(courts, root) });
+  }
+
+  private playersFor(courts: Court[], root: THREE.Group) {
+    const np = courts.reduce((a, c) => a + c.players.length, 0);
+    const players = new Batch(this.standParts!, np, this.opts.quality !== "low", false, true);
+    const kit = [0xd8d8d2, 0x1d1d22, 0xb02a2a, 0x2a4a9a, 0xe0a020, 0x3a6a3a];
+    const playerCols = new Float32Array(np * 3);
+    const col = new THREE.Color();
+    let k = 0;
+    for (const c of courts) for (const p of c.players) col.set(kit[(p.seed * 7 + k++) % kit.length]).toArray(playerCols, (k - 1) * 3);
+    for (const m of players.meshes) { m.name = "street:players"; root.add(m); }
+    const balls = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0xc8551c, roughness: 0.7 }), np);
+    balls.count = 0; balls.frustumCulled = false; balls.castShadow = this.opts.quality !== "low"; balls.name = "street:balls";
+    root.add(balls);
+    return { players, balls, playerCols };
+  }
   private last = new THREE.Vector2(1e9, 1e9);
   private idx: number[] = [];
 
@@ -408,7 +435,9 @@ export class StreetFurniture {
     }
     this.buildFigures(park.parts("person_stand"), park.parts("person_sit"));
     this.buildSteam();
-    this.buildCourts(court, chain, park.parts("person_stand"));
+    this.standParts = park.parts("person_stand");
+    this.buildCourts(court, chain, this.standParts);
+    for (const c of this.pendingCourts.splice(0)) this.addCourtPlayers(c);
     this.last.set(1e9, 1e9);
   }
 
@@ -521,33 +550,28 @@ export class StreetFurniture {
     rail.castShadow = this.opts.quality !== "low";
     root.add(surface, fence, rail);
     // players (jerseys and hoodies) and their balls, moved every frame while a court is near
-    const np = courts.reduce((a, c) => a + c.players.length, 0);
-    const players = new Batch(stand, np, this.opts.quality !== "low", false, true);
-    const kit = [0xd8d8d2, 0x1d1d22, 0xb02a2a, 0x2a4a9a, 0xe0a020, 0x3a6a3a];
-    const playerCols = new Float32Array(np * 3);
-    const col = new THREE.Color();
-    let k = 0;
-    for (const c of courts) for (const p of c.players) col.set(kit[(p.seed * 7 + k++) % kit.length]).toArray(playerCols, (k - 1) * 3);
-    for (const m of players.meshes) { m.name = "street:players"; root.add(m); }
-    const balls = new THREE.InstancedMesh(new THREE.SphereGeometry(0.12, 12, 8), new THREE.MeshStandardMaterial({ color: 0xc8551c, roughness: 0.7 }), np);
-    balls.count = 0; balls.frustumCulled = false; balls.castShadow = this.opts.quality !== "low"; balls.name = "street:balls";
-    root.add(balls);
+    void stand;
     this.root.add(root);
-    this.courtView = { players, balls, root, playerCols };
+    this.courtViews.push({ courts, root, ...this.playersFor(courts, root) });
   }
 
   /** the games: shooters shoot (jump, arc, swish, bounce back), the others dribble about */
   private animateCourts(focus: THREE.Vector3, t: number) {
-    const cv = this.courtView;
-    if (!cv) return;
-    const near = this.layout.courts.some((c) => Math.hypot(c.x - focus.x, c.z - focus.z) < 380);
-    cv.root.visible = near;
+    for (const cv of this.courtViews) this.animateCourtView(cv, focus, t);
+  }
+
+  private animateCourtView(cv: StreetFurniture["courtViews"][number], focus: THREE.Vector3, t: number) {
+    const near = cv.courts.some((c) => Math.hypot(c.x - focus.x, c.z - focus.z) < 380);
+    // (the district's courts have only their players in this group: the fences stay drawn)
+    for (const o of cv.root.children) if (o.name === "street:players" || o.name === "street:balls") o.visible = near;
+    if (cv.root.name !== "street:courts") cv.root.visible = true;
+    else cv.root.visible = near;
     if (!near) return;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     const mats = new Float32Array(16);
     let i = 0, nb = 0;
     const fy = 0.12;
-    for (const c of this.layout.courts) {
+    for (const c of cv.courts) {
       for (const pl of c.players) {
         const hp = c.hoops[pl.hoop];
         const rimX = hp.x + Math.sin(hp.rot) * 0.29, rimZ = hp.z + Math.cos(hp.rot) * 0.29, rimY = fy + 3.05;
