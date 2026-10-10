@@ -220,7 +220,7 @@ export class Stage {
 
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
     this.quality = quality;
-    this.camera.far = quality === "high" ? 16000 : quality === "medium" ? 9000 : 4500;
+    this.camera.far = quality === "high" ? 16000 : quality === "medium" ? 9000 : 1200; // phones: a foggy horizon
     this.camera.updateProjectionMatrix();
     // Phones often give the page only a 16-bit depth buffer: at that precision anything past ~100 m
     // can't tell road from road markings or a facade from its far-city stand-in, and they flash.

@@ -475,7 +475,8 @@ function addBuilding(g: GeoBuilder, city: CityData, b: Building, district: strin
 
 // ------------------------------------------------------------------ the city's buildings
 
-interface Chunk { mesh: THREE.Mesh; cx: number; cz: number; r: number }
+/** mesh is null while a streamed chunk is out of range (low quality frees far chunks' geometry) */
+interface Chunk { mesh: THREE.Mesh | null; cx: number; cz: number; r: number; build?: () => THREE.BufferGeometry | null }
 
 export class BuildingsMesh {
   readonly root = new THREE.Group();
@@ -509,30 +510,47 @@ export class BuildingsMesh {
       const b: Building = { id: -1 - i, poly: s.p, h: s.h, year: s.y, style: st, seed: i * 7919 + 13, s: 0, off: 0, x0: cx, z0: cz, x1: cx, z1: cz, cx, cz, area: Math.abs(ringArea(s.p[0])) };
       put(b, true);
     });
+    // On low quality (phones) the chunks stream: every building is still walked once here (that's
+    // where the roof spots and street fronts for the kit come from), but a chunk's geometry is only
+    // kept while it's near the player and rebuilt when they come back (a whole corridor of detailed
+    // buildings was ~200 MB, which an iPhone tab can't hold).
+    this.stream = tex.quality === "low";
+    this.mat = mat;
     for (const [k, entries] of by) {
-      const g = new GeoBuilder();
-      for (const { list, sky } of entries) for (const b of list) {
-        try {
-          const district = sky ? "midtown" : city.district(b.s).id;
-          addBuilding(g, city, b, district, sky ? [] : this.roofs, sky ? [] : this.fronts);
-        } catch { /* skip a broken footprint */ }
-      }
-      if (!g.v) continue;
-      const geo = g.build();
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      const [cx, cz] = k.split(",").map(Number);
+      const make = (roofs: RoofSpot[], fronts: FrontEdge[]) => {
+        const g = new GeoBuilder();
+        for (const { list, sky } of entries) for (const b of list) {
+          try {
+            const district = sky ? "midtown" : city.district(b.s).id;
+            addBuilding(g, city, b, district, sky ? [] : roofs, sky ? [] : fronts);
+          } catch { /* skip a broken footprint */ }
+        }
+        return g.v ? g.build() : null;
+      };
+      const geo = make(this.roofs, this.fronts);
+      if (!geo) continue;
       const bs = geo.boundingSphere!;
-      this.chunks.push({ mesh, cx: bs.center.x, cz: bs.center.z, r: Math.max(bs.radius, CHUNK * 0.71) });
-      void cx; void cz;
-      this.root.add(mesh);
+      const chunk: Chunk = { mesh: null, cx: bs.center.x, cz: bs.center.z, r: Math.max(bs.radius, CHUNK * 0.71), build: () => make([], []) };
+      this.chunks.push(chunk);
+      void k;
+      if (this.stream) geo.dispose();
+      else this.attach(chunk, geo);
     }
     this.placeRoofKit();
     this.root.add(this.kit.root);
     this.lots = new LotsView(city, this.kit, tex.quality, this.solids);
     this.root.add(this.lots.root);
     loadKitModels().then((parts) => { if (parts) this.kit.useModels(parts); }).catch((e) => console.warn("architecture kit didn't load", e));
+  }
+
+  private stream = false;
+  private mat!: THREE.Material;
+  private attach(c: Chunk, geo: THREE.BufferGeometry) {
+    const mesh = new THREE.Mesh(geo, this.mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    c.mesh = mesh;
+    this.root.add(mesh);
   }
 
   /** Beyond this the far city (farCity.ts) takes over: chunks, kit and clutter all stop here. */
@@ -575,10 +593,18 @@ export class BuildingsMesh {
     }
     if (this.solidsTo && this.flushed < this.solids.length) this.flushSolids();
     const dd = this.drawDistance;
+    let built = 0;
     for (const c of this.chunks) {
-      const d = Math.hypot(c.cx - focus.x, c.cz - focus.z);
-      c.mesh.visible = d - c.r < dd;
-      c.mesh.castShadow = d - c.r < 260; // only nearby blocks throw shadows into the shadow map
+      const d = Math.hypot(c.cx - focus.x, c.cz - focus.z) - c.r;
+      if (this.stream) {
+        // build what's about to come into view (one chunk a frame, nearest first in practice since
+        // you approach them gradually); free what's well behind
+        if (!c.mesh && d < dd + 160 && built < 1 && c.build) { const g = c.build(); if (g) { this.attach(c, g); built++; } }
+        else if (c.mesh && d > dd + 420) { this.root.remove(c.mesh); c.mesh.geometry.dispose(); c.mesh = null; }
+      }
+      if (!c.mesh) continue;
+      c.mesh.visible = d < dd;
+      c.mesh.castShadow = d < 260; // only nearby blocks throw shadows into the shadow map
     }
     this.kit.update(focus);
     this.lots.update(focus);

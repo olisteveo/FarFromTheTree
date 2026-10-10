@@ -95,11 +95,15 @@ const ground = new GroundMesh(city, { skipTree: (x, z) => x > parkBounds.x0 && x
 // frame; the detailed buildings stop at the detail distance and the far versions take over beyond it.
 const farCity = new FarCity(city, stage.sun, stage.hemi, { quality: stage.quality, waterMaterial: ground.water.material as THREE.Material, clear: flow.streetLayout.courts.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hd: c.hd, yaw: c.yaw })) });
 {
-  const detail = stage.quality === "low" ? 380 : stage.quality === "medium" ? 750 : 900;
-  farCity.setDetailDistance(detail);
+  // phones (low) skip the far city: decoding ~92k buildings is a big memory spike an iPhone tab can't
+  // take; they get a foggy November horizon instead (the view and the haze close in, stage.ts)
+  const detail = stage.quality === "low" ? 600 : stage.quality === "medium" ? 750 : 900;
   if ("setDrawDistance" in buildings) (buildings as { setDrawDistance(m: number): void }).setDrawDistance(detail);
-  stage.scene.add(farCity.root);
-  farCity.load().catch((e) => console.warn("far city didn't load", e));
+  if (!LOW) {
+    farCity.setDetailDistance(detail);
+    stage.scene.add(farCity.root);
+    farCity.load().catch((e) => console.warn("far city didn't load", e));
+  }
 }
 // ---- end far city
 const subway = new SubwayMesh(flow.under);
@@ -550,6 +554,29 @@ function advance(seconds: number) {
   const l = leaf;
   return { state: l.state, failure: l.failure, t: +l.time.toFixed(1), s: +city.route.nearest(l.pos.x, l.pos.z).s.toFixed(0), y: +l.pos.y.toFixed(1), lane: l.lane, v: +l.vel.length().toFixed(1), integrity: +l.integrity.toFixed(2) };
 }
+
+// phones: halve (or more) every big texture once it has loaded: GPU memory is what kills an iPhone tab
+function shrinkTextures(max: number) {
+  const seen = new Set<THREE.Texture>();
+  stage.scene.traverse((o) => {
+    const mats = (o as THREE.Mesh).material ? ([] as THREE.Material[]).concat((o as THREE.Mesh).material as THREE.Material) : [];
+    for (const m of mats) for (const k in m) {
+      const t = (m as unknown as Record<string, unknown>)[k] as THREE.Texture | undefined;
+      if (!t || !(t as THREE.Texture).isTexture || seen.has(t)) continue;
+      seen.add(t);
+      const img = t.image as { width?: number; height?: number } | undefined;
+      if (!img || !img.width || !img.height || (t as THREE.DataTexture).isDataTexture || (t as unknown as { isDataArrayTexture?: boolean }).isDataArrayTexture) continue;
+      if (Math.max(img.width, img.height) <= max || !(img instanceof HTMLImageElement || img instanceof HTMLCanvasElement || (typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap))) continue;
+      const k2 = max / Math.max(img.width, img.height);
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(img.width * k2)); c.height = Math.max(1, Math.round(img.height * k2));
+      c.getContext("2d")!.drawImage(img as CanvasImageSource, 0, 0, c.width, c.height);
+      t.image = c;
+      t.needsUpdate = true;
+    }
+  });
+}
+if (LOW) for (const ms of [6000, 15000, 30000]) setTimeout(() => shrinkTextures(512), ms);
 
 // the views, for timing and debugging from the console
 Object.assign(window, { ffttViews: { traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
