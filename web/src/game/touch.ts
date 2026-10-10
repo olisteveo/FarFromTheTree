@@ -34,7 +34,7 @@ export class TouchControls {
 
     // the stick lives just below the leaf (so your thumb never covers it); touch anywhere in the
     // lower part of the screen and it's measured from there
-    const home = () => { this.ox = innerWidth / 2; this.oy = innerHeight * 0.84; this.base.style.left = `${this.ox}px`; this.base.style.top = `${this.oy}px`; };
+    const home = () => { this.ox = innerWidth / 2; this.oy = innerHeight * (innerHeight > innerWidth ? 0.7 : 0.84); this.base.style.left = `${this.ox}px`; this.base.style.top = `${this.oy}px`; };
     home();
     addEventListener("resize", home);
     zone.addEventListener("pointerdown", (e) => {

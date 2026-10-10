@@ -173,4 +173,4 @@ body.is-touch .touch-stick-zone { left: 0; right: 230px; width: auto; bottom: 0;
 body.is-touch .touch-stick { opacity: 0.35; }
 body.is-touch .touch-stick.on { opacity: 1; }
 body.is-touch .minimap { top: calc(70px + env(safe-area-inset-top)); }
-@media (orientation: portrait) { body.is-touch .touch-stick-zone { right: 0; height: 30%; } body.is-touch .tutorial { top: calc(208px + env(safe-area-inset-top)); } }
+@media (orientation: portrait) { body.is-touch .touch-stick-zone { right: 0; bottom: 22%; height: 22%; } body.is-touch .tutorial { top: calc(208px + env(safe-area-inset-top)); } }
