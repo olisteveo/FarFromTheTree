@@ -115,7 +115,7 @@ export class Pilot {
       if (this.mode === "subway" && (u.isBlocked(sub.s + 200) || sub.s > u.end - 200)) {
         let best: Shaft | null = null, bd = 1e9;
         for (const sh of u.shafts) {
-          if (sh.kind === "stairs" && !sh.out) continue; // a way in won't get you out
+          if ((sh.kind === "stairs" || sh.kind === "vent") && !sh.out) continue; // a way in won't get you out
           const ahead = sh.ss - sub.s;
           if (ahead > 8 && ahead < 150 && ahead < bd) { bd = ahead; best = sh; }
         }
@@ -164,7 +164,8 @@ export class Pilot {
       const a = city.route.at(route.s + look);
       tx = a.x; tz = a.z;
       const H = city.canopy(pos.x, pos.z, 16);
-      wantY = this.mode === "roof" ? H + 8 : 4.5 + p.skill * 2;
+      // street flyers keep above the traffic and the parked cars (and below the lamp arms)
+      wantY = this.mode === "roof" ? H + 8 : 5.8 + p.skill * 1.6;
       // ride steam if low
       if (this.mode === "street" && pos.y < wantY - 1.5) {
         for (const st of this.flow.life.steamGrid.around(pos.x, pos.z, 26, [])) {

@@ -5,7 +5,7 @@
  "atlas": "people_atlas.png",
  "vatTexture": {
   "width": 2048,
-  "height": 711,
+  "height": 1249,
   "format": "RGBA16UI",
   "posBits": 12,
   "texel": "x,y,z = position quantised to the mesh's bounds (0..2^posBits-1); w = octahedral normal (x low byte, y high byte)",
@@ -33,361 +33,676 @@
    ],
    [
     67600,
+    20,
+    845
+   ],
+   [
+    84500,
+    20,
+    845
+   ],
+   [
+    101400,
+    16,
+    845
+   ],
+   [
+    114920,
     24,
     1158
    ],
    [
-    95392,
+    142712,
     24,
     1158
    ],
    [
-    123184,
+    170504,
     16,
     1158
    ],
    [
-    141712,
+    189032,
     16,
     1158
    ],
    [
-    160240,
+    207560,
+    20,
+    1158
+   ],
+   [
+    230720,
+    20,
+    1158
+   ],
+   [
+    253880,
     24,
     876
    ],
    [
-    181264,
+    274904,
     24,
     876
    ],
    [
-    202288,
+    295928,
     16,
     876
    ],
    [
-    216304,
+    309944,
     16,
     876
    ],
    [
-    230320,
+    323960,
+    20,
+    876
+   ],
+   [
+    341480,
+    20,
+    876
+   ],
+   [
+    359000,
+    16,
+    876
+   ],
+   [
+    373016,
+    12,
+    876
+   ],
+   [
+    383528,
     24,
     1029
    ],
    [
-    255016,
+    408224,
     24,
     1029
    ],
    [
-    279712,
+    432920,
     16,
     1029
    ],
    [
-    296176,
+    449384,
     16,
     1029
    ],
    [
-    312640,
+    465848,
+    20,
+    1029
+   ],
+   [
+    486428,
+    12,
+    1029
+   ],
+   [
+    498776,
     24,
     1078
    ],
    [
-    338512,
+    524648,
     24,
     1078
    ],
    [
-    364384,
+    550520,
     16,
     1078
    ],
    [
-    381632,
+    567768,
     16,
     1078
    ],
    [
-    398880,
+    585016,
+    20,
+    1078
+   ],
+   [
+    606576,
+    20,
+    1078
+   ],
+   [
+    628136,
+    16,
+    1078
+   ],
+   [
+    645384,
     24,
     940
    ],
    [
-    421440,
+    667944,
     24,
     940
    ],
    [
-    444000,
+    690504,
     16,
     940
    ],
    [
-    459040,
+    705544,
     16,
     940
    ],
    [
-    474080,
+    720584,
+    20,
+    940
+   ],
+   [
+    739384,
+    16,
+    940
+   ],
+   [
+    754424,
+    12,
+    940
+   ],
+   [
+    765704,
     24,
     857
    ],
    [
-    494648,
+    786272,
     24,
     857
    ],
    [
-    515216,
+    806840,
     16,
     857
    ],
    [
-    528928,
+    820552,
     16,
     857
    ],
    [
-    542640,
+    834264,
+    20,
+    857
+   ],
+   [
+    851404,
+    12,
+    857
+   ],
+   [
+    861688,
     24,
     886
    ],
    [
-    563904,
+    882952,
     24,
     886
    ],
    [
-    585168,
+    904216,
     16,
     886
    ],
    [
-    599344,
+    918392,
     16,
     886
    ],
    [
-    613520,
+    932568,
+    20,
+    886
+   ],
+   [
+    950288,
+    12,
+    886
+   ],
+   [
+    960920,
     24,
     1000
    ],
    [
-    637520,
+    984920,
     24,
     1000
    ],
    [
-    661520,
+    1008920,
     16,
     1000
    ],
    [
-    677520,
+    1024920,
     16,
     1000
    ],
    [
-    693520,
+    1040920,
+    20,
+    1000
+   ],
+   [
+    1060920,
+    20,
+    1000
+   ],
+   [
+    1080920,
+    16,
+    1000
+   ],
+   [
+    1096920,
+    12,
+    1000
+   ],
+   [
+    1108920,
     24,
     861
    ],
    [
-    714184,
+    1129584,
     24,
     861
    ],
    [
-    734848,
+    1150248,
     16,
     861
    ],
    [
-    748624,
+    1164024,
     16,
     861
    ],
    [
-    762400,
+    1177800,
+    20,
+    861
+   ],
+   [
+    1195020,
+    20,
+    861
+   ],
+   [
+    1212240,
+    16,
+    861
+   ],
+   [
+    1226016,
+    16,
+    861
+   ],
+   [
+    1239792,
     24,
     943
    ],
    [
-    785032,
+    1262424,
     24,
     943
    ],
    [
-    807664,
+    1285056,
     16,
     943
    ],
    [
-    822752,
+    1300144,
     16,
     943
    ],
    [
-    837840,
+    1315232,
+    20,
+    943
+   ],
+   [
+    1334092,
+    20,
+    943
+   ],
+   [
+    1352952,
+    16,
+    943
+   ],
+   [
+    1368040,
+    12,
+    943
+   ],
+   [
+    1379356,
     24,
     1694
    ],
    [
-    878496,
+    1420012,
     24,
     1694
    ],
    [
-    919152,
+    1460668,
     16,
     1694
    ],
    [
-    946256,
+    1487772,
     16,
     1694
    ],
    [
-    973360,
+    1514876,
     24,
     1186
    ],
    [
-    1001824,
+    1543340,
     24,
     1186
    ],
    [
-    1030288,
+    1571804,
     16,
     1186
    ],
    [
-    1049264,
+    1590780,
     16,
     1186
    ],
    [
-    1068240,
+    1609756,
+    16,
+    1186
+   ],
+   [
+    1628732,
     24,
     1123
    ],
    [
-    1095192,
+    1655684,
     24,
     1123
    ],
    [
-    1122144,
+    1682636,
     16,
     1123
    ],
    [
-    1140112,
+    1700604,
     16,
     1123
    ],
    [
-    1158080,
+    1718572,
+    20,
+    1123
+   ],
+   [
+    1741032,
+    20,
+    1123
+   ],
+   [
+    1763492,
+    16,
+    1123
+   ],
+   [
+    1781460,
     24,
     896
    ],
    [
-    1179584,
+    1802964,
     24,
     896
    ],
    [
-    1201088,
+    1824468,
     16,
     896
    ],
    [
-    1215424,
+    1838804,
     16,
     896
    ],
    [
-    1229760,
+    1853140,
+    20,
+    896
+   ],
+   [
+    1871060,
+    20,
+    896
+   ],
+   [
+    1888980,
+    16,
+    896
+   ],
+   [
+    1903316,
     24,
     917
    ],
    [
-    1251768,
+    1925324,
     24,
     917
    ],
    [
-    1273776,
+    1947332,
     16,
     917
    ],
    [
-    1288448,
+    1962004,
     16,
     917
    ],
    [
-    1303120,
+    1976676,
+    20,
+    917
+   ],
+   [
+    1995016,
+    16,
+    917
+   ],
+   [
+    2009688,
+    12,
+    917
+   ],
+   [
+    2020692,
     24,
     1171
    ],
    [
-    1331224,
+    2048796,
     24,
     1171
    ],
    [
-    1359328,
+    2076900,
     16,
     1171
    ],
    [
-    1378064,
+    2095636,
     16,
     1171
    ],
    [
-    1396800,
+    2114372,
+    24,
+    822
+   ],
+   [
+    2134100,
+    24,
+    822
+   ],
+   [
+    2153828,
+    16,
+    822
+   ],
+   [
+    2166980,
+    16,
+    822
+   ],
+   [
+    2180132,
+    16,
+    822
+   ],
+   [
+    2193284,
+    24,
+    978
+   ],
+   [
+    2216756,
+    24,
+    978
+   ],
+   [
+    2240228,
+    16,
+    978
+   ],
+   [
+    2255876,
+    16,
+    978
+   ],
+   [
+    2271524,
+    24,
+    894
+   ],
+   [
+    2292980,
+    24,
+    894
+   ],
+   [
+    2314436,
+    16,
+    894
+   ],
+   [
+    2328740,
+    16,
+    894
+   ],
+   [
+    2343044,
+    20,
+    894
+   ],
+   [
+    2360924,
+    24,
+    1143
+   ],
+   [
+    2388356,
+    24,
+    1143
+   ],
+   [
+    2415788,
+    16,
+    1143
+   ],
+   [
+    2434076,
+    16,
+    1143
+   ],
+   [
+    2452364,
+    20,
+    1143
+   ],
+   [
+    2475224,
+    20,
+    1143
+   ],
+   [
+    2498084,
     24,
     351
    ],
    [
-    1405224,
+    2506508,
     16,
     351
    ],
    [
-    1410840,
+    2512124,
     24,
     351
    ],
    [
-    1419264,
+    2520548,
     16,
     351
    ],
    [
-    1424880,
+    2526164,
     24,
     351
    ],
    [
-    1433304,
+    2534588,
     16,
     351
    ],
    [
-    1438920,
+    2540204,
     24,
     423
    ],
    [
-    1449072,
+    2550356,
     16,
     423
    ]
@@ -416,6 +731,38 @@
    "frames": 16,
    "seconds": 1.1,
    "loop": false
+  }
+ },
+ "extraClips": {
+  "brisk": {
+   "frames": 20,
+   "seconds": 0.98,
+   "loop": true
+  },
+  "jog": {
+   "frames": 16,
+   "seconds": 0.66,
+   "loop": true
+  },
+  "talk": {
+   "frames": 20,
+   "seconds": 3.6,
+   "loop": true
+  },
+  "hail": {
+   "frames": 16,
+   "seconds": 3.2,
+   "loop": true
+  },
+  "sit": {
+   "frames": 12,
+   "seconds": 4.4,
+   "loop": true
+  },
+  "cheer": {
+   "frames": 16,
+   "seconds": 3.0,
+   "loop": true
   }
  },
  "dogClips": {
@@ -452,13 +799,13 @@
    "verts": 845,
    "boundsMin": [
     -0.4404832422733307,
-    -0.11654718220233917,
-    -0.5513752102851868
+    -0.12047190964221954,
+    -0.6123250722885132
    ],
    "boundsMax": [
-    0.4335300028324127,
-    1.8007874488830566,
-    0.62857586145401
+    0.4871552288532257,
+    2.1303813457489014,
+    0.6605338454246521
    ],
    "anchors": {
     "handL": 460,
@@ -492,6 +839,27 @@
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "brisk": {
+     "base": 67600,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.5429
+    },
+    "talk": {
+     "base": 84500,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "hail": {
+     "base": 101400,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.2,
+     "stride": 0.0
     }
    }
   },
@@ -514,9 +882,9 @@
    "leadSide": -1,
    "verts": 1158,
    "boundsMin": [
-    -0.38998401165008545,
-    -0.10843075811862946,
-    -0.5126091241836548
+    -0.3979732096195221,
+    -0.11208170652389526,
+    -0.5715810060501099
    ],
    "boundsMax": [
     0.4265011250972748,
@@ -529,31 +897,45 @@
    },
    "clips": {
     "walk": {
-     "base": 67600,
+     "base": 114920,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.248
     },
     "stroll": {
-     "base": 95392,
+     "base": 142712,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.9792
     },
     "idle": {
-     "base": 123184,
+     "base": 170504,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 141712,
+     "base": 189032,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
+     "stride": 0.0
+    },
+    "brisk": {
+     "base": 207560,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.44
+    },
+    "talk": {
+     "base": 230720,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
      "stride": 0.0
     }
    }
@@ -577,14 +959,14 @@
    "leadSide": 1,
    "verts": 876,
    "boundsMin": [
-    -0.45558813214302063,
-    -0.11925500631332397,
-    -0.6048667430877686
+    -0.6080580949783325,
+    -0.12326887995004654,
+    -0.669207751750946
    ],
    "boundsMax": [
-    0.45558813214302063,
-    1.8753962516784668,
-    0.643179714679718
+    0.5616950988769531,
+    2.122480630874634,
+    0.6592017412185669
    ],
    "anchors": {
     "handL": 526,
@@ -592,34 +974,63 @@
    },
    "clips": {
     "walk": {
-     "base": 160240,
+     "base": 253880,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.3669
     },
     "stroll": {
-     "base": 181264,
+     "base": 274904,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 1.0725
     },
     "idle": {
-     "base": 202288,
+     "base": 295928,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 216304,
+     "base": 309944,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "brisk": {
+     "base": 323960,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.5771
+    },
+    "talk": {
+     "base": 341480,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "cheer": {
+     "base": 359000,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 373016,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.4327
   },
   {
    "name": "texter",
@@ -645,7 +1056,7 @@
     -0.5028323531150818
    ],
    "boundsMax": [
-    0.38055190443992615,
+    0.3886437714099884,
     1.6406413316726685,
     0.5696122646331787
    ],
@@ -655,34 +1066,49 @@
    },
    "clips": {
     "walk": {
-     "base": 230320,
+     "base": 383528,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.2183
     },
     "stroll": {
-     "base": 255016,
+     "base": 408224,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.9559
     },
     "idle": {
-     "base": 279712,
+     "base": 432920,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 296176,
+     "base": 449384,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "talk": {
+     "base": 465848,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 486428,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.3858
   },
   {
    "name": "shopper",
@@ -704,9 +1130,9 @@
    "leadSide": -1,
    "verts": 1078,
    "boundsMin": [
-    -0.6451588869094849,
-    -0.11045879870653152,
-    -0.5625805854797363
+    -0.6466470956802368,
+    -0.11417923122644424,
+    -0.6223621964454651
    ],
    "boundsMax": [
     0.6560162901878357,
@@ -719,31 +1145,52 @@
    },
    "clips": {
     "walk": {
-     "base": 312640,
+     "base": 498776,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.2703
     },
     "stroll": {
-     "base": 338512,
+     "base": 524648,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.9967
     },
     "idle": {
-     "base": 364384,
+     "base": 550520,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 381632,
+     "base": 567768,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
+     "stride": 0.0
+    },
+    "brisk": {
+     "base": 585016,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.4657
+    },
+    "talk": {
+     "base": 606576,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "hail": {
+     "base": 628136,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.2,
      "stride": 0.0
     }
    }
@@ -767,14 +1214,14 @@
    "leadSide": 1,
    "verts": 940,
    "boundsMin": [
-    -0.4457733631134033,
-    -0.11519350856542587,
-    -0.5533884167671204
+    -0.5880131125450134,
+    -0.11907358467578888,
+    -0.6055342555046082
    ],
    "boundsMax": [
-    0.4457733631134033,
-    1.7888795137405396,
-    0.6212731003761292
+    0.5432420969009399,
+    2.0535476207733154,
+    0.6365784406661987
    ],
    "anchors": {
     "handL": 512,
@@ -782,34 +1229,56 @@
    },
    "clips": {
     "walk": {
-     "base": 398880,
+     "base": 645384,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.3223
     },
     "stroll": {
-     "base": 421440,
+     "base": 667944,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 1.0375
     },
     "idle": {
-     "base": 444000,
+     "base": 690504,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 459040,
+     "base": 705544,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "brisk": {
+     "base": 720584,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.5257
+    },
+    "cheer": {
+     "base": 739384,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 754424,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.4186
   },
   {
    "name": "gent",
@@ -829,11 +1298,11 @@
    "verts": 857,
    "boundsMin": [
     -0.4079160690307617,
-    -0.11113490909337997,
-    -0.47274187207221985
+    -0.11184260249137878,
+    -0.47274190187454224
    ],
    "boundsMax": [
-    0.4079160690307617,
+    0.42154815793037415,
     1.7458964586257935,
     0.6030610203742981
    ],
@@ -843,34 +1312,49 @@
    },
    "clips": {
     "walk": {
-     "base": 474080,
+     "base": 765704,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.1244
     },
     "stroll": {
-     "base": 494648,
+     "base": 786272,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.8822
     },
     "idle": {
-     "base": 515216,
+     "base": 806840,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 528928,
+     "base": 820552,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "talk": {
+     "base": 834264,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 851404,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.4046
   },
   {
    "name": "nana",
@@ -891,12 +1375,12 @@
    "leadSide": 1,
    "verts": 886,
    "boundsMin": [
-    -0.6016239523887634,
-    -0.1030225083231926,
-    -0.473389595746994
+    -0.6033881902694702,
+    -0.10366933792829514,
+    -0.4733896255493164
    ],
    "boundsMax": [
-    0.37004539370536804,
+    0.3799353539943695,
     1.7954908609390259,
     0.8787417411804199
    ],
@@ -906,34 +1390,49 @@
    },
    "clips": {
     "walk": {
-     "base": 542640,
+     "base": 861688,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.0459
     },
     "stroll": {
-     "base": 563904,
+     "base": 882952,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.8207
     },
     "idle": {
-     "base": 585168,
+     "base": 904216,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 599344,
+     "base": 918392,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "talk": {
+     "base": 932568,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 950288,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.3765
   },
   {
    "name": "student",
@@ -954,14 +1453,14 @@
    "leadSide": 1,
    "verts": 1000,
    "boundsMin": [
-    -0.3808007538318634,
-    -0.10707871615886688,
-    -0.5088668465614319
+    -0.5353196859359741,
+    -0.11068330705165863,
+    -0.5647904276847839
    ],
    "boundsMax": [
-    0.3808007538318634,
-    1.6607412099838257,
-    0.5769091248512268
+    0.49373242259025574,
+    1.9157050848007202,
+    0.5912505984306335
    ],
    "anchors": {
     "handL": 448,
@@ -969,34 +1468,63 @@
    },
    "clips": {
     "walk": {
-     "base": 613520,
+     "base": 960920,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.2331
     },
     "stroll": {
-     "base": 637520,
+     "base": 984920,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.9675
     },
     "idle": {
-     "base": 661520,
+     "base": 1008920,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 677520,
+     "base": 1024920,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "brisk": {
+     "base": 1040920,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.4229
+    },
+    "talk": {
+     "base": 1060920,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "cheer": {
+     "base": 1080920,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 1096920,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.3905
   },
   {
    "name": "banker",
@@ -1017,14 +1545,14 @@
    "leadSide": 1,
    "verts": 861,
    "boundsMin": [
-    -0.45797833800315857,
-    -0.12060925364494324,
-    -0.5695633292198181
+    -0.6147395968437195,
+    -0.12466725707054138,
+    -0.6326972842216492
    ],
    "boundsMax": [
-    0.45797833800315857,
-    1.8608170747756958,
-    0.6504818201065063
+    0.5678460597991943,
+    2.202410936355591,
+    0.7239501476287842
    ],
    "anchors": {
     "handL": 448,
@@ -1032,31 +1560,59 @@
    },
    "clips": {
     "walk": {
-     "base": 693520,
+     "base": 1108920,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.3817
     },
     "stroll": {
-     "base": 714184,
+     "base": 1129584,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 1.0841
     },
     "idle": {
-     "base": 734848,
+     "base": 1150248,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 748624,
+     "base": 1164024,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
+     "stride": 0.0
+    },
+    "brisk": {
+     "base": 1177800,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.5943
+    },
+    "talk": {
+     "base": 1195020,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "hail": {
+     "base": 1212240,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.2,
+     "stride": 0.0
+    },
+    "cheer": {
+     "base": 1226016,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
      "stride": 0.0
     }
    }
@@ -1078,14 +1634,14 @@
    "leadSide": 1,
    "verts": 943,
    "boundsMin": [
-    -0.4193219542503357,
-    -0.11383970081806183,
-    -0.5392547249794006
+    -0.5813312530517578,
+    -0.11767524480819702,
+    -0.5987435579299927
    ],
    "boundsMax": [
-    0.4193219542503357,
-    1.7737125158309937,
-    0.6139706969261169
+    0.537090539932251,
+    2.030569553375244,
+    0.6290369033813477
    ],
    "anchors": {
     "handL": 448,
@@ -1093,34 +1649,63 @@
    },
    "clips": {
     "walk": {
-     "base": 762400,
+     "base": 1239792,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.3074
     },
     "stroll": {
-     "base": 785032,
+     "base": 1262424,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 1.0258
     },
     "idle": {
-     "base": 807664,
+     "base": 1285056,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 822752,
+     "base": 1300144,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "brisk": {
+     "base": 1315232,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.5086
+    },
+    "talk": {
+     "base": 1334092,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "cheer": {
+     "base": 1352952,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 1368040,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.414
   },
   {
    "name": "parent_kid",
@@ -1156,28 +1741,28 @@
    },
    "clips": {
     "walk": {
-     "base": 837840,
+     "base": 1379356,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.2629
     },
     "stroll": {
-     "base": 878496,
+     "base": 1420012,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.9909
     },
     "idle": {
-     "base": 919152,
+     "base": 1460668,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 946256,
+     "base": 1487772,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
@@ -1204,14 +1789,14 @@
    "leadSide": 1,
    "verts": 1186,
    "boundsMin": [
-    -0.30882495641708374,
+    -0.4099302589893341,
     -0.08751627057790756,
     -0.4541274905204773
    ],
    "boundsMax": [
-    0.31801334023475647,
-    1.32047438621521,
-    0.3951917290687561
+    0.36194995045661926,
+    1.337725281715393,
+    0.4109756648540497
    ],
    "anchors": {
     "handL": 524,
@@ -1219,31 +1804,38 @@
    },
    "clips": {
     "walk": {
-     "base": 973360,
+     "base": 1514876,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 0.9963
     },
     "stroll": {
-     "base": 1001824,
+     "base": 1543340,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.8133
     },
     "idle": {
-     "base": 1030288,
+     "base": 1571804,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 1049264,
+     "base": 1590780,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
+     "stride": 0.0
+    },
+    "cheer": {
+     "base": 1609756,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
      "stride": 0.0
     }
    }
@@ -1268,13 +1860,13 @@
    "verts": 1123,
    "boundsMin": [
     -0.4148082733154297,
-    -0.11113515496253967,
-    -0.5658329725265503
+    -0.11487843841314316,
+    -0.6259652376174927
    ],
    "boundsMax": [
-    0.39485740661621094,
-    1.7207722663879395,
-    0.5987997651100159
+    0.4523899257183075,
+    2.033367395401001,
+    0.6310037970542908
    ],
    "anchors": {
     "handL": 508,
@@ -1282,31 +1874,52 @@
    },
    "clips": {
     "walk": {
-     "base": 1068240,
+     "base": 1628732,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.2777
     },
     "stroll": {
-     "base": 1095192,
+     "base": 1655684,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 1.0025
     },
     "idle": {
-     "base": 1122144,
+     "base": 1682636,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 1140112,
+     "base": 1700604,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
+     "stride": 0.0
+    },
+    "brisk": {
+     "base": 1718572,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.4743
+    },
+    "talk": {
+     "base": 1741032,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "hail": {
+     "base": 1763492,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.2,
      "stride": 0.0
     }
    }
@@ -1328,14 +1941,14 @@
    "leadSide": 1,
    "verts": 896,
    "boundsMin": [
-    -0.4393085837364197,
-    -0.11722402274608612,
-    -0.5951095819473267
+    -0.598035454750061,
+    -0.12117120623588562,
+    -0.658398449420929
    ],
    "boundsMax": [
-    0.4393085837364197,
-    1.8499598503112793,
-    0.6322265863418579
+    0.5524685978889465,
+    2.0880141258239746,
+    0.6478902697563171
    ],
    "anchors": {
     "handL": 496,
@@ -1343,31 +1956,52 @@
    },
    "clips": {
     "walk": {
-     "base": 1158080,
+     "base": 1781460,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.3446
     },
     "stroll": {
-     "base": 1179584,
+     "base": 1802964,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 1.055
     },
     "idle": {
-     "base": 1201088,
+     "base": 1824468,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 1215424,
+     "base": 1838804,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
+     "stride": 0.0
+    },
+    "brisk": {
+     "base": 1853140,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.5514
+    },
+    "talk": {
+     "base": 1871060,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "cheer": {
+     "base": 1888980,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
      "stride": 0.0
     }
    }
@@ -1392,14 +2026,14 @@
    "leadSide": 1,
    "verts": 917,
    "boundsMin": [
-    -0.42000919580459595,
+    -0.5846719145774841,
     -0.11451660841703415,
     -0.5422312617301941
    ],
    "boundsMax": [
-    0.42000919580459595,
-    1.7786040306091309,
-    0.6176216006278992
+    0.5401661396026611,
+    2.042057752609253,
+    0.6328077912330627
    ],
    "anchors": {
     "handL": 448,
@@ -1407,34 +2041,56 @@
    },
    "clips": {
     "walk": {
-     "base": 1229760,
+     "base": 1903316,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.3149
     },
     "stroll": {
-     "base": 1251768,
+     "base": 1925324,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 1.0317
     },
     "idle": {
-     "base": 1273776,
+     "base": 1947332,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 1288448,
+     "base": 1962004,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
      "stride": 0.0
+    },
+    "talk": {
+     "base": 1976676,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "cheer": {
+     "base": 1995016,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.0,
+     "stride": 0.0
+    },
+    "sit": {
+     "base": 2009688,
+     "frames": 12,
+     "loop": true,
+     "seconds": 4.4,
+     "stride": 0.0
     }
-   }
+   },
+   "seat": 0.4163
   },
   {
    "name": "stroller",
@@ -1470,31 +2126,307 @@
    },
    "clips": {
     "walk": {
-     "base": 1303120,
+     "base": 2020692,
      "frames": 24,
      "loop": true,
      "seconds": 1.1,
      "stride": 1.2554
     },
     "stroll": {
-     "base": 1331224,
+     "base": 2048796,
      "frames": 24,
      "loop": true,
      "seconds": 1.35,
      "stride": 0.985
     },
     "idle": {
-     "base": 1359328,
+     "base": 2076900,
      "frames": 16,
      "loop": true,
      "seconds": 3.6,
      "stride": 0.0
     },
     "flinch": {
-     "base": 1378064,
+     "base": 2095636,
      "frames": 16,
      "loop": false,
      "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "runner",
+   "height": 1.72,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 2,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [],
+   "leadSide": 1,
+   "verts": 822,
+   "boundsMin": [
+    -0.39485740661621094,
+    -0.11113478988409042,
+    -0.5247734189033508
+   ],
+   "boundsMax": [
+    0.39485740661621094,
+    1.7531025409698486,
+    0.5987997651100159
+   ],
+   "anchors": {
+    "handL": 448,
+    "handR": 536
+   },
+   "clips": {
+    "walk": {
+     "base": 2114372,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2777
+    },
+    "stroll": {
+     "base": 2134100,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0025
+    },
+    "idle": {
+     "base": 2153828,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 2166980,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    },
+    "jog": {
+     "base": 2180132,
+     "frames": 16,
+     "loop": true,
+     "seconds": 0.66,
+     "stride": 1.8183
+    }
+   }
+  },
+  {
+   "name": "dolly",
+   "height": 1.8,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 5,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": false,
+   "props": [
+    "dolly"
+   ],
+   "leadSide": 1,
+   "verts": 978,
+   "boundsMin": [
+    -0.4486575424671173,
+    -0.11654740571975708,
+    -0.591813862323761
+   ],
+   "boundsMax": [
+    0.4486575424671173,
+    1.8089804649353027,
+    1.1532429456710815
+   ],
+   "anchors": {
+    "handL": 496,
+    "handR": 584
+   },
+   "clips": {
+    "walk": {
+     "base": 2193284,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.3371
+    },
+    "stroll": {
+     "base": 2216756,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0491
+    },
+    "idle": {
+     "base": 2240228,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 2255876,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "vendor",
+   "height": 1.74,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 11,
+   "faceGroup": "m",
+   "kidFace": -1,
+   "hat": true,
+   "scarf": false,
+   "coatTint": true,
+   "props": [],
+   "leadSide": 1,
+   "verts": 894,
+   "boundsMin": [
+    -0.4172670841217041,
+    -0.1124870777130127,
+    -0.5331462025642395
+   ],
+   "boundsMax": [
+    0.42557492852211,
+    1.7488372325897217,
+    0.60666823387146
+   ],
+   "anchors": {
+    "handL": 512,
+    "handR": 616
+   },
+   "clips": {
+    "walk": {
+     "base": 2271524,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2926
+    },
+    "stroll": {
+     "base": 2292980,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 1.0142
+    },
+    "idle": {
+     "base": 2314436,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 2328740,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    },
+    "talk": {
+     "base": 2343044,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    }
+   }
+  },
+  {
+   "name": "umbrella",
+   "height": 1.7,
+   "kid": false,
+   "pair": false,
+   "old": false,
+   "stroller": false,
+   "face": 3,
+   "faceGroup": "f",
+   "kidFace": -1,
+   "hat": false,
+   "scarf": true,
+   "coatTint": false,
+   "props": [
+    "umbrella.R"
+   ],
+   "leadSide": 1,
+   "verts": 1143,
+   "boundsMin": [
+    -0.610280454158783,
+    -0.11347992718219757,
+    -0.6187589764595032
+   ],
+   "boundsMax": [
+    0.4149850606918335,
+    2.0092499256134033,
+    0.9478875398635864
+   ],
+   "anchors": {
+    "handL": 508,
+    "handR": 596
+   },
+   "clips": {
+    "walk": {
+     "base": 2360924,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.1,
+     "stride": 1.2629
+    },
+    "stroll": {
+     "base": 2388356,
+     "frames": 24,
+     "loop": true,
+     "seconds": 1.35,
+     "stride": 0.9909
+    },
+    "idle": {
+     "base": 2415788,
+     "frames": 16,
+     "loop": true,
+     "seconds": 3.6,
+     "stride": 0.0
+    },
+    "flinch": {
+     "base": 2434076,
+     "frames": 16,
+     "loop": false,
+     "seconds": 1.1,
+     "stride": 0.0
+    },
+    "brisk": {
+     "base": 2452364,
+     "frames": 20,
+     "loop": true,
+     "seconds": 0.98,
+     "stride": 1.4571
+    },
+    "talk": {
+     "base": 2475224,
+     "frames": 20,
+     "loop": true,
+     "seconds": 3.6,
      "stride": 0.0
     }
    }
@@ -1523,14 +2455,14 @@
    },
    "clips": {
     "walk": {
-     "base": 1396800,
+     "base": 2498084,
      "frames": 24,
      "loop": true,
      "seconds": 0.55,
      "stride": 0.8
     },
     "idle": {
-     "base": 1405224,
+     "base": 2506508,
      "frames": 16,
      "loop": true,
      "seconds": 3.0,
@@ -1560,14 +2492,14 @@
    },
    "clips": {
     "walk": {
-     "base": 1410840,
+     "base": 2512124,
      "frames": 24,
      "loop": true,
      "seconds": 0.55,
      "stride": 0.4
     },
     "idle": {
-     "base": 1419264,
+     "base": 2520548,
      "frames": 16,
      "loop": true,
      "seconds": 3.0,
@@ -1597,14 +2529,14 @@
    },
    "clips": {
     "walk": {
-     "base": 1424880,
+     "base": 2526164,
      "frames": 24,
      "loop": true,
      "seconds": 0.55,
      "stride": 0.34
     },
     "idle": {
-     "base": 1433304,
+     "base": 2534588,
      "frames": 16,
      "loop": true,
      "seconds": 3.0,
@@ -1634,14 +2566,14 @@
    },
    "clips": {
     "walk": {
-     "base": 1438920,
+     "base": 2540204,
      "frames": 24,
      "loop": true,
      "seconds": 0.55,
      "stride": 0.42
     },
     "idle": {
-     "base": 1449072,
+     "base": 2550356,
      "frames": 16,
      "loop": true,
      "seconds": 3.0,

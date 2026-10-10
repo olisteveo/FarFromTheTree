@@ -1,104 +1,228 @@
-// Real building footprints extruded into textured buildings: facades from the style
-// arrays, storefronts on the ground floor, cornices, setbacks on tall prewar and deco
-// towers, parapets, and roofs with clutter (water towers, bulkheads, HVAC).
+// Real building footprints extruded into textured buildings. Walls sample Tesseract-designed
+// facade layers (facades.ts) with a per-building variant, per-band offsets, per-building tint
+// (brick / stone / paint; trim and glass stay their own colour), grime toward the street and
+// rain streaks, and a room behind every clear window pane (interior mapping). Walls that
+// face a neighbour become blank party walls; only street fronts get shops, cornices and the
+// kit (fire escapes, brackets, awnings, canopies, blade signs: architectureKit.ts). Roofs get
+// tar / gravel / membrane and real rooftop clutter. Everything is chunked and culled by
+// distance; setDrawDistance() hands the far distance to farCity.ts.
 
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Building, CityData, Poly, Style } from "../world/data";
 import { ringArea, inPoly } from "../world/data";
-import { SHOP_LAYER, SHOP_W, STYLE_LAYER, TILES, TINTS, LAYERS, type FacadeTextures, type Storefront } from "./facades";
+import type { Facades, FacadeProp } from "../world/facades";
+import {
+  FACADE_LAYERS, LAYERS, PARTY_LAYERS, ROOF_LAYERS, SHOP_LAYERS, SHOP_W, STYLE_LAYERS, TILES, TINTS,
+  type FacadeTextures, type Storefront, type FacadeQuality,
+} from "./facades";
+import { ArchitectureKit } from "./architectureKit";
+import { facadeRegistry } from "./facadeProps";
+import { loadKitModels } from "./architectureModels";
+import { LotsView } from "./architectureLots";
 
 const CHUNK = 280;
 
 // ------------------------------------------------------------------ material
 
+/** debug view for the facade shader: 0 off, 1 alpha (what each pixel is), 2 roughness, 3 normal xy, 4 emissive */
+export const DEBUG = { value: 0 };
+/** The detail edge: buildings fade out over the last FADE metres before the draw distance with an ordered
+ *  4x4 dither (pixel discarded when bayer(gl_FragCoord) < fade). farCity.ts can draw the complement
+ *  (keep a pixel only when bayer < fade) for a seamless hand-over. */
+export const DRAW_EDGE = { value: new THREE.Vector2(900, 60) };
+
 export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, envMapIntensity: 1 });
-  const grid: THREE.Vector2[] = [];
-  for (let i = 0; i < LAYERS; i++) grid.push(new THREE.Vector2(1, 1));
-  for (const [st, layer] of Object.entries(STYLE_LAYER)) grid[layer].set(TILES[st as Style].bays, TILES[st as Style].floors);
-  for (let i = 8; i < LAYERS; i++) grid[i].set(6, 1);
+  // per layer: bays, floors, reflectivity, room depth
+  const grid: THREE.Vector4[] = FACADE_LAYERS.map((l) => new THREE.Vector4(l.bays, l.floors, /^glass/.test(l.name) ? 1 : 0, /^glass|^modern/.test(l.name) ? 6 : 4));
+  const uAlb = { value: tex.albedo }, uNor = { value: tex.normal };
+  tex.ready.then(() => { uAlb.value = tex.albedo; uNor.value = tex.normal; });
+  const interior = tex.quality !== "low";
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uAlb = { value: tex.albedo };
-    sh.uniforms.uNor = { value: tex.normal };
+    sh.uniforms.uAlb = uAlb;
+    sh.uniforms.uNor = uNor;
     sh.uniforms.uGrid = { value: grid };
+    sh.uniforms.uDebug = DEBUG;
+    sh.uniforms.uEdge = DRAW_EDGE;
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", `#include <common>
-        attribute vec2 aUvm; attribute vec2 aTan; attribute vec3 aTint; attribute vec4 aInfo; attribute vec4 aMisc;
-        varying vec2 vUvm; varying vec3 vTint; varying vec4 vInfo; varying vec4 vMisc; varying vec3 vTanV; varying vec3 vUpV; varying float vY;`)
+        attribute vec2 aUvm; attribute vec2 aTan; attribute vec3 aTint; attribute vec4 aInfo; attribute vec4 aMisc; attribute vec4 aShop;
+        varying vec4 vP0; varying vec3 vTint; varying vec4 vInfo; varying vec4 vMisc; varying vec4 vShop; varying vec3 vTanV;`)
       .replace("#include <begin_vertex>", `#include <begin_vertex>
-        vUvm = aUvm; vTint = aTint; vInfo = aInfo; vMisc = aMisc; vY = position.y;
-        vTanV = normalize((viewMatrix * vec4(aTan.x, 0.0, aTan.y, 0.0)).xyz);
-        vUpV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);`);
+        // few, packed varyings: ANGLE (D3D) mangles them when there are too many
+        vP0 = vec4(aUvm, position.y, 0.0); vTint = aTint; vInfo = aInfo; vMisc = aMisc; vShop = aShop;
+        vTanV = normalize((viewMatrix * vec4(aTan.x, 0.0, aTan.y, 0.0)).xyz);`);
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <common>", `#include <common>
+        ${interior ? "#define FFTT_INTERIOR 1" : ""}
         precision highp sampler2DArray;
-        uniform sampler2DArray uAlb; uniform sampler2DArray uNor; uniform vec2 uGrid[${LAYERS}];
-        varying vec2 vUvm; varying vec3 vTint; varying vec4 vInfo; varying vec4 vMisc; varying vec3 vTanV; varying vec3 vUpV; varying float vY;
-        float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        uniform sampler2DArray uAlb; uniform sampler2DArray uNor; uniform vec4 uGrid[${LAYERS}]; uniform float uDebug; uniform vec2 uEdge;
+        float bayer4(vec2 p) { ivec2 q = ivec2(mod(p, 4.0)); int i = q.x + q.y * 4;
+          int b[16] = int[16](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5); return (float(b[i]) + 0.5) / 16.0; }
+        varying vec4 vP0; varying vec3 vTint; varying vec4 vInfo; varying vec4 vMisc; varying vec4 vShop; varying vec3 vTanV;
+        #define vUvm vP0.xy
+        #define vY vP0.z
+        #define vUpV normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz)
+        // a sin-free hash: the sin trick turns the tiny interpolation error of a varying into per-pixel noise on D3D
+        float h21(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
         float vnoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
           return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
-        float gGlass = 0.0; vec3 gEm = vec3(0.0); vec3 gNt = vec3(0.0, 0.0, 1.0); float gKind = 0.0;`)
+        float gGlass = 0.0; float gRough = 0.85; float gMetal = 0.0; vec3 gEm = vec3(0.0); vec3 gNt = vec3(0.0, 0.0, 1.0); float gKind = 0.0; vec3 gDbg = vec3(0.0);
+        // a room behind the glass: ray from the pane into a box the size of the window's bay
+        vec3 room(vec2 pc, vec2 cs, vec3 rd, float depth, vec2 cell, float lit) {
+          vec3 r = vec3(rd.xy, max(1e-3, -rd.z));
+          float tb = depth / r.z;
+          float tx = r.x > 0.0 ? (cs.x - pc.x) / r.x : (r.x < 0.0 ? -pc.x / r.x : 1e9);
+          float ty = r.y > 0.0 ? (cs.y - pc.y) / r.y : (r.y < 0.0 ? -pc.y / r.y : 1e9);
+          float t = min(tb, min(tx, ty));
+          vec3 hit = vec3(pc + r.xy * t, r.z * t);
+          float k1 = h21(cell * 1.31 + 4.7), k2 = h21(cell * 0.71 + 9.1);
+          vec3 wall = mix(vec3(0.78, 0.72, 0.62), vec3(0.62, 0.68, 0.70), k1);
+          wall = mix(wall, vec3(0.70, 0.52, 0.42), step(0.8, k2));
+          vec3 c;
+          if (t == tb) {
+            c = wall;
+            // furniture against the back wall: a sofa / a shelf / a bed
+            float f = step(hit.y, 0.85 + 0.4 * k2) * step(cs.x * (0.15 + 0.3 * k1), hit.x) * step(hit.x, cs.x * (0.65 + 0.3 * k2));
+            c = mix(c, mix(vec3(0.30, 0.22, 0.18), vec3(0.20, 0.26, 0.34), k1), f);
+            // a picture or a doorway
+            float p = step(abs(hit.x - cs.x * (0.3 + 0.4 * k2)), 0.35) * step(abs(hit.y - 1.7), 0.3);
+            c = mix(c, vec3(0.35, 0.3, 0.25), p * step(0.5, k1));
+          } else if (t == ty) {
+            c = r.y < 0.0 ? mix(vec3(0.36, 0.24, 0.15), vec3(0.42, 0.40, 0.38), step(0.6, k1)) : vec3(0.86, 0.84, 0.80);
+            if (r.y > 0.0) c += lit * vec3(1.0, 0.8, 0.5) * 0.8 * smoothstep(0.9, 0.0, length(hit.xz - vec2(cs.x * 0.5, depth * 0.5)) / depth);
+          } else {
+            c = wall * 0.82;
+          }
+          // deeper is darker, and the light from the window falls off
+          c *= mix(1.0, 0.45, clamp(hit.z / depth, 0.0, 1.0));
+          return c;
+        }`)
       .replace("#include <color_fragment>", `#include <color_fragment>
+        if (bayer4(gl_FragCoord.xy) < smoothstep(uEdge.x - uEdge.y, uEdge.x, length(vViewPosition))) discard;
         {
-          // vMisc: x = top of this wall (cornice), y = lit fraction, z = seed, w = kind (0 wall, 1 roof, 2 parapet inside)
+          // vMisc: x = top of this wall (cornice), y = lit fraction, z = seed, w = kind (0 wall, 1 roof, 3 trim)
+          // vShop: x = first shop layer, y = shop layer count, z = shop offset (m), w = dirt
           gKind = vMisc.w;
+          float SEED = floor(vMisc.z * 16.0 + 0.5) / 16.0;   // varyings drift a hair across a face: snap before hashing
           if (gKind > 0.5 && gKind < 1.5) {
-            // roof: tar and gravel with patches
-            float n = vnoise(vUvm * 0.35) * 0.5 + vnoise(vUvm * 2.3) * 0.3 + h21(floor(vUvm * 12.0)) * 0.2;
-            vec3 tar = mix(vec3(0.16, 0.155, 0.15), vec3(0.34, 0.32, 0.29), n);
-            tar = mix(tar, vec3(0.42, 0.40, 0.37), step(0.82, vnoise(vUvm * 0.12 + vMisc.z)) * 0.6);
-            diffuseColor.rgb = tar;
+            // roof: tar / gravel / membrane, 8 m tiles
+            // each roof shifted and turned so the 8 m tile never lines up from one roof to the next
+            float rr = fract(SEED * 7.13);
+            vec2 ruv = (rr < 0.5 ? vUvm : vec2(vUvm.y, -vUvm.x)) / 8.0 + vec2(SEED * 0.37, SEED * 0.61);
+            float rl = floor(vInfo.w + 0.5);   // ANGLE truncates the layer: round it ourselves
+            vec4 a = texture(uAlb, vec3(ruv, rl));
+            vec4 n = texture(uNor, vec3(ruv, rl));
+            float tintW = 1.0 - smoothstep(0.53, 0.6, a.a);
+            float big = vnoise(vUvm * 0.11 + SEED) * 0.5 + vnoise(vUvm * 0.37) * 0.5;
+            diffuseColor.rgb = a.rgb * mix(vec3(1.0), vTint, tintW) * (0.82 + 0.3 * big);
+            gNt = vec3(n.xy * 2.0 - 1.0, 0.0); gNt.z = sqrt(max(0.0, 1.0 - dot(gNt.xy, gNt.xy)));
+            gRough = n.b;
           } else if (gKind > 2.5) {
-            diffuseColor.rgb = min(vec3(1.0), vTint * 1.08 + 0.05) * (0.9 + 0.1 * vnoise(vUvm * 3.0));
-          } else if (gKind > 1.5) {
-            diffuseColor.rgb = vTint * 0.62;
+            // cornices, copings, the band over the shops: solid, lighter, a little weathered
+            diffuseColor.rgb = min(vec3(1.0), vTint * 1.04 + 0.03) * (0.85 + 0.15 * vnoise(vUvm * 3.0)) * mix(0.8, 1.0, smoothstep(0.0, 8.0, vY));
+            gRough = 0.8;
           } else {
             float gH = vInfo.z;
-            bool shop = vY < gH && vInfo.w >= 0.0;
-            float layer = shop ? vInfo.w : vMisc.y < -0.5 ? 0.0 : floor(vInfo.w < -1.5 ? -vInfo.w - 2.0 : 0.0);
-            vec3 tuv;
-            // each building starts somewhere different along the six-shop strip
-            if (shop) tuv = vec3((vUvm.x + floor(fract(vMisc.z * 0.618) * 6.0) * 4.5) / ${SHOP_W.toFixed(1)}, vY / gH, vInfo.w);
-            else tuv = vec3(vUvm.x / vInfo.x, (vY - gH) / vInfo.y, layer);
-            vec4 a = texture(uAlb, tuv);
-            vec3 nt = texture(uNor, tuv).xyz * 2.0 - 1.0;
-            gGlass = a.a;
-            vec3 wall = a.rgb * vTint;
-            // grime toward the street and soot under the cornice
-            float grime = mix(0.78, 1.0, smoothstep(0.0, 14.0, vY)) * mix(0.85, 1.0, smoothstep(vMisc.x - 6.0, vMisc.x - 2.5, vY) * 0.0 + 1.0);
-            grime *= 0.9 + 0.2 * vnoise(vec2(vUvm.x * 0.08, vY * 0.03) + vMisc.z);
-            vec3 col = mix(wall * grime, a.rgb, gGlass);
-            // cornice band at the top of the wall
-            float cor = smoothstep(vMisc.x - 1.15, vMisc.x - 1.0, vY);
-            float corLine = smoothstep(vMisc.x - 0.45, vMisc.x - 0.38, vY) - smoothstep(vMisc.x - 0.3, vMisc.x - 0.24, vY);
-            col = mix(col, min(vec3(1.0), vTint * 1.12 + 0.06) * (1.0 - 0.25 * corLine), cor);
-            nt = mix(nt, normalize(vec3(0.0, -0.6 * corLine + 0.25 * cor, 1.0)), cor);
-            gGlass *= 1.0 - cor;
+            bool shop = vY < gH && vShop.y > 0.5;
+            vec2 tuv, base;
+            float layer;
+            vec2 cs, pc, cell;
+            vec4 g;
+            if (shop) {
+              float uu = vUvm.x + vShop.z;
+              float tile = floor(uu / ${SHOP_W.toFixed(1)});
+              layer = vShop.x + min(vShop.y - 1.0, floor(h21(vec2(tile, SEED)) * vShop.y));
+              tuv = vec2(uu / ${SHOP_W.toFixed(1)}, vY / gH);
+              base = tuv;
+              g = vec4(2.0, 1.0, 0.0, 3.0);
+              cs = vec2(4.5, gH); pc = vec2(mod(uu, 4.5), vY); cell = vec2(floor(uu / 4.5), -1.0);
+            } else {
+              layer = vInfo.w;
+              g = uGrid[int(layer + 0.5)];
+              float yy = vY - gH;
+              float band = floor(yy / vInfo.y);
+              cs = vec2(vInfo.x / g.x, vInfo.y / g.y);
+              // every band of floors starts on a different bay, so the tile never stacks up
+              float shift = floor(h21(vec2(band, SEED + 3.1)) * g.x) * cs.x;
+              tuv = vec2((vUvm.x + shift) / vInfo.x, yy / vInfo.y);
+              base = vec2(vUvm.x / vInfo.x, yy / vInfo.y);
+              pc = vec2(mod(vUvm.x + shift, cs.x), mod(yy, cs.y));
+              cell = floor(vec2(vUvm.x + shift, yy) / cs) + vec2(band * 37.0, 0.0);
+            }
+            layer = floor(layer + 0.5);   // interpolated layer ids can land a hair under the integer, and ANGLE truncates
+            vec2 dx = dFdx(base), dy = dFdy(base);
+            vec4 a = textureGrad(uAlb, vec3(tuv, layer), dx, dy);
+            vec4 n = textureGrad(uNor, vec3(tuv, layer), dx, dy);
+            float tintW = 1.0 - smoothstep(0.53, 0.6, a.a);
+            float glassW = smoothstep(0.7, 0.76, a.a);
+            float clearW = smoothstep(0.86, 0.95, a.a);
+            vec3 wall = a.rgb * mix(vec3(1.0), vTint, tintW);
+            // weathering: dirt splashed up from the street, soot under the cornice, rain-washed streaks
+            float dirt = vShop.w;
+            float grime = mix(0.66, 1.0, smoothstep(0.0, 1.2, vY)) * mix(0.86, 1.0, smoothstep(1.0, 9.0, vY));
+            grime *= 1.0 - 0.18 * dirt * smoothstep(vMisc.x - 5.0, vMisc.x - 0.5, vY);
+            float streak = vnoise(vec2(vUvm.x * 1.7, vY * 0.035 + SEED)) * vnoise(vec2(vUvm.x * 0.35 + 7.0, vY * 0.012));
+            grime *= 1.0 - dirt * 0.28 * smoothstep(0.25, 0.7, streak);
+            grime *= 0.93 + 0.12 * vnoise(vec2(vUvm.x * 0.06, vY * 0.05) + SEED);
+            vec3 col = wall * mix(grime, 1.0, glassW * 0.6);
+            vec3 nt = vec3(n.xy * 2.0 - 1.0, 0.0); nt.z = sqrt(max(0.0, 1.0 - dot(nt.xy, nt.xy)));
+            gRough = n.b;
+            gGlass = glassW;
+            // lit windows: one random light per window bay
+            float r = h21(cell + SEED);
+            float lit = step(r, shop ? 0.85 : vMisc.y);
+            vec3 lamp = mix(vec3(1.0, 0.58, 0.28), vec3(1.0, 0.82, 0.55), h21(cell * 1.7 + SEED));
+            if (shop) {
+              // shop interiors: a soft glow by day, a few brightly lit
+              float on = step(h21(cell + SEED * 1.7), 0.35);
+              gEm = a.rgb * glassW * (0.10 + 0.32 * on);
+              col = mix(col, a.rgb * 0.45, glassW);
+              gMetal = glassW * 0.1;
+              gRough = mix(gRough, 0.12, glassW);
+            } else {
+              vec3 inside = vec3(0.1);
+#ifdef FFTT_INTERIOR
+              if (clearW > 0.01) {
+                vec3 V = normalize(vViewPosition);
+                vec3 N = normalize(vNormal);
+                vec3 T = normalize(vTanV), B = normalize(vUpV);
+                vec3 rd = -V;
+                inside = room(pc, cs, vec3(dot(rd, T), dot(rd, B), dot(rd, N)), g.w * (0.8 + 0.5 * h21(cell + 2.3)), cell, lit);
+              }
+#endif
+              // daylight inside is dim; a lamp makes it glow
+              gEm = clearW * inside * mix(vec3(0.11), lamp * 0.85, lit) + (glassW - clearW) * a.rgb * lamp * lit * 0.55;
+              col = mix(col, a.rgb * mix(0.35, 0.12, clearW), glassW);
+              gMetal = glassW * mix(0.12, 0.55, g.z);
+              gRough = mix(gRough, mix(0.08, 0.04, g.z), clearW);
+            }
             diffuseColor.rgb = col;
-            gNt = nt;
-            // lit windows: one random light per window cell
-            vec2 g = uGrid[int(tuv.z + 0.5)];
-            vec2 cell = floor(tuv.xy * g);
-            float r = h21(cell + vMisc.z);
-            float on = step(r, shop ? 0.75 : vMisc.y) * gGlass;
-            vec3 lamp = mix(vec3(1.0, 0.58, 0.28), vec3(1.0, 0.82, 0.55), h21(cell * 1.7 + vMisc.z));
-            gEm = lamp * on * (shop ? 0.55 * a.rgb * 2.5 : vec3(0.18 + 0.28 * h21(cell + 7.1)));
+            gNt = normalize(mix(nt, vec3(0.0, 0.0, 1.0), glassW));
+            if (uDebug > 0.5) {
+              vec3 dbg = uDebug > 8.5 ? vec3(fract(tuv.x), fract(tuv.y), layer / 40.0) : uDebug > 7.5 ? vec3(fract(SEED * 7.13), fract(SEED * 3.7), fract(vInfo.w * 0.37)) : uDebug > 4.5 ? vec3(textureLod(uAlb, vec3(tuv, layer), uDebug - 5.0).a) : uDebug < 1.5 ? vec3(a.a) : uDebug < 2.5 ? vec3(n.b) : uDebug < 3.5 ? vec3(n.xy, 0.0) : gEm * 4.0;
+              gDbg = dbg;
+            }
           }
         }`)
       .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
         if (gKind < 0.5) {
           vec3 T = normalize(vTanV), B = normalize(vUpV);
           normal = normalize(T * gNt.x + B * gNt.y + normal * gNt.z);
+        } else if (gKind < 1.5) {
+          vec3 T = normalize(vTanV), B = normalize(cross(normal, T));
+          normal = normalize(T * gNt.x - B * gNt.y + normal * gNt.z);
         }`)
       .replace("#include <roughnessmap_fragment>", `#include <roughnessmap_fragment>
-        roughnessFactor = mix(gKind > 0.5 && gKind < 1.5 ? 0.95 : 0.86, 0.22, gGlass);`)
+        roughnessFactor = gRough;`)
       .replace("#include <metalnessmap_fragment>", `#include <metalnessmap_fragment>
-        metalnessFactor = mix(0.0, 0.18, gGlass);`)
+        metalnessFactor = gMetal;`)
       .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
-        totalEmissiveRadiance += gEm;`);
+        totalEmissiveRadiance += gEm;`)
+      .replace("#include <opaque_fragment>", `#include <opaque_fragment>
+        if (uDebug > 0.5) gl_FragColor = vec4(gDbg, 1.0);`);
   };
-  m.customProgramCacheKey = () => "fftt-building";
+  m.customProgramCacheKey = () => "fftt-building-2" + (interior ? "i" : "");
   return m;
 }
 
@@ -106,12 +230,17 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
 
 class GeoBuilder {
   pos: number[] = []; nor: number[] = []; uvm: number[] = []; tan: number[] = [];
-  tint: number[] = []; info: number[] = []; misc: number[] = []; idx: number[] = [];
+  tint: number[] = []; info: number[] = []; misc: number[] = []; shop: number[] = []; idx: number[] = [];
   v = 0;
-  vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, u: number, w: number, tx: number, tz: number, tint: THREE.Color, info: number[], misc: number[]) {
+  vert(x: number, y: number, z: number, nx: number, ny: number, nz: number, u: number, w: number, tx: number, tz: number, tint: THREE.Color, info: number[], misc: number[], shop: number[]) {
     this.pos.push(x, y, z); this.nor.push(nx, ny, nz); this.uvm.push(u, w); this.tan.push(tx, tz);
-    this.tint.push(tint.r, tint.g, tint.b); this.info.push(...info); this.misc.push(...misc);
+    this.tint.push(tint.r, tint.g, tint.b); this.info.push(info[0], info[1], info[2], info[3]); this.misc.push(misc[0], misc[1], misc[2], misc[3]); this.shop.push(shop[0], shop[1], shop[2], shop[3]);
     return this.v++;
+  }
+  /** a quad from four corners (counter-clockwise seen from the front) with one normal and tangent */
+  quad(p: number[][], n: number[], u: number[][], t: number[], tint: THREE.Color, info: number[], misc: number[], shop: number[]) {
+    const i = p.map((q, k) => this.vert(q[0], q[1], q[2], n[0], n[1], n[2], u[k][0], u[k][1], t[0], t[1], tint, info, misc, shop));
+    this.idx.push(i[0], i[1], i[2], i[0], i[2], i[3]);
   }
   build(): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
@@ -122,6 +251,7 @@ class GeoBuilder {
     g.setAttribute("aTint", new THREE.Float32BufferAttribute(this.tint, 3));
     g.setAttribute("aInfo", new THREE.Float32BufferAttribute(this.info, 4));
     g.setAttribute("aMisc", new THREE.Float32BufferAttribute(this.misc, 4));
+    g.setAttribute("aShop", new THREE.Float32BufferAttribute(this.shop, 4));
     g.setIndex(this.v > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
     g.computeBoundingSphere();
     return g;
@@ -134,7 +264,7 @@ function scaled(p: Poly, cx: number, cz: number, k: number): Poly {
   return p.map((r) => r.map((v, i) => (i % 2 === 0 ? cx + (v - cx) * k : cz + (v - cz) * k)));
 }
 
-/** Inset a ring along its vertex normals (for parapets). */
+/** Inset a ring along its vertex normals (negative d: outward). */
 function inset(r: number[], d: number): number[] {
   const n = r.length / 2, out: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -154,12 +284,22 @@ function inset(r: number[], d: number): number[] {
   return out;
 }
 
-function storefrontFor(district: string, style: Style): Storefront {
-  if (style === "glass" || style === "modern") return "lobby";
-  if (district === "chinatown") return "chinatown";
-  if (district === "littleitaly" || district === "village") return style === "castiron" ? "soho" : "generic";
-  if (district === "midtown" || district === "columbus" || district === "flatiron") return "midtown";
-  return "generic";
+type Ground = Storefront | "none";
+
+function groundFor(b: Building, district: string): Ground {
+  if (b.h <= 8) return "none";
+  const r = hash(b.seed * 7 + 3);
+  const shops: Storefront = district === "chinatown" ? "chinatown" : district === "midtown" || district === "columbus" || district === "flatiron" ? "midtown" : "generic";
+  switch (b.style) {
+    case "glass": case "modern": return r < 0.75 ? "lobby" : shops;
+    case "castiron": return district === "fidi" || district === "battery" ? "generic" : "soho";
+    case "tenement": return r < 0.78 ? shops : "residential";
+    case "prewar": return r < 0.45 ? shops : r < 0.75 ? "lobby" : "residential";
+    case "deco": return r < 0.5 ? "lobby" : shops;
+    case "brick": return r < 0.55 ? shops : "residential";
+    case "civic": return "residential";
+  }
+  return shops;
 }
 
 interface Tier { poly: Poly; y0: number; y1: number; top: boolean }
@@ -176,92 +316,147 @@ function tiers(b: Building): Tier[] {
   ];
 }
 
-const tmpC = new THREE.Color();
+/** What a wall faces: a street (shops, cornice, kit), a neighbour (blank party wall), or a yard. */
+export type EdgeKind = "front" | "party" | "rear";
 
-function addBuilding(g: GeoBuilder, b: Building, district: string, roofs: RoofSpot[]) {
-  const t = TILES[b.style];
+export interface FrontEdge {
+  b: Building; ax: number; az: number; bx: number; bz: number; tx: number; tz: number; nx: number; nz: number;
+  L: number; u0: number; y0: number; top: number; gH: number; ground: Ground; shopOff: number; kind: EdgeKind; tier: number; district: string;
+}
+
+export interface RoofSpot { b: Building; poly: Poly; y: number; district: string; party: FrontEdge[] }
+
+const tmpC = new THREE.Color();
+const STREET = { tx: 0, tz: 1, w: 10, d: 0, dist: Infinity, name: "" };
+
+function classify(city: CityData, b: Building, mx: number, mz: number, nx: number, nz: number, y0: number): EdgeKind {
+  const o = city.buildingAt(mx + nx * 3.5, mz + nz * 3.5);
+  if (o && o !== b && o.h > y0 + 2) return "party";
+  const st = city.street(mx + nx * 3, mz + nz * 3, STREET);
+  return st.dist < st.w / 2 + 9 ? "front" : "rear";
+}
+
+const PARTY_TINTS = ["#d4cfc6", "#c2beb6", "#b8b2a8", "#cfc8bc"];
+const ROOF_TINTS = ["#ffffff", "#f0ece6", "#d8d6d2", "#c0bcb6", "#e8e8ea"];
+const CORNICE_TINTS: Record<Style, string[]> = {
+  tenement: ["#e8e2d4", "#d8d0c0", "#9a9890", "#5a5650", "#c9b89a", "#7a2e24"],
+  castiron: ["#f0ece0", "#d8d4c8", "#4a4d52"], prewar: ["#efe6d4", "#ddd2bc"], deco: ["#efe6d4"], civic: ["#f4efe2"],
+  modern: ["#c8ccc8"], glass: ["#9aa4aa"], brick: ["#c8c2b6"],
+};
+const SHOPBAND_TINTS = ["#2a2a2a", "#3a2a20", "#20302a", "#e8e2d4", "#5a2420", "#26303c"];
+
+function addBuilding(g: GeoBuilder, city: CityData, b: Building, district: string, roofs: RoofSpot[], fronts: FrontEdge[]) {
   const r = hash(b.seed + 11);
-  tmpC.set(TINTS[b.style][Math.floor(r * TINTS[b.style].length)]).convertSRGBToLinear();
-  const tint = tmpC.clone();
-  const layer = STYLE_LAYER[b.style];
-  const sf = storefrontFor(district, b.style);
-  const groundH = b.h > 8 ? (b.style === "castiron" ? 4.6 : b.style === "glass" || b.style === "modern" ? 5.5 : 4.4) : 0;
+  const tints = TINTS[b.style];
+  const tint = tmpC.set(tints[Math.floor(r * tints.length)]).convertSRGBToLinear().clone();
+  const variants = STYLE_LAYERS[b.style];
+  const layer = variants[Math.floor(hash(b.seed * 3 + 1) * variants.length)];
+  const L = FACADE_LAYERS[layer];
+  const ground = groundFor(b, district);
+  const gH = ground === "none" ? 0 : b.style === "castiron" ? 4.6 : b.style === "glass" || b.style === "modern" ? 5.5 : 4.4;
   const lit = district === "midtown" || district === "columbus" ? 0.1 + r * 0.12 : 0.04 + r * 0.1;
   const seed = (b.seed % 997) * 0.731;
-  // vInfo: tile W, tile H, ground floor height, storefront layer (or -2-styleLayer for "no shops": encode style layer when no storefront)
-  const infoWall = [t.bays * t.bayW, t.floors * t.floorH, groundH, groundH > 0 ? SHOP_LAYER(sf) : -2 - layer];
-  for (const tier of tiers(b)) {
-    const parapet = tier.top ? 1.1 : 0.6;
+  const dirt = b.style === "glass" ? 0.15 : b.style === "modern" ? 0.4 : 0.55 + hash(b.seed + 5) * 0.45;
+  const shopOff = hash(b.seed + 17) * SHOP_W;
+  const [shopFirst, shopCount] = ground === "none" ? [0, 0] : SHOP_LAYERS[ground];
+  const party = hash(b.seed + 23) < 0.6 || b.style === "tenement" ? PARTY_LAYERS.brick : PARTY_LAYERS.parge;
+  const partyTint = party === PARTY_LAYERS.brick ? tint : tmpC.set(PARTY_TINTS[Math.floor(r * 4)]).convertSRGBToLinear().clone();
+  const roofLayer = b.style === "glass" || b.style === "modern" ? (r < 0.5 ? ROOF_LAYERS.gravel : ROOF_LAYERS.membrane)
+    : b.style === "deco" || b.style === "prewar" ? (r < 0.6 ? ROOF_LAYERS.tar : ROOF_LAYERS.gravel) : ROOF_LAYERS.tar;
+  const roofTint = tmpC.set(ROOF_TINTS[Math.floor(hash(b.seed + 31) * ROOF_TINTS.length)]).convertSRGBToLinear().clone();
+  const ct = CORNICE_TINTS[b.style];
+  const corniceTint = tmpC.set(ct[Math.floor(hash(b.seed + 41) * ct.length)]).convertSRGBToLinear().clone();
+  const bandTint = tmpC.set(SHOPBAND_TINTS[Math.floor(hash(b.seed + 43) * SHOPBAND_TINTS.length)]).convertSRGBToLinear().clone();
+  const old = b.style === "tenement" || b.style === "prewar" || b.style === "castiron" || b.style === "civic";
+  const tierList = tiers(b);
+  const partyEdges: FrontEdge[] = [];
+  const mine: FrontEdge[] = [];
+  tierList.forEach((tier, ti) => {
+    const parapet = tier.top ? (old ? 1.1 : 0.9) : 0.6;
     const top = tier.y1 + parapet;
-    const infoT = tier.y0 > 0 ? [infoWall[0], infoWall[1], tier.y0 - 0.01, -2 - layer] : infoWall;
-    // the shader picks the style layer from info.w when it is <= -2
-    for (const ring of tier.poly) {
+    const misc = [top, lit, seed, 0];
+    const outer = tier.poly[0];
+    for (let ri = 0; ri < tier.poly.length; ri++) {
+      const ring = tier.poly[ri];
       const n = ring.length / 2;
       let u = 0;
       for (let i = 0; i < n; i++) {
         const ax = ring[i * 2], az = ring[i * 2 + 1];
         const bx = ring[((i + 1) % n) * 2], bz = ring[((i + 1) % n) * 2 + 1];
-        const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
-        if (L < 0.05) continue;
+        const dx = bx - ax, dz = bz - az, Le = Math.hypot(dx, dz);
+        if (Le < 0.05) continue;
         // footprint rings wind clockwise (holes anticlockwise), so (-dz, dx) points out of the solid
-        const tx = dx / L, tz = dz / L, nx = -tz, nz = tx;
-        const misc = [top, lit, seed, 0];
-        const v0 = g.vert(ax, tier.y0, az, nx, 0, nz, u, tier.y0, tx, tz, tint, infoT, misc);
-        const v1 = g.vert(bx, tier.y0, bz, nx, 0, nz, u + L, tier.y0, tx, tz, tint, infoT, misc);
-        const v2 = g.vert(bx, top, bz, nx, 0, nz, u + L, top, tx, tz, tint, infoT, misc);
-        const v3 = g.vert(ax, top, az, nx, 0, nz, u, top, tx, tz, tint, infoT, misc);
-        g.idx.push(v0, v1, v2, v0, v2, v3);
-        u += L;
+        const tx = dx / Le, tz = dz / Le, nx = -tz, nz = tx;
+        const kind = classify(city, b, (ax + bx) / 2, (az + bz) / 2, nx, nz, tier.y0);
+        const isParty = kind === "party";
+        const front = kind === "front";
+        const eg = tier.y0 > 0 || !front ? 0 : gH;
+        const info = isParty ? [12, 12, 0, party] : [L.W, L.H, eg, layer];
+        const shop = isParty || !front || tier.y0 > 0 ? [0, 0, 0, dirt] : [shopFirst, shopCount, shopOff, dirt];
+        const wt = isParty ? partyTint : tint;
+        g.quad([[ax, tier.y0, az], [bx, tier.y0, bz], [bx, top, bz], [ax, top, az]], [nx, 0, nz], [[u, tier.y0], [u + Le, tier.y0], [u + Le, top], [u, top]], [tx, tz], wt, info, misc, shop);
+        const e: FrontEdge = { b, ax, az, bx, bz, tx, tz, nx, nz, L: Le, u0: u, y0: tier.y0, top, gH: eg, ground: front && tier.y0 === 0 ? ground : "none", shopOff, kind, tier: ti, district };
+        if (ri === 0 && kind !== "party") mine.push(e);
+        if (ri === 0 && isParty) partyEdges.push(e);
+        // the band over the shops: a projecting painted fascia cornice
+        if (front && eg > 0 && shopCount > 0 && ground !== "lobby" && Le > 2) {
+          const d = 0.28, y0 = eg - 0.08, y1 = eg + 0.3;
+          const ox = nx * d, oz = nz * d;
+          const mt = [top, 0, seed, 3];
+          g.quad([[ax + ox, y0, az + oz], [bx + ox, y0, bz + oz], [bx + ox, y1, bz + oz], [ax + ox, y1, az + oz]], [nx, 0, nz], [[0, 0], [1, 0], [1, 1], [0, 1]], [tx, tz], bandTint, info, mt, shop);
+          g.quad([[ax, y0, az], [bx, y0, bz], [bx + ox, y0, bz + oz], [ax + ox, y0, az + oz]], [0, -1, 0], [[0, 0], [1, 0], [1, 1], [0, 1]], [tx, tz], bandTint, info, mt, shop);
+          g.quad([[ax + ox, y1, az + oz], [bx + ox, y1, bz + oz], [bx, y1 + 0.12, bz], [ax, y1 + 0.12, az]], [nx * 0.7, 0.7, nz * 0.7], [[0, 0], [1, 0], [1, 1], [0, 1]], [tx, tz], bandTint, info, mt, shop);
+        }
+        u += Le;
       }
     }
-    const outer = tier.poly[0];
-    // a projecting cornice on the old masonry styles: soffit, face and a sloped top
-    if (tier.top && (b.style === "tenement" || b.style === "prewar" || b.style === "castiron" || b.style === "civic") && b.h > 8) {
-      const out = inset(outer, -0.55), m = outer.length / 2;
-      const yb = top - 1.05, ym = top - 0.6, yt = top - 0.4;
-      const miscC = [top, 0, seed, 3];
-      for (let i = 0; i < m; i++) {
-        const j = (i + 1) % m;
-        const ax = outer[i * 2], az = outer[i * 2 + 1], bx = outer[j * 2], bz = outer[j * 2 + 1];
-        const cx = out[i * 2], cz = out[i * 2 + 1], dx2 = out[j * 2], dz2 = out[j * 2 + 1];
-        const ex = dx2 - cx, ez = dz2 - cz, L = Math.hypot(ex, ez) || 1, nx = -ez / L, nz = ex / L;
-        // soffit (faces down)
-        const s0 = g.vert(ax, yb, az, 0, -1, 0, 0, 0, 1, 0, tint, infoT, miscC), s1 = g.vert(bx, yb, bz, 0, -1, 0, 0, 0, 1, 0, tint, infoT, miscC);
-        const s2 = g.vert(dx2, yb, dz2, 0, -1, 0, 0, 0, 1, 0, tint, infoT, miscC), s3 = g.vert(cx, yb, cz, 0, -1, 0, 0, 0, 1, 0, tint, infoT, miscC);
-        g.idx.push(s0, s1, s2, s0, s2, s3);
-        // face
-        const f0 = g.vert(cx, yb, cz, nx, 0, nz, 0, 0, ex / L, ez / L, tint, infoT, miscC), f1 = g.vert(dx2, yb, dz2, nx, 0, nz, 0, 0, ex / L, ez / L, tint, infoT, miscC);
-        const f2 = g.vert(dx2, ym, dz2, nx, 0, nz, 0, 0, ex / L, ez / L, tint, infoT, miscC), f3 = g.vert(cx, ym, cz, nx, 0, nz, 0, 0, ex / L, ez / L, tint, infoT, miscC);
-        g.idx.push(f0, f1, f2, f0, f2, f3);
-        // sloped top back to the wall
-        const k = Math.SQRT1_2;
-        const t0 = g.vert(cx, ym, cz, nx * k, k, nz * k, 0, 0, ex / L, ez / L, tint, infoT, miscC), t1 = g.vert(dx2, ym, dz2, nx * k, k, nz * k, 0, 0, ex / L, ez / L, tint, infoT, miscC);
-        const t2 = g.vert(bx, yt, bz, nx * k, k, nz * k, 0, 0, ex / L, ez / L, tint, infoT, miscC), t3 = g.vert(ax, yt, az, nx * k, k, nz * k, 0, 0, ex / L, ez / L, tint, infoT, miscC);
-        g.idx.push(t0, t1, t2, t0, t2, t3);
-      }
-    }
-    // parapet: cap and the inside face, then the roof slab inset from the wall
-    const inner = inset(outer, 0.35);
+    // a projecting cornice on the street fronts of the old masonry styles: soffit, frieze, face, a sloped top
     const n = outer.length / 2;
-    const miscP = [top, 0, seed, 2];
+    if (tier.top && old && b.h > 8) {
+      const deep = b.style === "tenement" ? 0.75 : 0.6;
+      const out = inset(outer, -deep);
+      const yb = top - 1.15, ym = top - 0.55, yt = top - 0.38;
+      const mc = [top, 0, seed, 3];
+      const fr = mine.filter((e) => e.tier === ti && e.kind === "front");
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const ax = outer[i * 2], az = outer[i * 2 + 1], bx = outer[j * 2], bz = outer[j * 2 + 1];
+        if (!fr.some((e) => Math.abs(e.ax - ax) < 1e-6 && Math.abs(e.az - az) < 1e-6)) continue;
+        const cx = out[i * 2], cz = out[i * 2 + 1], dx2 = out[j * 2], dz2 = out[j * 2 + 1];
+        const ex = dx2 - cx, ez = dz2 - cz, Le = Math.hypot(ex, ez) || 1, nx = -ez / Le, nz = ex / Le, t = [ex / Le, ez / Le];
+        const q = [[0, 0], [1, 0], [1, 1], [0, 1]];
+        g.quad([[ax, yb, az], [bx, yb, bz], [dx2, yb, dz2], [cx, yb, cz]], [0, -1, 0], q, t, corniceTint, [L.W, L.H, 0, layer], mc, [0, 0, 0, dirt]);
+        g.quad([[cx, yb, cz], [dx2, yb, dz2], [dx2, ym, dz2], [cx, ym, cz]], [nx, 0, nz], q, t, corniceTint, [L.W, L.H, 0, layer], mc, [0, 0, 0, dirt]);
+        const k = Math.SQRT1_2;
+        g.quad([[cx, ym, cz], [dx2, ym, dz2], [bx, yt, bz], [ax, yt, az]], [nx * k, k, nz * k], q, t, corniceTint, [L.W, L.H, 0, layer], mc, [0, 0, 0, dirt]);
+        // end caps where the cornice stops at a party wall or the back
+        const prevFront = fr.some((e) => Math.abs(e.bx - ax) < 1e-6 && Math.abs(e.bz - az) < 1e-6);
+        const nextFront = fr.some((e) => Math.abs(e.ax - bx) < 1e-6 && Math.abs(e.az - bz) < 1e-6);
+        if (!prevFront) g.quad([[ax, yb, az], [cx, yb, cz], [cx, ym, cz], [ax, yt, az]], [-t[0], 0, -t[1]], q, t, corniceTint, [L.W, L.H, 0, layer], mc, [0, 0, 0, dirt]);
+        if (!nextFront) g.quad([[dx2, yb, dz2], [bx, yb, bz], [bx, yt, bz], [dx2, ym, dz2]], [t[0], 0, t[1]], q, t, corniceTint, [L.W, L.H, 0, layer], mc, [0, 0, 0, dirt]);
+      }
+    }
+    // parapet: a coping that overhangs a little, the brick inside face, then the roof slab
+    const inner = inset(outer, 0.35);
+    const lip = inset(outer, -0.06);
+    const mp = [top, 0, seed, 3];
+    const infoParty = [12, 12, 0, party];
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n;
-      const ox0 = outer[i * 2], oz0 = outer[i * 2 + 1], ox1 = outer[j * 2], oz1 = outer[j * 2 + 1];
+      const ox0 = lip[i * 2], oz0 = lip[i * 2 + 1], ox1 = lip[j * 2], oz1 = lip[j * 2 + 1];
       const ix0 = inner[i * 2], iz0 = inner[i * 2 + 1], ix1 = inner[j * 2], iz1 = inner[j * 2 + 1];
-      // cap
-      const c0 = g.vert(ox0, top, oz0, 0, 1, 0, 0, 0, 1, 0, tint, infoT, miscP);
-      const c1 = g.vert(ox1, top, oz1, 0, 1, 0, 0, 0, 1, 0, tint, infoT, miscP);
-      const c2 = g.vert(ix1, top, iz1, 0, 1, 0, 0, 0, 1, 0, tint, infoT, miscP);
-      const c3 = g.vert(ix0, top, iz0, 0, 1, 0, 0, 0, 1, 0, tint, infoT, miscP);
-      g.idx.push(c0, c1, c2, c0, c2, c3);
-      // inner face (faces into the roof)
-      const dx = ix1 - ix0, dz = iz1 - iz0, L = Math.hypot(dx, dz) || 1;
-      const nx = dz / L, nz = -dx / L; // faces into the roof
-      const f0 = g.vert(ix0, tier.y1, iz0, nx, 0, nz, 0, 0, dx / L, dz / L, tint, infoT, miscP);
-      const f1 = g.vert(ix1, tier.y1, iz1, nx, 0, nz, 0, 0, dx / L, dz / L, tint, infoT, miscP);
-      const f2 = g.vert(ix1, top, iz1, nx, 0, nz, 0, 0, dx / L, dz / L, tint, infoT, miscP);
-      const f3 = g.vert(ix0, top, iz0, nx, 0, nz, 0, 0, dx / L, dz / L, tint, infoT, miscP);
-      g.idx.push(f0, f2, f1, f0, f3, f2);
+      const q = [[0, 0], [1, 0], [1, 1], [0, 1]];
+      g.quad([[ox0, top + 0.08, oz0], [ox1, top + 0.08, oz1], [ix1, top + 0.08, iz1], [ix0, top + 0.08, iz0]], [0, 1, 0], q, [1, 0], corniceTint, infoParty, mp, [0, 0, 0, dirt]);
+      const ex = ox1 - ox0, ez = oz1 - oz0, Le = Math.hypot(ex, ez) || 1;
+      g.quad([[ox0, top - 0.08, oz0], [ox1, top - 0.08, oz1], [ox1, top + 0.08, oz1], [ox0, top + 0.08, oz0]], [-ez / Le, 0, ex / Le], q, [ex / Le, ez / Le], corniceTint, infoParty, mp, [0, 0, 0, dirt]);
+      // inner face (faces into the roof): party-wall brick
+      const dx = ix1 - ix0, dz = iz1 - iz0, Li = Math.hypot(dx, dz) || 1;
+      const fnx = dz / Li, fnz = -dx / Li;
+      const i0 = g.vert(ix0, tier.y1, iz0, fnx, 0, fnz, 0, tier.y1, -dx / Li, -dz / Li, partyTint, infoParty, [top, 0, seed, 0], [0, 0, 0, dirt]);
+      const i1 = g.vert(ix1, tier.y1, iz1, fnx, 0, fnz, -Li, tier.y1, -dx / Li, -dz / Li, partyTint, infoParty, [top, 0, seed, 0], [0, 0, 0, dirt]);
+      const i2 = g.vert(ix1, top + 0.08, iz1, fnx, 0, fnz, -Li, top + 0.08, -dx / Li, -dz / Li, partyTint, infoParty, [top, 0, seed, 0], [0, 0, 0, dirt]);
+      const i3 = g.vert(ix0, top + 0.08, iz0, fnx, 0, fnz, 0, top + 0.08, -dx / Li, -dz / Li, partyTint, infoParty, [top, 0, seed, 0], [0, 0, 0, dirt]);
+      g.idx.push(i0, i2, i1, i0, i3, i2);
     }
     // roof slab
     const contour: THREE.Vector2[] = [];
@@ -271,197 +466,360 @@ function addBuilding(g: GeoBuilder, b: Building, district: string, roofs: RoofSp
     const all = [...contour, ...holes.flat()];
     const base = g.v;
     const miscR = [top, 0, seed, 1];
-    for (const p of all) g.vert(p.x, tier.y1, p.y, 0, 1, 0, p.x, p.y, 1, 0, tint, infoT, miscR);
+    for (const p of all) g.vert(p.x, tier.y1, p.y, 0, 1, 0, p.x, p.y, 1, 0, roofTint, [8, 8, 0, roofLayer], miscR, [0, 0, 0, dirt]);
     for (const f of faces) g.idx.push(base + f[0], base + f[2], base + f[1]);
-    if (tier.top) roofs.push({ b, poly: tier.poly, y: tier.y1, district });
-  }
-}
-
-// ------------------------------------------------------------------ roof clutter
-
-interface RoofSpot { b: Building; poly: Poly; y: number; district: string }
-
-function vc(g: THREE.BufferGeometry, c: number): THREE.BufferGeometry {
-  const col = new THREE.Color(c), n = g.attributes.position.count, arr = new Float32Array(n * 3);
-  for (let i = 0; i < n; i++) arr.set([col.r, col.g, col.b], i * 3);
-  g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
-  return g.index ? g.toNonIndexed() : g;
-}
-const bx = (w: number, h: number, d: number, x: number, y: number, z: number, c: number) => vc(new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z), c);
-const cyl = (r0: number, r1: number, h: number, x: number, y: number, z: number, c: number, seg = 12) => vc(new THREE.CylinderGeometry(r0, r1, h, seg).translate(x, y + h / 2, z), c);
-const merge = (parts: THREE.BufferGeometry[]) => mergeGeometries(parts)!;
-
-/** The rooftop kit: each item is built at unit scale around its own origin (y = roof level). */
-const ROOF_KIT = {
-  waterTower: merge([
-    cyl(1, 1, 3.6, 0, 2.6, 0, 0x6e4c34, 16), vc(new THREE.ConeGeometry(1.08, 0.9, 16).translate(0, 6.65, 0), 0x5a3c28),
-    ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, c]) => bx(0.12, 2.6, 0.12, a * 0.7, 0, c * 0.7, 0x3a3a3a)),
-    bx(1.6, 0.08, 1.6, 0, 2.55, 0, 0x4a4a4a),
-    ...[0.9, 1.8, 2.7].map((y) => vc(new THREE.TorusGeometry(1.01, 0.03, 4, 20).rotateX(Math.PI / 2).translate(0, 2.6 + y, 0), 0x2a2a2a)),
-  ]),
-  steelTank: merge([cyl(1.4, 1.4, 4.2, 0, 1.2, 0, 0xb8bcc0, 18), bx(2.4, 1.2, 2.4, 0, 0, 0, 0x6a6a6a), cyl(0.05, 0.05, 1.2, 1.5, 5.4, 0, 0x6a6a6a, 5)]),
-  bulkhead: merge([bx(3, 2.6, 3.4, 0, 0, 0, 0x8c8378), bx(0.9, 2, 0.05, 0.6, 0, 1.72, 0x4a3a2e), bx(3.2, 0.15, 3.6, 0, 2.6, 0, 0x5a554e)]),
-  hvacBank: merge([
-    ...[-1.6, 0, 1.6].map((x) => bx(1.4, 1.1, 1.4, x, 0, 0, 0x9aa0a4)),
-    ...[-1.6, 0, 1.6].map((x) => vc(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16).translate(x, 1.12, 0), 0x2a2a2a)),
-    bx(4.6, 0.2, 1.8, 0, 0, 0, 0x5a5a5a),
-  ]),
-  chimney: merge([bx(0.9, 2.4, 0.7, 0, 0, 0, 0x8a3e30), bx(1.0, 0.18, 0.8, 0, 2.4, 0, 0x6a6058), cyl(0.14, 0.14, 0.5, 0.18, 2.58, 0, 0x5a3a2a, 6), cyl(0.14, 0.14, 0.4, -0.18, 2.58, 0, 0x5a3a2a, 6)]),
-  dish: merge([vc(new THREE.SphereGeometry(0.45, 12, 6, 0, Math.PI * 2, 0, 0.9).rotateX(-1.1).translate(0, 1.0, 0), 0xdcdcd8), cyl(0.04, 0.04, 1, 0, 0, 0, 0x5a5a5a, 5)]),
-  skylight: merge([bx(2.4, 0.4, 1.6, 0, 0, 0, 0x6a6058), vc(new THREE.ConeGeometry(1.35, 0.9, 4).rotateY(Math.PI / 4).scale(1, 1, 0.7).translate(0, 0.85, 0), 0x6a8a9a)]),
-  mast: merge([cyl(0.06, 0.1, 9, 0, 0, 0, 0x5a5a5a, 6), ...[3, 5, 7].map((y) => bx(1.2, 0.05, 0.05, 0, y, 0, 0x5a5a5a)), vc(new THREE.SphereGeometry(0.12, 6, 4).translate(0, 9.05, 0), 0xff3a2a)]),
-  garden: merge([
-    bx(5.5, 0.12, 4, 0, 0, 0, 0x7a5a3a),                                      // deck
-    ...[-2.2, 2.2].map((x) => bx(0.9, 0.6, 3.6, x, 0.12, 0, 0x5a4a3a)),        // planters
-    ...[-2.2, 2.2].map((x) => vc(new THREE.IcosahedronGeometry(0.55, 0).translate(x, 1.2, -1), 0x4a5a2a)),
-    ...[-2.2, 2.2].map((x) => cyl(0.05, 0.08, 1.6, x, 0.7, 1, 0x3e342c, 5)),   // little bare trees
-    bx(0.8, 0.05, 0.8, 0, 0.75, 0, 0x2a2a2a), cyl(0.04, 0.04, 0.62, 0, 0.12, 0, 0x2a2a2a, 5),     // table
-    ...[-0.8, 0.8].map((x) => bx(0.45, 0.06, 0.45, x, 0.55, 0.1, 0xb8a080)),  // chairs
-    ...[-0.8, 0.8].map((x) => bx(0.45, 0.5, 0.05, x, 0.6, 0.32, 0xb8a080)),
-    ...[-2.7, 2.7].map((x) => cyl(0.03, 0.03, 2.4, x, 0, 1.9, 0x2a2a2a, 4)),  // string light poles
-  ]),
-  coop: merge([
-    bx(2.4, 1.6, 1.6, 0, 0.3, 0, 0xb09070), vc(new THREE.ConeGeometry(1.8, 0.6, 4).rotateY(Math.PI / 4).scale(1, 1, 0.75).translate(0, 2.2, 0), 0x6a4a3a),
-    bx(2.5, 0.3, 1.7, 0, 0, 0, 0x5a5a5a), bx(1.8, 0.8, 0.04, 0, 0.7, 0.81, 0x3a3a3a),
-    bx(3, 0.05, 0.05, 0, 2.5, 1.4, 0x3a3a3a),
-  ]),
-  solar: merge([...[-1.4, 0, 1.4].map((x) => vc(new THREE.BoxGeometry(1.2, 0.05, 2).rotateX(-0.45).translate(x, 0.6, 0), 0x1f2a44)), bx(4.2, 0.25, 0.2, 0, 0, -0.7, 0x5a5a5a), bx(4.2, 0.6, 0.2, 0, 0, 0.7, 0x5a5a5a)]),
-  billboard: merge([
-    ...[-3.5, 3.5].map((x) => bx(0.25, 6, 0.25, x, 0, 0, 0x3a3a3a)),
-    bx(9, 4.2, 0.2, 0, 6, 0, 0xf0f0f0),                                       // the face (tinted by the instance)
-    ...[1, 3, 5].map((y) => bx(7.5, 0.1, 0.1, 0, y, -0.15, 0x3a3a3a)),
-  ]),
-  gooseneck: merge([cyl(0.12, 0.12, 0.9, 0, 0, 0, 0x8a8a8a, 6), vc(new THREE.TorusGeometry(0.22, 0.12, 6, 8, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2).translate(0, 0.9, 0.22), 0x8a8a8a)]),
-  laundry: merge([
-    ...[-2, 2].map((x) => cyl(0.04, 0.04, 2, x, 0, 0, 0x5a5a5a, 4)),
-    ...[-1.4, -0.7, 0.1, 0.8, 1.5].map((x, i) => vc(new THREE.PlaneGeometry(0.45, 0.6).translate(x, 1.65, 0), [0xc8382a, 0xf0ece0, 0x2a5a9a, 0xe0b423, 0xd27aa2][i])),
-  ]),
-};
-type RoofItem = keyof typeof ROOF_KIT;
-const ROOF_FOOTPRINT: Record<RoofItem, number> = { waterTower: 3, steelTank: 3, bulkhead: 2.6, hvacBank: 3, chimney: 1, dish: 1, skylight: 1.6, mast: 0.6, garden: 3.6, coop: 1.8, solar: 2.6, billboard: 5, gooseneck: 0.5, laundry: 2.2 };
-
-/** What goes on a roof, by the building's age, style, district and height. */
-function roofPlan(b: Building, district: string, r: (k: number) => number): RoofItem[] {
-  const out: RoofItem[] = [];
-  const add = (it: RoofItem, chance: number, max = 1) => { for (let i = 0; i < max; i++) if (r(out.length * 7 + i + it.length) < chance) out.push(it); };
-  if (b.area > 120) add("bulkhead", 0.85);
-  switch (b.style) {
-    case "tenement":
-      add("chimney", 0.7, 3); add("dish", 0.5, 2); add("gooseneck", 0.6, 2);
-      if (district === "chinatown" || district === "littleitaly") { add("coop", 0.22); add("laundry", 0.35); }
-      add("waterTower", b.h > 18 ? 0.45 : 0.15);
-      break;
-    case "castiron":
-      add("skylight", 0.6, 2); add("waterTower", 0.45); add("gooseneck", 0.4, 2); add("garden", 0.18);
-      break;
-    case "prewar": case "deco": case "civic":
-      add("waterTower", b.h < 110 ? 0.5 : 0.1); add("garden", district === "village" || district === "littleitaly" ? 0.3 : 0.12);
-      add("skylight", 0.25); add("hvacBank", 0.3); add("mast", b.h > 90 ? 0.6 : 0.05);
-      break;
-    case "brick":
-      add("hvacBank", 0.4); add("dish", 0.4, 2); add("garden", 0.15); add("steelTank", 0.15); add("gooseneck", 0.5, 2);
-      break;
-    case "modern": case "glass":
-      add("hvacBank", 0.75, 2); add("steelTank", 0.35); add("solar", 0.3, 2); add("mast", b.h > 70 ? 0.55 : 0.1); add("gooseneck", 0.4, 3);
-      break;
-  }
-  if ((district === "midtown" || district === "columbus") && b.h < 60 && b.area > 250) add("billboard", 0.35);
-  return out;
-}
-
-const BILLBOARD_TINTS = [0xffd84a, 0x4ad8ff, 0xff4a8a, 0xffffff, 0x8aff6a, 0xff8a3a];
-
-function roofClutter(spots: RoofSpot[]): THREE.Group {
-  const g = new THREE.Group();
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.15 });
-  const glow = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, emissive: 0xffffff, emissiveIntensity: 0.0 });
-  const lists = new Map<RoofItem, { m: THREE.Matrix4; tint?: number }[]>();
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-  for (const { b, poly, y, district } of spots) {
-    if (b.area < 40) continue;
-    const r = (k: number) => hash(b.seed * 31 + k * 977);
-    const plan = roofPlan(b, district, r);
-    const placed: [number, number, number][] = [];
-    const yawBase = (() => { const ring = poly[0]; return Math.atan2(ring[2] - ring[0], ring[3] - ring[1]); })();
-    plan.forEach((it, i) => {
-      const fp = ROOF_FOOTPRINT[it];
-      for (let tries = 0; tries < 10; tries++) {
-        const x = b.x0 + fp + (b.x1 - b.x0 - 2 * fp) * r(i * 13 + tries * 3 + 1);
-        const z = b.z0 + fp + (b.z1 - b.z0 - 2 * fp) * r(i * 17 + tries * 5 + 2);
-        if (b.x1 - b.x0 < 2 * fp || b.z1 - b.z0 < 2 * fp) return;
-        const ok = [[0, 0], [fp, 0], [-fp, 0], [0, fp], [0, -fp]].every(([dx, dz]) => inPoly(poly, x + dx, z + dz));
-        if (!ok || placed.some(([px, pz, pr]) => Math.hypot(px - x, pz - z) < pr + fp)) continue;
-        placed.push([x, z, fp]);
-        const yaw = yawBase + (r(i * 29 + tries) < 0.5 ? 0 : Math.PI / 2);
-        const k = it === "waterTower" ? 1.6 + r(i * 3) * 1.0 : it === "steelTank" ? 0.9 + r(i * 5) * 0.5 : 1;
-        q.setFromAxisAngle(Y, yaw);
-        (lists.get(it) ?? lists.set(it, []).get(it)!).push({ m: m.clone().compose(p.set(x, y, z), q, sc.set(k, k, k)), tint: it === "billboard" ? BILLBOARD_TINTS[Math.floor(r(i * 41) * BILLBOARD_TINTS.length)] : undefined });
-        return;
-      }
-    });
-  }
-  const tint = new THREE.Color();
-  for (const [it, list] of lists) {
-    const im = new THREE.InstancedMesh(ROOF_KIT[it], it === "billboard" ? glow : mat, list.length);
-    list.forEach((e, i) => { im.setMatrixAt(i, e.m); if (e.tint !== undefined) im.setColorAt(i, tint.set(e.tint)); });
-    im.castShadow = it !== "gooseneck" && it !== "dish";
-    im.receiveShadow = true;
-    im.computeBoundingSphere();
-    g.add(im);
-  }
-  return g;
+    if (tier.top) roofs.push({ b, poly: tier.poly, y: tier.y1, district, party: partyEdges });
+  });
+  for (const e of mine) fronts.push(e);
 }
 
 // ------------------------------------------------------------------ the city's buildings
 
+interface Chunk { mesh: THREE.Mesh; cx: number; cz: number; r: number }
+
 export class BuildingsMesh {
   readonly root = new THREE.Group();
-  readonly chunks: { mesh: THREE.Mesh; clutter: THREE.Group; cx: number; cz: number }[] = [];
+  readonly chunks: Chunk[] = [];
+  readonly kit: ArchitectureKit;
+  readonly fronts: FrontEdge[] = [];
+  readonly roofs: RoofSpot[] = [];
+  readonly lots: LotsView;
+  private drawDistance = 900;
+  private facades: Facades | null = null;
+  private placedFacadeKit = false;
+  readonly quality: FacadeQuality;
+  private solids: FacadeProp[] = [];
+
   constructor(city: CityData, tex: FacadeTextures) {
+    this.quality = tex.quality;
     const mat = buildingMaterial(tex);
-    const by = new Map<string, Building[]>();
-    for (const b of city.buildings) {
+    this.kit = new ArchitectureKit({ quality: tex.quality });
+    const by = new Map<string, { list: Building[]; sky: boolean }[]>();
+    const put = (b: Building, sky: boolean) => {
       const k = `${Math.floor(b.cx / CHUNK)},${Math.floor(b.cz / CHUNK)}`;
-      (by.get(k) ?? by.set(k, []).get(k)!).push(b);
-    }
-    for (const [k, list] of by) {
-      const g = new GeoBuilder();
-      const roofs: RoofSpot[] = [];
-      for (const b of list) {
-        try { addBuilding(g, b, city.district(b.s).id, roofs); } catch { /* skip a broken footprint */ }
-      }
-      const mesh = new THREE.Mesh(g.build(), mat);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      const clutter = roofClutter(roofs);
-      const [cx, cz] = k.split(",").map(Number);
-      this.chunks.push({ mesh, clutter, cx: (cx + 0.5) * CHUNK, cz: (cz + 0.5) * CHUNK });
-      this.root.add(mesh, clutter);
-    }
-    // distant skyline: towers outside the playable corridor
-    const sky = new GeoBuilder();
-    const roofsSky: RoofSpot[] = [];
+      (by.get(k) ?? by.set(k, []).get(k)!).push({ list: [b], sky });
+    };
+    for (const b of city.buildings) put(b, false);
+    // the distant skyline: towers outside the playable corridor, chunked like the rest
     city.raw.skyline.forEach((s, i) => {
       const st: Style = s.y >= 1985 ? "glass" : s.y >= 1950 ? "modern" : s.h > 120 ? "deco" : "prewar";
-      const bb = { x0: 0, z0: 0, x1: 0, z1: 0 };
-      void bb;
       let cx = 0, cz = 0;
       for (let k = 0; k < s.p[0].length; k += 2) { cx += s.p[0][k]; cz += s.p[0][k + 1]; }
       cx /= s.p[0].length / 2; cz /= s.p[0].length / 2;
-      const b: Building = { id: -1, poly: s.p, h: s.h, year: s.y, style: st, seed: i * 7919 + 13, s: 0, off: 0, x0: cx, z0: cz, x1: cx, z1: cz, cx, cz, area: Math.abs(ringArea(s.p[0])) };
-      try { addBuilding(sky, b, "midtown", roofsSky); } catch { /* skip */ }
+      const b: Building = { id: -1 - i, poly: s.p, h: s.h, year: s.y, style: st, seed: i * 7919 + 13, s: 0, off: 0, x0: cx, z0: cz, x1: cx, z1: cz, cx, cz, area: Math.abs(ringArea(s.p[0])) };
+      put(b, true);
     });
-    const skyMesh = new THREE.Mesh(sky.build(), mat);
-    skyMesh.receiveShadow = true;
-    this.root.add(skyMesh);
+    for (const [k, entries] of by) {
+      const g = new GeoBuilder();
+      for (const { list, sky } of entries) for (const b of list) {
+        try {
+          const district = sky ? "midtown" : city.district(b.s).id;
+          addBuilding(g, city, b, district, sky ? [] : this.roofs, sky ? [] : this.fronts);
+        } catch { /* skip a broken footprint */ }
+      }
+      if (!g.v) continue;
+      const geo = g.build();
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      const [cx, cz] = k.split(",").map(Number);
+      const bs = geo.boundingSphere!;
+      this.chunks.push({ mesh, cx: bs.center.x, cz: bs.center.z, r: Math.max(bs.radius, CHUNK * 0.71) });
+      void cx; void cz;
+      this.root.add(mesh);
+    }
+    this.placeRoofKit();
+    this.root.add(this.kit.root);
+    this.lots = new LotsView(city, this.kit, tex.quality, this.solids);
+    this.root.add(this.lots.root);
+    loadKitModels().then((parts) => { if (parts) this.kit.useModels(parts); }).catch((e) => console.warn("architecture kit didn't load", e));
   }
 
-  /** Roof clutter only near the player. */
+  /** Beyond this the far city (farCity.ts) takes over: chunks, kit and clutter all stop here. */
+  setDrawDistance(metres: number) {
+    this.drawDistance = metres;
+    this.kit.drawDistance = metres;
+    DRAW_EDGE.value.x = metres;
+  }
+
+  /** The facade clutter (world/facades.ts), so fire escapes keep clear of AC units, cats and balconies.
+   *  Optional: the FacadePropsView registers it automatically. */
+  attachFacades(f: Facades, addSolids = false) {
+    this.facades = f;
+    if (addSolids) { this.solidsTo = f; this.flushSolids(); }
+  }
+
+  /** Solid boxes the leaf could hit / land on (fire-escape landings, shop awnings, lobby canopies, sidewalk sheds,
+   *  lot fences and hoardings, crane masts, dumpsters...), in the oriented-box format world/facades.ts uses
+   *  (kind "solid": centre, wall direction, half sizes along / up / out). They are only drawn unless the game
+   *  opts in with attachFacades(flow.facades, true), which pushes them into flow.facades as they are placed. */
+  getSolids(): FacadeProp[] { return this.solids; }
+  private solidsTo: Facades | null = null;
+  private flushed = 0;
+  private flushSolids() {
+    const f = this.solidsTo;
+    if (!f) return;
+    for (; this.flushed < this.solids.length; this.flushed++) {
+      const p = this.solids[this.flushed];
+      const r = Math.max(p.hw, p.hd) + 1;
+      f.props.push(p);
+      f.grid.add(p, p.x - r, p.z - r, p.x + r, p.z + r);
+    }
+  }
+
   update(focus: THREE.Vector3) {
+    if (!this.placedFacadeKit) {
+      this.placedFacadeKit = true;
+      this.facades = this.facades ?? facadeRegistry.facades;
+      this.placeFacadeKit();
+    }
+    if (this.solidsTo && this.flushed < this.solids.length) this.flushSolids();
+    const dd = this.drawDistance;
     for (const c of this.chunks) {
       const d = Math.hypot(c.cx - focus.x, c.cz - focus.z);
-      c.clutter.visible = d < 520;
-      c.mesh.castShadow = d < 480; // only nearby blocks throw shadows into the shadow map
+      c.mesh.visible = d - c.r < dd;
+      c.mesh.castShadow = d - c.r < 260; // only nearby blocks throw shadows into the shadow map
+    }
+    this.kit.update(focus);
+    this.lots.update(focus);
+  }
+
+  // ---------------------------------------------------------------- roof kit
+
+  private placeRoofKit() {
+    const K = this.kit;
+    K.define("water_tower", 750, true, { name: "water_tower_far", at: 200 });
+    K.define("steel_tank", 450, false);
+    K.define("bulkhead", 500, true);
+    K.define("elevator", 550, true);
+    K.define("hatch", 220, false);
+    K.define("hvac", 350, false);
+    K.define("condenser", 240, false);
+    K.define("chimney", 300, false);
+    K.define("vent", 180, false);
+    K.define("fan", 260, false);
+    K.define("dish", 240, false);
+    K.define("skylight", 320, false);
+    K.define("mast", 600, false);
+    K.define("solar", 380, false);
+    for (let i = 0; i < 4; i++) K.define(`billboard_${i}`, 600, false);
+    K.define("coop", 300, false);
+    K.define("laundry", 240, false);
+    K.define("deck", 300, false);
+    K.define("roof_rail", 200, false);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    const col = new THREE.Color();
+    const TOWER = [0xffffff, 0xe8dccb, 0xc9b49a, 0x9a8a78];
+    for (const { b, poly, y, district, party } of this.roofs) {
+      if (b.area < 40) continue;
+      const r = (k: number) => hash(b.seed * 31 + k * 977);
+      const placed: [number, number, number][] = [];
+      const ring = poly[0];
+      const yawBase = Math.atan2(ring[2] - ring[0], ring[3] - ring[1]);
+      const fits = (x: number, z: number, fp: number) =>
+        [[0, 0], [fp, 0], [-fp, 0], [0, fp], [0, -fp], [fp * 0.7, fp * 0.7], [-fp * 0.7, -fp * 0.7], [fp * 0.7, -fp * 0.7], [-fp * 0.7, fp * 0.7]].every(([dx, dz]) => inPoly(poly, x + dx, z + dz))
+        && !placed.some(([px, pz, pr]) => Math.hypot(px - x, pz - z) < pr + fp);
+      const put = (it: string, fp: number, k: number, scale: THREE.Vector3, colour?: THREE.Color, at?: [number, number], yaw?: number) => {
+        for (let tries = 0; tries < 12; tries++) {
+          let x: number, z: number;
+          if (at && tries === 0) [x, z] = at;
+          else {
+            if (b.x1 - b.x0 < 2 * fp || b.z1 - b.z0 < 2 * fp) return false;
+            x = b.x0 + fp + (b.x1 - b.x0 - 2 * fp) * r(k * 13 + tries * 3 + 1);
+            z = b.z0 + fp + (b.z1 - b.z0 - 2 * fp) * r(k * 17 + tries * 5 + 2);
+          }
+          if (!fits(x, z, fp)) continue;
+          placed.push([x, z, fp]);
+          q.setFromAxisAngle(Y, yaw ?? yawBase + (r(k * 29 + tries) < 0.5 ? 0 : Math.PI / 2));
+          K.add(it, m.compose(p.set(x, y, z), q, scale), colour);
+          return true;
+        }
+        return false;
+      };
+      const S = (s: number, sy = s) => sc.set(s, sy, s);
+      let k = 0;
+      // stair bulkhead (and an elevator penthouse on the bigger ones)
+      if (b.area > 120 && r(1) < 0.9) {
+        const w = 2.6 + r(2) * 1.2, d = 3.0 + r(3) * 1.4, h = 2.5 + r(4) * 0.6;
+        put("bulkhead", Math.max(w, d) * 0.6, k++, sc.set(w / 3, h / 2.6, d / 3.4), col.set(b.style === "glass" || b.style === "modern" ? 0xb8bcc0 : [0xffffff, 0xe0d4c8, 0xc8b8a8][Math.floor(r(5) * 3)]));
+      }
+      if ((b.style === "prewar" || b.style === "deco" || b.style === "modern" || b.style === "glass" || b.style === "brick") && b.h > 25 && b.area > 400) {
+        const w = 4 + r(6) * 3, d = 4 + r(7) * 3, h = 3.5 + r(8) * 2.5;
+        put("elevator", Math.max(w, d) * 0.6, k++, sc.set(w / 5, h / 4.5, d / 5), col.set(b.style === "glass" ? 0x9aa4aa : 0xe8e0d0));
+      }
+      // chimneys stand on the party walls
+      if ((b.style === "tenement" || b.style === "castiron" || (b.style === "prewar" && b.h < 40)) && party.length) {
+        const n = Math.floor(r(9) * 2.6);
+        for (let i = 0; i < n; i++) {
+          const e = party[Math.floor(r(10 + i) * party.length)];
+          if (e.top < y + 0.5) continue;
+          const t = 0.15 + r(14 + i) * 0.7;
+          const x = e.ax + (e.bx - e.ax) * t - e.nx * 0.75, z = e.az + (e.bz - e.az) * t - e.nz * 0.75;
+          put("chimney", 0.6, k++, S(0.9 + r(20 + i) * 0.5, 0.8 + r(21 + i) * 0.8), undefined, [x, z], Math.atan2(e.tx, e.tz));
+        }
+      }
+      const add = (it: string, chance: number, fp: number, scale = 1, colour?: THREE.Color) => { if (r(k * 7 + it.length) < chance) put(it, fp, k, S(scale), colour); k++; };
+      const tower = () => {
+        const s = 1.35 + r(k * 3) * 0.7;
+        if (r(k * 5 + 1) < 0.5 || !put("water_tower", 2.2 * s * 0.6, k, S(s), col.set(TOWER[Math.floor(r(k + 2) * TOWER.length)]))) { /* fine */ }
+        k++;
+      };
+      switch (b.style) {
+        case "tenement":
+          add("hatch", 0.7, 0.7); add("vent", 0.7, 0.3); add("vent", 0.5, 0.3); add("dish", 0.45, 0.6); add("dish", 0.25, 0.6);
+          add("condenser", 0.35, 0.7); add("condenser", 0.2, 0.7);
+          if (district === "chinatown" || district === "littleitaly") { add("coop", 0.15, 1.8); add("laundry", 0.35, 2.2); }
+          if (b.h > 18 && r(40) < 0.5) tower();
+          if (r(41) < 0.25) add("roof_rail", 1, 0.6);
+          break;
+        case "castiron":
+          add("skylight", 0.7, 1.6); add("skylight", 0.4, 1.6); add("vent", 0.6, 0.3); add("fan", 0.4, 0.5);
+          if (r(40) < 0.55) tower();
+          add("deck", 0.12, 3.2);
+          break;
+        case "prewar": case "deco": case "civic":
+          if (b.h < 120 && r(40) < 0.65) tower();
+          if (b.h < 120 && b.area > 900 && r(42) < 0.3) tower();
+          add("deck", district === "village" || district === "littleitaly" ? 0.25 : 0.08, 3.2);
+          add("skylight", 0.25, 1.6); add("hvac", 0.3, 3); add("fan", 0.5, 0.5); add("vent", 0.6, 0.3);
+          add("mast", b.h > 90 ? 0.6 : 0.05, 0.6);
+          break;
+        case "brick":
+          add("hvac", 0.4, 3); add("condenser", 0.5, 0.7); add("condenser", 0.4, 0.7); add("dish", 0.4, 0.6); add("vent", 0.6, 0.3);
+          add("steel_tank", 0.15, 2.4); add("deck", 0.1, 3.2);
+          break;
+        case "modern": case "glass":
+          add("hvac", 0.8, 3); add("hvac", 0.5, 3); add("steel_tank", 0.35, 2.4); add("solar", 0.3, 2.6); add("solar", 0.2, 2.6);
+          add("fan", 0.7, 0.5); add("fan", 0.5, 0.5); add("mast", b.h > 70 ? 0.55 : 0.1, 0.6);
+          break;
+      }
+      if ((district === "midtown" || district === "columbus" || district === "flatiron") && b.h < 60 && b.area > 250) add(`billboard_${Math.floor(r(51) * 4)}`, 0.35, 5, 1, col.set(0xffffff));
+    }
+  }
+
+  // ---------------------------------------------------------------- facade kit
+
+  private placeFacadeKit() {
+    const K = this.kit;
+    K.define("fire_escape", 220, true);
+    K.define("fire_escape_top", 220, true);
+    K.define("fire_escape_bottom", 220, true);
+    K.define("bracket", 150, false);
+    K.define("awning", 220, false);
+    K.define("canopy", 220, false);
+    for (let i = 0; i < 6; i++) K.define(`blade_sign_${i}`, 320, false);
+    const props = this.facades;
+    const m = new THREE.Matrix4(), basis = new THREE.Matrix4(), xa = new THREE.Vector3(), ya = new THREE.Vector3(0, 1, 0), za = new THREE.Vector3(), sc = new THREE.Vector3();
+    const col = new THREE.Color();
+    const at = (e: FrontEdge, along: number, y: number, out: number, s: THREE.Vector3) => {
+      xa.set(e.tx, 0, e.tz); za.set(e.nx, 0, e.nz);
+      basis.makeBasis(xa, ya, za);
+      m.copy(basis).scale(s).setPosition(e.ax + e.tx * along + e.nx * out, y, e.az + e.tz * along + e.nz * out);
+      return m;
+    };
+    const solid = (e: FrontEdge, along: number, y: number, out: number, hw: number, hh: number, hd: number) => {
+      this.solids.push({ kind: "solid", x: e.ax + e.tx * along + e.nx * out, y, z: e.az + e.tz * along + e.nz * out, tx: e.tx, tz: e.tz, nx: e.nx, nz: e.nz, hw, hh, hd, seed: 0 });
+    };
+    // is anything of world/facades.ts on this stretch of wall?
+    const blocked = (e: FrontEdge, a0: number, a1: number, y0: number, y1: number) => {
+      if (!props) return false;
+      const mx = e.ax + e.tx * (a0 + a1) / 2, mz = e.az + e.tz * (a0 + a1) / 2;
+      for (const p of props.grid.around(mx, mz, (a1 - a0) / 2 + 2)) {
+        // AC units and cats can share a bay with the stairs (as they do); balconies can't
+        if (p.kind !== "balcony") continue;
+        const rx = p.x - e.ax, rz = p.z - e.az;
+        const along = rx * e.tx + rz * e.tz, outd = rx * e.nx + rz * e.nz;
+        if (outd < -0.5 || outd > 2.2) continue;
+        if (along + p.hw < a0 - 0.2 || along - p.hw > a1 + 0.2) continue;
+        if (p.y + p.hh < y0 || p.y - p.hh > y1) continue;
+        return true;
+      }
+      return false;
+    };
+    const FE_PAINT = [0x1a1a1a, 0x1a1a1a, 0x1a1a1a, 0x22302a, 0x3a2a24, 0x5a5e60];
+    const AWNING = [0x8a1c1c, 0x1f4a2f, 0x1c2a4a, 0x5a1a2a, 0x2a2a2a, 0xc8a030, 0x245a6a, 0xd8d0c0];
+    const CANOPY = [0x1f3a2a, 0x1c2238, 0x4a1a1a, 0x181818, 0x3a2a1a];
+    const lobbyFront = new Map<Building, FrontEdge>();
+    for (const e of this.fronts) if (e.kind === "front" && e.ground === "lobby" && (lobbyFront.get(e.b)?.L ?? 0) < e.L) lobbyFront.set(e.b, e);
+    for (const e of this.fronts) {
+      const b = e.b;
+      const t = TILES[b.style];
+      const r = (k: number) => hash(b.seed * 13 + Math.round(e.u0 * 10) * 7 + k * 131);
+      const floors = Math.floor((e.top - 1.2 - Math.max(e.gH, e.y0)) / t.floorH);
+      const isFront = e.kind === "front";
+      // ---- fire escapes: the tenements' iron zig-zags, on the front and often the back
+      const feStyle = b.style === "tenement" || (b.style === "brick" && b.h < 30) || (b.style === "prewar" && b.h < 34) || (b.style === "castiron" && !isFront);
+      if (feStyle && e.L >= 2 * t.bayW + 1.2 && floors >= 2 && e.y0 === 0 && r(1) < (isFront ? 0.75 : 0.5)) {
+        const g0 = e.gH > 0 ? e.gH : 3.2;
+        const nFE = e.L > 20 && r(2) < 0.5 ? 2 : 1;
+        const kFirst = Math.ceil((e.u0 + t.bayW * 1.2) / t.bayW), kLast = Math.floor((e.u0 + e.L - t.bayW * 1.2) / t.bayW);
+        const done: number[] = [];
+        for (let f = 0; f < nFE; f++) {
+          for (let tries = 0; tries < 4; tries++) {
+            if (kLast < kFirst) break;
+            const kk = kFirst + Math.floor(r(3 + f * 5 + tries) * (kLast - kFirst + 1));
+            if (done.some((d) => Math.abs(d - kk) < 3)) continue;
+            const along = kk * t.bayW - e.u0;
+            const fl = Math.min(floors, 10);
+            if (blocked(e, along - t.bayW, along + t.bayW, g0 - 0.5, g0 + fl * t.floorH + 1.2)) continue;
+            done.push(kk);
+            const w = (2 * t.bayW - 0.5) / 4.6, sy = t.floorH / 3.2;
+            col.set(FE_PAINT[Math.floor(r(9) * FE_PAINT.length)]);
+            for (let i = 0; i < fl; i++) {
+              const y = g0 + i * t.floorH + 0.02;
+              const piece = i === 0 ? "fire_escape_bottom" : i === fl - 1 ? "fire_escape_top" : "fire_escape";
+              K.add(piece, at(e, along, y, 0, sc.set(w, sy, 1)), col);
+              solid(e, along, y, 0.6, (2 * t.bayW - 0.5) / 2, 0.08, 0.55);
+            }
+            break;
+          }
+        }
+      }
+      if (!isFront) continue;
+      // ---- cornice brackets under the projecting cornice
+      const old = b.style === "tenement" || b.style === "prewar" || b.style === "castiron" || b.style === "civic";
+      if (old && b.h > 8 && b.h < 60 && e.tier === tiers(b).length - 1 && e.L > 1.5) {
+        const yb = e.top - 1.15;
+        const sp = b.style === "tenement" ? 0.95 : 1.25;
+        const n = Math.max(1, Math.floor((e.L - 0.4) / sp));
+        const off = (e.L - (n - 1) * sp) / 2;
+        const deep = b.style === "tenement" ? 0.75 : 0.6;
+        const ct = CORNICE_TINTS[b.style];
+        col.set(ct[Math.floor(hash(b.seed + 41) * ct.length)]);
+        for (let i = 0; i < n; i++) K.add("bracket", at(e, off + i * sp, yb, 0, sc.set(1, 1, deep / 0.6)), col);
+      }
+      if (e.ground === "none" || e.L < 3) continue;
+      // ---- shop awnings and blade signs, one per 4.5 m shop
+      if (e.ground !== "lobby" && e.ground !== "residential") {
+        const first = Math.ceil((e.u0 + e.shopOff - 2.25) / 4.5), last = Math.floor((e.u0 + e.L + e.shopOff - 2.25) / 4.5);
+        for (let s = first; s <= last; s++) {
+          const along = s * 4.5 + 2.25 - e.shopOff - e.u0;
+          if (along < 2.2 || along > e.L - 2.2) continue;
+          const rs = hash(b.seed * 5 + s * 977);
+          const awn = e.ground === "chinatown" ? 0.55 : e.ground === "soho" ? 0.3 : 0.45;
+          if (rs < awn) {
+            const y = e.gH - 1.32;
+            col.set(AWNING[Math.floor(hash(b.seed + s * 31) * AWNING.length)]);
+            K.add("awning", at(e, along, y, 0.02, sc.set(3.9, 1, 1)), col);
+            solid(e, along, y - 0.2, 0.65, 1.95, 0.22, 0.62);
+          }
+          const blade = e.ground === "chinatown" ? 0.3 : e.ground === "midtown" ? 0.22 : 0.1;
+          if (hash(b.seed * 9 + s * 131) < blade && e.top > e.gH + 4) {
+            const kind = e.ground === "chinatown" ? (hash(b.seed + s * 17) < 0.5 ? 3 : 5) : Math.floor(hash(b.seed + s * 19) * 3) + (hash(b.seed + s * 23) < 0.3 ? 4 : 0);
+            col.set(0xffffff);
+            K.add(`blade_sign_${Math.min(5, kind)}`, at(e, along - 2.25 + 0.2, e.gH + 1.8, 0.05, sc.set(1, 1, 1)), col);
+          }
+        }
+      } else if (e.ground === "lobby" && e.L > 8) {
+        // one canopy to the kerb per lobby building, on its longest front
+        if (lobbyFront.get(b) === e) {
+          const along = e.L * (0.3 + 0.4 * r(30));
+          col.set(CANOPY[Math.floor(r(31) * CANOPY.length)]);
+          const depth = 3.6;
+          K.add("canopy", at(e, along, 3.3, 0, sc.set(1, 1, depth / 4.2)), col);
+          this.solids.push({ kind: "solid", x: e.ax + e.tx * along + e.nx * depth / 2, y: 3.4, z: e.az + e.tz * along + e.nz * depth / 2, tx: e.tx, tz: e.tz, nx: e.nx, nz: e.nz, hw: 1.7, hh: 0.15, hd: depth / 2, seed: b.id + 1 });
+        }
+      }
     }
   }
 }

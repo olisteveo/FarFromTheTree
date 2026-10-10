@@ -12,3 +12,7 @@ __pycache__/
 *.blend
 *.blend1
 tools/shots/
+tools/entrances/previews/
+tools/buildings/previews/
+tools/street/previews/
+tools/far/shots/

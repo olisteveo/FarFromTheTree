@@ -19,6 +19,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "gobble", name: "Gobble Gobble", desc: "Boing off the giant turkey at the Thanksgiving parade." },
   { id: "splash", name: "Making a Splash", desc: "Fly into the spray from the burst water main." },
   { id: "kid", name: "Finders Keepers", desc: "Get caught by a kid in Central Park." },
+  { id: "currents", name: "Current Affairs", desc: "Find five of the city's hidden currents." },
+  { id: "allcurrents", name: "Wind Whisperer", desc: "Find every hidden current in Manhattan." },
+  { id: "devil", name: "Spin Doctor", desc: "Ride a dust devil twenty metres up." },
   { id: "vent", name: "Mind the Gap", desc: "Get blown out of the subway up a vent shaft." },
   { id: "cab", name: "Cab Surfer", desc: "Ride a cab's slipstream for three seconds." },
   { id: "mole", name: "Mole Person", desc: "Spend a whole minute underground in one run." },
@@ -51,6 +54,9 @@ export class Achievements {
 
   has(id: string) { return this.got.has(id); }
   get count() { return this.got.size; }
+
+  /** for things tracked elsewhere (the wind's secrets) */
+  grant(id: string) { this.unlock(id); }
 
   private unlock(id: string) {
     if (this.got.has(id)) return;

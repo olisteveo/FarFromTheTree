@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { FacadeProp, Facades } from "../world/facades";
+import { loadKitModels } from "./architectureModels";
 
 const CHUNK = 280;
 
@@ -51,11 +52,17 @@ const CAT = mergeGeometries([
 
 const CLOTHES = [0xc8382a, 0xf0ece0, 0x2a5a9a, 0xe0b423, 0x3a8a4a, 0xd27aa2, 0x8a8a8a, 0x1a1a1a];
 
+/** The facade clutter the game is using, so buildings.ts can keep fire escapes clear of it without extra wiring. */
+export const facadeRegistry: { facades: Facades | null } = { facades: null };
+
 export class FacadePropsView {
   readonly root = new THREE.Group();
   private chunks: { g: THREE.Group; cx: number; cz: number }[] = [];
+  /** AC units and balconies swap to the modelled kit (models/buildings_kit.glb) when it arrives: same sizes and places */
+  private modelled: { im: THREE.InstancedMesh; model: string }[] = [];
 
   constructor(f: Facades) {
+    facadeRegistry.facades = f;
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75, metalness: 0.15 });
     const catMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, emissive: 0x000000 });
     catMat.onBeforeCompile = (sh) => {
@@ -70,9 +77,10 @@ export class FacadePropsView {
     const m = new THREE.Matrix4(), basis = new THREE.Matrix4(), xa = new THREE.Vector3(), ya = new THREE.Vector3(0, 1, 0), za = new THREE.Vector3();
     for (const [k, list] of by) {
       const g = new THREE.Group();
-      const inst = (geo: THREE.BufferGeometry, material: THREE.Material, items: FacadeProp[], dy = 0) => {
+      const inst = (geo: THREE.BufferGeometry, material: THREE.Material, items: FacadeProp[], dy = 0, model?: string) => {
         if (!items.length) return;
         const im = new THREE.InstancedMesh(geo, material, items.length);
+        if (model) this.modelled.push({ im, model });
         items.forEach((p, i) => {
           xa.set(p.tx, 0, p.tz); za.set(p.nx, 0, p.nz);
           basis.makeBasis(xa, ya, za);
@@ -84,8 +92,8 @@ export class FacadePropsView {
         im.computeBoundingSphere();
         g.add(im);
       };
-      inst(AC, mat, list.filter((p) => p.kind === "ac"));
-      inst(BALCONY, mat, list.filter((p) => p.kind === "balcony"), 0.07);
+      inst(AC, mat, list.filter((p) => p.kind === "ac"), 0, "ac_unit");
+      inst(BALCONY, mat, list.filter((p) => p.kind === "balcony"), 0.07, "balcony");
       inst(CAT, catMat, list.filter((p) => p.kind === "cat"), -0.2);
       // washing lines: a sagging cord and clothes pegged along it
       const lines = list.filter((p) => p.kind === "line");
@@ -123,6 +131,16 @@ export class FacadePropsView {
       this.chunks.push({ g, cx: (cx + 0.5) * CHUNK, cz: (cz + 0.5) * CHUNK });
       this.root.add(g);
     }
+    loadKitModels().then((parts) => {
+      if (!parts) return;
+      for (const { im, model } of this.modelled) {
+        const p = parts.get(model);
+        if (!p) continue;
+        im.geometry = p.geo;
+        im.material = p.mats.length === 1 ? p.mats[0] : p.mats;
+        im.computeBoundingSphere();
+      }
+    }).catch(() => { /* keep the simple ones */ });
   }
 
   update(focus: THREE.Vector3) {

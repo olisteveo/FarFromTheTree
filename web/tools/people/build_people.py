@@ -7,7 +7,8 @@ Steps (all heavy work runs at idle CPU priority, Blender limited to 8 threads):
   1. atlas_design.py -> Tesseract composition atlas/Atlas.tsrct -> rendered PNG
      -> web/public/models/people_atlas.png
   2. people_blender.py (headless Blender 5.2): builds the characters and dogs, rigs and keys their
-     animations, bakes the vertex animation, writes people.glb / people_vat.bin / people.json and
+     animations (people_anim.py: walk, stroll, brisk, jog, idle, talk, hail, cheer, sit, flinch; who has
+     which extra clip is EXTRA_CLIPS in people_blender.py), bakes the vertex animation, writes people.glb / people_vat.bin / people.json and
      renders review images into web/tools/people/previews/.
 
 Needs: Tesseract CLI (tsrct) and Blender 5.2. No Python packages beyond the standard library.

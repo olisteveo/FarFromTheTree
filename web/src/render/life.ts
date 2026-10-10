@@ -343,14 +343,20 @@ export function streetHazards(flow: Airflow): THREE.Group {
  *  blue where it blows against you, white where it lifts. */
 export class WindStreaks {
   readonly mesh: THREE.LineSegments;
-  private n = 560;
+  private n: number;
   private flip = 0;
   private p: Float32Array; private age: Float32Array; private life: Float32Array;
   private pos: Float32Array; private col: Float32Array;
-  private wv = new Float32Array(560 * 3).fill(1e9);
+  private wv: Float32Array;
+  /** what kind of air each streak is in: 0 plain, 1 a hidden current, 2 a dust devil */
+  private kindOf: Uint8Array;
   private s: AirSample = { x: 0, y: 0, z: 0, lane: "street", vehicle: false, train: false };
   enabled = true;
-  constructor(private flow: Airflow) {
+  /** count: how many streaks (fewer on low quality) */
+  constructor(private flow: Airflow, count = 560) {
+    this.n = count;
+    this.wv = new Float32Array(count * 3).fill(1e9);
+    this.kindOf = new Uint8Array(count);
     this.p = new Float32Array(this.n * 3);
     this.age = new Float32Array(this.n).fill(999);
     this.life = new Float32Array(this.n);
@@ -368,9 +374,9 @@ export class WindStreaks {
     const R = 28, under = focus.y < -0.4;
     const route = this.flow.city.route;
     const rt = route.at(route.nearest(focus.x, focus.z).s);
-    // every streak moves every frame on the wind it last sampled; a quarter of them re-sample
-    // each frame (the wind field is smooth, so this looks the same for a quarter of the cost)
-    this.flip = (this.flip + 1) & 3;
+    // every streak moves every frame on the wind it last sampled; an eighth of them re-sample
+    // each frame (the wind field is smooth, so this looks the same for an eighth of the cost)
+    this.flip = (this.flip + 1) & 7;
     for (let i = 0; i < this.n; i++) {
       let x = this.p[i * 3], y = this.p[i * 3 + 1], z = this.p[i * 3 + 2];
       if (this.age[i] > this.life[i] || Math.abs(x - focus.x) > R || Math.abs(z - focus.z) > R || Math.abs(y - focus.y) > 14 || (under !== y < -0.4)) {
@@ -381,9 +387,10 @@ export class WindStreaks {
         this.life[i] = 0.8 + Math.random() * 1.4;
         this.wv[i * 3 + 1] = 1e9; // force a sample
       }
-      if ((i & 3) === this.flip || this.wv[i * 3 + 1] === 1e9) {
+      if ((i & 7) === this.flip || this.wv[i * 3 + 1] === 1e9) {
         const s = this.flow.sample(x, y, z, t, this.s);
         this.wv[i * 3] = s.x; this.wv[i * 3 + 1] = s.y; this.wv[i * 3 + 2] = s.z;
+        this.kindOf[i] = (s.jet ?? -1) >= 0 ? 1 : (s.devil ?? -1) >= 0 ? 2 : 0;
       }
       const w = { x: this.wv[i * 3], y: this.wv[i * 3 + 1], z: this.wv[i * 3 + 2] };
       x += w.x * dt; y += w.y * dt; z += w.z * dt;
@@ -396,7 +403,10 @@ export class WindStreaks {
       const along = (w.x * rt.tx + w.z * rt.tz) / sp, lift = w.y / sp;
       // gold = tailwind uptown, blue = headwind, white = updraft
       let r = 0.8, g = 0.8, b = 0.8;
-      if (lift > 0.5) { r = 1; g = 1; b = 1; }
+      // the wind's secrets give themselves away: cyan in a hidden current, lilac in a dust devil
+      if (this.kindOf[i] === 1) { r = 0.35; g = 1; b = 1; }
+      else if (this.kindOf[i] === 2) { r = 0.85; g = 0.7; b = 1; }
+      else if (lift > 0.5) { r = 1; g = 1; b = 1; }
       else if (along > 0.3) { r = 1; g = 0.78; b = 0.4; }
       else if (along < -0.3) { r = 0.45; g = 0.65; b = 1; }
       this.col.set([r * fade, g * fade, b * fade, 0, 0, 0], i * 6);

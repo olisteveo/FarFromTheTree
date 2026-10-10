@@ -47,8 +47,20 @@ export class Audio {
   constructor(private city: CityData) {}
 
   /** Call on the first user gesture (browsers only allow sound after one). */
+  get running() { return !!this.ctx && this.ctx.state === "running"; }
+
+  /** Call from inside a tap/click/key handler: phones only let sound start in the gesture itself.
+   *  Creates (or resumes) the context and plays one silent sample, which unlocks iOS. */
+  unlock() {
+    this.start();
+    const ctx = this.ctx!;
+    if (ctx.state !== "running") ctx.resume().catch(() => {});
+    const b = ctx.createBuffer(1, 1, 22050), src = ctx.createBufferSource();
+    src.buffer = b; src.connect(ctx.destination); src.start(0);
+  }
+
   start() {
-    if (this.ctx) return;
+    if (this.ctx) { if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {}); return; }
     const ctx = (this.ctx = new AudioContext());
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.25;

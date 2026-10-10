@@ -8,6 +8,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
+import { ShapeUtils, Vector2 } from "three";
 
 const DATA = path.resolve("data");
 const OUT = path.resolve("public/city.json");
@@ -381,3 +383,238 @@ console.log("styles", styles);
 console.log("districts", DISTRICTS.map((d) => `${d.id}@${d.s0}`).join(" "));
 console.log("stations", stations.map((s: any) => `${s.n}(${s.r})@${s.ss}/${s.d}`).join(", "));
 console.log("subway", (subway.length * 4 / 1000).toFixed(2), "km");
+
+// ------------------------------------------------------------------ the far city (public/far.dat)
+// Everything outside the playable corridor, for render/farCity.ts: every Manhattan building, the
+// Brooklyn / Queens / Bronx waterfronts, Jersey City and Hoboken (OpenStreetMap), and the land
+// across the rivers. city.json is untouched: the corridor's own buildings (raw.buildings) and the
+// skyline towers (raw.skyline) get their far versions from city.json at runtime.
+// Download first: cd tools/osm && node far.mjs
+if (fs.existsSync(path.join(DATA, "far_manhattan.json"))) buildFar();
+
+function buildFar() {
+  const OUTF = path.resolve("public/far.dat");
+  const Q = 0.5, OX = 0, OZ = 6000; // quantum (m) and offset: u16 covers x +-16 km, z -10..22 km
+  const qx = (x: number) => Math.round((x - OX) / Q) + 32768, qz = (z: number) => Math.round((z - OZ) / Q) + 32768;
+  const X0 = -16000, X1 = 16000, Z0 = -10000, Z1 = 22000;
+  const inBox = (x: number, z: number) => x > X0 && x < X1 && z > Z0 && z < Z1;
+
+  // ---- land across the rivers: NYC boroughs (not Manhattan, ground.ts has it) + New Jersey from OSM
+  function clipRect(r: P[]): P[] {
+    // Sutherland-Hodgman against the box
+    const edges: [(p: P) => boolean, (a: P, b: P) => P][] = [
+      [(p) => p[0] >= X0, (a, b) => [X0, a[1] + ((b[1] - a[1]) * (X0 - a[0])) / (b[0] - a[0])]],
+      [(p) => p[0] <= X1, (a, b) => [X1, a[1] + ((b[1] - a[1]) * (X1 - a[0])) / (b[0] - a[0])]],
+      [(p) => p[1] >= Z0, (a, b) => [a[0] + ((b[0] - a[0]) * (Z0 - a[1])) / (b[1] - a[1]), Z0]],
+      [(p) => p[1] <= Z1, (a, b) => [a[0] + ((b[0] - a[0]) * (Z1 - a[1])) / (b[1] - a[1]), Z1]],
+    ];
+    let out = r;
+    for (const [inside, cut] of edges) {
+      const src = out; out = [];
+      for (let i = 0; i < src.length; i++) {
+        const a = src[(i + src.length - 1) % src.length], b = src[i];
+        if (inside(b)) { if (!inside(a)) out.push(cut(a, b)); out.push(b); }
+        else if (inside(a)) out.push(cut(a, b));
+      }
+      if (!out.length) break;
+    }
+    return out;
+  }
+  const landRings: P[][] = [];
+  for (const r of read("far_shore.json")) {
+    if (r.boroname === "Manhattan") continue;
+    const list = r.the_geom.type === "Polygon" ? [r.the_geom.coordinates] : r.the_geom.coordinates;
+    for (const poly of list) {
+      const o = ring(poly[0], 4, true);
+      if (!o || Math.abs(area(o)) < 3000) continue;
+      const c = clipRect(o);
+      if (c.length >= 3 && Math.abs(area(c)) > 3000) landRings.push(c);
+    }
+  }
+  // New Jersey: assemble OSM coastline ways (land on the left) into the mainland polygon
+  const njRing = (() => {
+    const ways: { n: number[]; g: number[][] }[] = read("far_coast.json");
+    const byStart = new Map<number, number>();
+    ways.forEach((w, i) => byStart.set(w.n[0], i));
+    const used = new Uint8Array(ways.length);
+    // the chain through Hoboken's waterfront
+    const hob = proj(-74.0268, 40.7405);
+    let best = -1, bd = Infinity;
+    ways.forEach((w, i) => { for (const [lon, lat] of w.g) { const p = proj(lon, lat); const d = Math.hypot(p[0] - hob[0], p[1] - hob[1]); if (d < bd) { bd = d; best = i; } } });
+    // walk back to the chain's start, then forward
+    const byEnd = new Map<number, number>();
+    ways.forEach((w, i) => byEnd.set(w.n[w.n.length - 1], i));
+    let s = best;
+    for (let k = 0; k < ways.length; k++) { const p = byEnd.get(ways[s].n[0]); if (p === undefined || p === best) break; s = p; }
+    const pts: number[][] = [];
+    for (let i: number | undefined = s; i !== undefined && !used[i]; i = byStart.get(ways[i].n[ways[i].n.length - 1])) {
+      used[i] = 1;
+      pts.push(...(pts.length ? ways[i].g.slice(1) : ways[i].g));
+    }
+    // keep the run of the chain inside the box around Hoboken, then close it far to the west
+    const pp = pts.map(([lon, lat]) => proj(lon, lat));
+    let i0 = pp.findIndex((p) => Math.hypot(p[0] - hob[0], p[1] - hob[1]) < bd + 1);
+    let a = i0, b = i0;
+    const ok = (p: P) => inBox(p[0], p[1]) && p[0] > -4000; // west of the East River: just the NJ shore
+    while (a > 0 && ok(pp[a - 1])) a--;
+    while (b < pp.length - 1 && ok(pp[b + 1])) b++;
+    // OSM's coastline crosses the Hudson up by the Palisades and comes back down the Bronx side:
+    // stop at its northernmost point
+    for (let i = i0, zMax = -Infinity, iMax = i0; i <= b; i++) { if (pp[i][1] > zMax) { zMax = pp[i][1]; iMax = i; } if (i === b) b = iMax; }
+    const run = pp.slice(a, b + 1);
+    console.log(`far: NJ coastline run ${run.length} points (chain ${pts.length})`);
+    // land on the left of travel: close via the box's west side (+x is west)
+    const first = run[0], last = run[run.length - 1];
+    const closing: P[] = [[X1, last[1]], [X1, first[1]]];
+    let r = [...run, ...closing];
+    // simplify
+    const flatPts = dpSimplify(r, 4);
+    r = flatPts;
+    if (area(r) < 0) r.reverse(); // same winding as the borough outers
+    void i0;
+    return r;
+  })();
+  if (njRing.length > 3) landRings.push(clipRect(njRing));
+
+  // triangulate the land at build time (three's earcut)
+  const landV: number[] = [], landI: number[] = [];
+  for (const r of landRings) {
+    const base = landV.length / 2;
+    const tris = ShapeUtils.triangulateShape(r.map(([x, z]) => new Vector2(x, z)), []);
+    for (const [x, z] of r) landV.push(x, z);
+    for (const t of tris) landI.push(base + t[0], base + t[1], base + t[2]);
+  }
+
+  // ---- buildings
+  const corridorBins = new Set<number>();
+  for (const n of ["nyc_buildings.json", "nyc2_buildings.json", "nyc_skyline.json"]) {
+    if (fs.existsSync(path.join(DATA, n))) for (const b of read(n)) corridorBins.add(Number(b.bin));
+  }
+  const inLand = (x: number, z: number) => landRings.some((r) => inRingP(r.flat(), x, z));
+  type FB = { r: P[]; h: number; t: number; k: number };
+  const far: FB[] = [];
+  // t (type): 0 brick walk-up, 1 prewar masonry, 2 deco tower, 3 modern, 4 glass, 5 rowhouse/low (other boroughs, NJ)
+  const typeOf = (year: number, h: number) => {
+    if (!year || year < 1800) year = h > 90 ? 1965 : 1915;
+    if (year < 1945) return h > 85 ? 2 : h > 30 ? 1 : 0;
+    if (year < 1985) return h > 40 ? 3 : 0;
+    return h > 45 ? 4 : 3;
+  };
+  // distance to Manhattan (its land outline), to thin out the low buildings across the rivers
+  const mGrid = new Map<string, P[]>();
+  for (const p of land) for (let i = 0; i < p[0].length; i += 2) {
+    const k = `${Math.floor(p[0][i] / 500)},${Math.floor(p[0][i + 1] / 500)}`;
+    (mGrid.get(k) ?? mGrid.set(k, []).get(k)!).push([p[0][i], p[0][i + 1]]);
+  }
+  const dMan = (x: number, z: number) => {
+    let d = Infinity;
+    for (let r = 0; r < 12 && d > (r - 1) * 500; r++)
+      for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) {
+        if (Math.max(Math.abs(i), Math.abs(j)) !== r) continue;
+        for (const p of mGrid.get(`${Math.floor(x / 500) + i},${Math.floor(z / 500) + j}`) ?? []) d = Math.min(d, Math.hypot(p[0] - x, p[1] - z));
+      }
+    return d;
+  };
+  const keepAcross = (coords: number[][], h: number, near = 1300) => {
+    const p = proj(coords[0][0], coords[0][1]);
+    const d = dMan(p[0], p[1]);
+    return h > 28 || (h > 14 && d < near + 1300) || d < near;
+  };
+  const addFoot = (coords: number[][], h: number, t: number, k: number, eps: number) => {
+    const o = ring(coords, eps, true);
+    if (!o || o.length > 250) return;
+    const a = Math.abs(area(o));
+    if (a < 18) return;
+    let cx = 0, cz = 0;
+    for (const p of o) { cx += p[0]; cz += p[1]; }
+    cx /= o.length; cz /= o.length;
+    if (!inBox(cx, cz)) return;
+    far.push({ r: o, h, t, k });
+  };
+  const codes = ["2100", "5100", "1006", "1005"];
+  let nM = 0, nB = 0, nJ = 0;
+  for (const b of read("far_manhattan.json")) {
+    if (!codes.includes(b.feature_code) || corridorBins.has(Number(b.bin))) continue;
+    const h = Number(b.height_roof ?? 0) * 0.3048;
+    if (!(h > 2.5)) continue;
+    const list = b.the_geom.type === "Polygon" ? [b.the_geom.coordinates] : b.the_geom.coordinates;
+    for (const poly of list) addFoot(poly[0], h, typeOf(Number(b.construction_year ?? 0), h), Number(b.bin) % 65536, 0.9);
+    nM++;
+  }
+  const boroughs = read("far_boroughs.json");
+  if (fs.existsSync(path.join(DATA, "far_boroughs_low.json"))) boroughs.push(...read("far_boroughs_low.json"));
+  for (const b of boroughs) {
+    if (!codes.includes(b.feature_code)) continue;
+    const h = Number(b.height_roof ?? 0) * 0.3048;
+    const list = b.the_geom.type === "Polygon" ? [b.the_geom.coordinates] : b.the_geom.coordinates;
+    const year = Number(b.construction_year ?? 0);
+    if (!keepAcross(list[0][0], h)) continue;
+    for (const poly of list) addFoot(poly[0], h, h < 20 ? 5 : typeOf(year, h), Number(b.bin) % 65536, 1.2);
+    nB++;
+  }
+  // New Jersey (OSM): heights where tagged, else a few storeys
+  const SKIP = /^(garage|garages|shed|roof|storage_tank|carport|hut|kiosk|ruins|construction|bridge|service|greenhouse)$/;
+  let osmK = 1;
+  for (const b of read("far_osm_buildings.json")) {
+    const tg = b.t ?? {};
+    if (SKIP.test(tg.building ?? "")) continue;
+    let h = parseFloat(tg.height ?? "");
+    const lv = parseFloat(tg["building:levels"] ?? "");
+    const k = (osmK++ * 2654435761) >>> 16;
+    if (!(h > 0)) h = lv > 0 ? lv * 3.2 + 1.5 : /apartments|commercial|office|hotel/.test(tg.building ?? "") ? 14 : 7 + (k % 7);
+    const g: number[][] = b.g;
+    // drop anything on the NYC side (Manhattan is NYC data)
+    let cx = 0, cz = 0;
+    for (const [lon, lat] of g) { const p = proj(lon, lat); cx += p[0]; cz += p[1]; }
+    cx /= g.length; cz /= g.length;
+    if (!inRingP(njRing.flat(), cx, cz)) continue;
+    if (!keepAcross(g, h, 2700)) continue;
+    const before = far.length;
+    addFoot(g, h, h > 45 ? 4 : h > 20 ? 3 : 5, k, 1.2);
+    if (far.length > before && Math.abs(area(far[far.length - 1].r)) < 45 && h < 15) far.pop(); // sheds and garages
+    else if (far.length > before) nJ++;
+  }
+  void inLand;
+
+  // order by tile (1600 m) so the runtime can build tile meshes without sorting
+  const T = 1600;
+  const tileOf = (b: FB) => { let x = 0, z = 0; for (const p of b.r) { x += p[0]; z += p[1]; } return Math.floor((x / b.r.length - X0) / T) * 64 + Math.floor((z / b.r.length - Z0) / T); };
+  far.sort((a, b) => tileOf(a) - tileOf(b));
+
+  // ---- write: header, land, buildings (first vertex absolute, then int16 deltas), gzipped
+  const parts: Buffer[] = [];
+  const head = Buffer.alloc(32);
+  head.write("FAR1", 0, "ascii");
+  head.writeUInt32LE(landV.length / 2, 4);
+  head.writeUInt32LE(landI.length / 3, 8);
+  head.writeUInt32LE(far.length, 12);
+  head.writeFloatLE(Q, 16); head.writeFloatLE(OX, 20); head.writeFloatLE(OZ, 24);
+  parts.push(head);
+  const lv = Buffer.alloc(landV.length * 2);
+  for (let i = 0; i < landV.length; i += 2) { lv.writeUInt16LE(qx(landV[i]) , i * 2); lv.writeUInt16LE(qz(landV[i + 1]), i * 2 + 2); }
+  const li = Buffer.alloc(landI.length * 4);
+  landI.forEach((v, i) => li.writeUInt32LE(v, i * 4));
+  parts.push(lv, li);
+  // building records: u8 n, u8 type, u16 height (dm), u16 seed, u16 x0, u16 z0, then (n-1) x (int16 dx, int16 dz)
+  let bytes = 0;
+  for (const b of far) bytes += 10 + (b.r.length - 1) * 4;
+  const bb = Buffer.alloc(bytes);
+  let o = 0;
+  for (const b of far) {
+    bb.writeUInt8(b.r.length, o); bb.writeUInt8(b.t, o + 1);
+    bb.writeUInt16LE(Math.min(65535, Math.round(b.h * 10)), o + 2); bb.writeUInt16LE(b.k & 0xffff, o + 4);
+    let px = qx(b.r[0][0]), pz = qz(b.r[0][1]);
+    bb.writeUInt16LE(px, o + 6); bb.writeUInt16LE(pz, o + 8);
+    o += 10;
+    for (let i = 1; i < b.r.length; i++) {
+      const nx = qx(b.r[i][0]), nz = qz(b.r[i][1]);
+      bb.writeInt16LE(nx - px, o); bb.writeInt16LE(nz - pz, o + 2);
+      px = nx; pz = nz; o += 4;
+    }
+  }
+  parts.push(bb);
+  const raw = Buffer.concat(parts);
+  const gz = zlib.gzipSync(raw, { level: 9 });
+  fs.writeFileSync(OUTF, gz);
+  console.log(`far: ${far.length} buildings (Manhattan ${nM}, boroughs ${nB}, NJ ${nJ}), land ${landRings.length} rings / ${landI.length / 3} tris -> ${(raw.length / 1024).toFixed(0)} KB raw, ${(gz.length / 1024).toFixed(0)} KB gzipped`);
+}

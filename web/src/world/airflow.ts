@@ -16,10 +16,12 @@ import { Facades } from "./facades";
 import { Crowd } from "./crowd";
 import { Blockers } from "./blockers";
 import { Park } from "./park";
+import { WindFeatures, type WindHit } from "./windFeatures";
 import { Grid } from "./data";
 import { colliderGrid, parkLayout, type ParkCollider, type ParkLayout } from "../render/centralPark";
+import { streetLayout, type StreetLayout } from "../render/streetLayout";
 import { Traffic } from "./traffic";
-import { TRAIN, trainsAt, TUNNEL, Underground, type Train } from "./underground";
+import { STAIRS, STAIRS_FOOT, TRAIN, trainsAt, TUNNEL, Underground, VENT, type Shaft, type Train } from "./underground";
 
 export type Lane = "subway" | "street" | "roof";
 
@@ -49,6 +51,9 @@ export interface AirSample {
   train: boolean;
   /** which way the train that got you was going */
   trainDir?: number;
+  /** inside a hidden current (its id) or a dust devil (its id), or -1 */
+  jet?: number;
+  devil?: number;
 }
 
 /** The winter wind's direction over the roofs: from the north-west, so it blows to the
@@ -64,9 +69,15 @@ export class Airflow {
   readonly facades: Facades;
   readonly crowd: Crowd;
   readonly park: Park;
+  /** hidden currents, dust devils, tower downdrafts */
+  readonly features: WindFeatures;
+  private fh: WindHit = { x: 0, y: 0, z: 0, jet: -1, devil: -1, lee: false };
   /** Central Park's features (pond, rocks, lamps, benches, trees...) and what the leaf can hit there */
   readonly parkLayout: ParkLayout;
   readonly parkSolids: Grid<ParkCollider>;
+  /** street furniture (render/streetLayout.ts): signals, lamps, hydrants, sheds, parked cars... and their colliders */
+  readonly streetLayout: StreetLayout;
+  readonly streetSolids: Grid<ParkCollider>;
   readonly blockers: Blockers;
   private trains: Train[] = [];
   private trainT = -1;
@@ -86,8 +97,13 @@ export class Airflow {
     this.crowd = new Crowd(this.traffic);
     this.blockers = new Blockers(city);
     this.traffic.closed = this.blockers.list;
+    this.features = new WindFeatures(city);
     this.parkLayout = parkLayout(city);
     this.parkSolids = colliderGrid(this.parkLayout.colliders);
+    this.streetLayout = streetLayout(city, { traffic: this.traffic, life: this.life, blockers: this.blockers, under: this.under });
+    this.streetSolids = colliderGrid(this.streetLayout.colliders);
+    // the sidewalk crowd (block loops, schedules, groups) needs the furniture to step round it
+    this.crowd.attach(city, { street: this.streetLayout });
     this.park = new Park(city, city.raw.districts.find((d) => d.id === "park")?.s0 ?? city.route.length - 700, this.parkLayout.keepClear);
   }
 
@@ -125,7 +141,7 @@ export class Airflow {
   }
 
   sample(x: number, y: number, z: number, t: number, out: AirSample): AirSample {
-    out.vehicle = false; out.train = false;
+    out.vehicle = false; out.train = false; out.jet = -1; out.devil = -1;
     const city = this.city;
     const n = city.route.nearest(x, z, this.hint, this.nr);
     this.hint = n.s;
@@ -173,7 +189,16 @@ export class Airflow {
       wy = 0.8 * noise3(x / 8, y / 4, z / 8 + t, 41) + spill;
       // an air cushion off the walls: near a wall the air turns along it and pushes you off it,
       // so a leaf riding the draught round a bend skims the outer wall instead of slamming into it
-      if (wallD < AIR.cushion) {
+      // (not under a shaft: there the ceiling has a hole in it and the air is going up it)
+      let underShaft = false;
+      for (const g of u.shaftGrid.at(x, z)) {
+        const a = (x - g.x) * g.ux + (z - g.z) * g.uz, b = (x - g.x) * g.uz - (z - g.z) * g.ux;
+        const near = g.kind === "vent" ? Math.abs(a) < VENT.halfLength + 2.5 && Math.abs(b) < VENT.halfWidth + 2.5
+          : g.kind === "stairs" ? a > -STAIRS.half && a < STAIRS_FOOT + 1 && Math.abs(b) < STAIRS.halfWidth + 1.5
+          : Math.hypot(a, b) < g.r + 2;
+        if (near) { underShaft = true; break; }
+      }
+      if (wallD < AIR.cushion && !underShaft) {
         const e = 0.3;
         const nx = u.sdf(x + e, y, z) - u.sdf(x - e, y, z), nz = u.sdf(x, y, z + e) - u.sdf(x, y, z - e);
         const ny = u.sdf(x, y + e, z) - u.sdf(x, y - e, z);
@@ -184,6 +209,44 @@ export class Airflow {
           wx += ux * (-into * k + AIR.cushionPush * k * k);
           wy += uy * (-into * k + AIR.cushionPush * k * k);
           wz += uz * (-into * k + AIR.cushionPush * k * k);
+        }
+      }
+      // ways out. Under a big "out" vent the tunnel air roars up the shaft and takes you with it;
+      // at a station, the air drifts toward the passages up to the exit stairs (and the draught
+      // eases there, so you can turn off the line).
+      for (const g of u.shaftGrid.at(x, z)) {
+        if (!g.out) continue;
+        if (g.kind === "vent") {
+          const a = (x - g.x) * g.ux + (z - g.z) * g.uz, b = (x - g.x) * g.uz - (z - g.z) * g.ux;
+          const ea = Math.max(0, Math.abs(a) - VENT.halfLength), eb = Math.max(0, Math.abs(b) - VENT.halfWidth);
+          const d = Math.hypot(ea, eb);
+          if (d > 9) continue;
+          const k = 1 - d / 9;
+          // straight up under the opening; round it, drawn in toward the opening first
+          // (near the roof only well inside the opening, or it jams you against the rim)
+          const nearRoof = y > TUNNEL.ceiling - 1.6;
+          const under = nearRoof ? (Math.abs(a) < VENT.halfLength - 1 && Math.abs(b) < VENT.halfWidth - 0.4 ? 1 : 0.1) : d < 1.5 ? 1 : 0.2;
+          wy += 18 * k * under * smoothstep(TUNNEL.floor + 0.1, TUNNEL.floor + 1.0, y);
+          const na = Math.max(-VENT.halfLength + 0.8, Math.min(VENT.halfLength - 0.8, a)) - a, nb = Math.max(-VENT.halfWidth + 0.5, Math.min(VENT.halfWidth - 0.5, b)) - b;
+          const nl = Math.hypot(na, nb) + 0.3;
+          // the draught dies away under the vent (it's all going up the shaft), so you slow down there
+          wx = wx * (1 - 0.92 * k) + ((g.ux * na + g.uz * nb) / nl) * 9 * k;
+          wz = wz * (1 - 0.92 * k) + ((g.uz * na - g.ux * nb) / nl) * 9 * k;
+        } else if (g.kind === "stairs" && st) {
+          // where the exit passage meets the station: the point on it nearest the station wall
+          // the way in from the station: just outside the station wall, on the passage, or on the
+          // stairs themselves where the entrance is close enough that they come down into the station
+          const L = Math.hypot(g.tx, g.tz);
+          const am = Math.min(L - TUNNEL.stationHalfWidth - 0.8, STAIRS_FOOT + 1);
+          const ym = am < STAIRS_FOOT ? STAIRS.top - STAIRS.slope * (Math.max(-STAIRS.half, am) + STAIRS.half) + 1.4 : -4.3;
+          const mx = g.x + g.ux * am, mz = g.z + g.uz * am;
+          const dx = mx - x, dy = ym - y, dz = mz - z, d = Math.hypot(dx, dy, dz);
+          if (d > 24) continue;
+          // the station's air pours up the exit: the draught along the platform dies away near it
+          const k = Math.min(1, 1.3 * (1 - d / 24));
+          wx = wx * (1 - k) + (dx / (d + 0.5)) * 11 * k;
+          wy = wy * (1 - k) + (dy / (d + 0.5)) * 11 * k;
+          wz = wz * (1 - k) + (dz / (d + 0.5)) * 11 * k;
         }
       }
       // vents overhead draw the tunnel air up into them: the relief vents always, the grates
@@ -204,7 +267,31 @@ export class Airflow {
         wz += ((g.z - z) / (d + 0.3)) * pump * 0.25 * k;
       }
       // shafts: air leaks up the stairs, and the grates breathe out when a train passes
-      const sh = this.uinfo.inShaft as { kind: string; x: number; z: number; ss: number } | null;
+      const sh = this.uinfo.inShaft as Shaft | null;
+      if (sh && sh.kind === "stairs") {
+        // down the stairs (ways in) or up them and out (ways out), then along the passage
+        const a = (x - sh.x) * sh.ux + (z - sh.z) * sh.uz, b = (x - sh.x) * sh.uz - (z - sh.z) * sh.ux;
+        const dir = sh.out ? -1 : 1;
+        if (a < STAIRS_FOOT) {
+          const L = Math.hypot(1, STAIRS.slope), sp = sh.out ? 7 : 6.5;
+          wx = (sh.ux / L) * sp * dir; wz = (sh.uz / L) * sp * dir; wy = (-STAIRS.slope / L) * sp * dir;
+        } else {
+          wx = sh.ux * 6 * dir; wz = sh.uz * 6 * dir; wy = 0;
+        }
+        // keep to the middle of the stairwell
+        wx -= sh.uz * b * 1.5; wz += sh.ux * b * 1.5;
+        out.x = wx; out.y = wy; out.z = wz;
+        return out;
+      }
+      if (sh && sh.kind === "vent") {
+        // straight up (ways out) or down (ways in) the shaft, held to its middle
+        const a = (x - sh.x) * sh.ux + (z - sh.z) * sh.uz, b = (x - sh.x) * sh.uz - (z - sh.z) * sh.ux;
+        wx = wx * 0.2 - sh.ux * a * 1.2 - sh.uz * b * 3;
+        wz = wz * 0.2 - sh.uz * a * 1.2 + sh.ux * b * 3;
+        wy = sh.out ? VENT.outBlast : -VENT.inPull - 3;
+        out.x = wx; out.y = wy; out.z = wz;
+        return out;
+      }
       if (sh) {
         // ways in draw air (and leaves) down the stairs; ways out breathe warm air up into the street
         let pump = sh.kind === "stairs" ? ((sh as { out?: boolean }).out ? 6 : -1.5) : 0.5;
@@ -323,9 +410,13 @@ export class Airflow {
         // a wide, firm funnel: aim at the sign and dive, and the stairs take you
         if (d > 9 || y > 7) continue;
         const k = 1 - d / 9, kk = k * (1 - Math.max(0, y - 2) / 5);
-        sy -= 4.5 * kk;
-        sx += ((sh.x - x) / (d + 0.2)) * 4 * kk;
-        sz += ((sh.z - z) / (d + 0.2)) * 4 * kk;
+        // over the opening it pulls you down; just short of it, skimming the pavement, it lifts you
+        // a little and draws you in (so a leaf that lands by the entrance slides in, not sticks)
+        const over = Math.abs((x - sh.x) * sh.ux + (z - sh.z) * sh.uz) < 2.1 && Math.abs((x - sh.x) * sh.uz - (z - sh.z) * sh.ux) < 1.95;
+        sy += over ? -4.5 * kk : y < 1.3 ? 1.6 * k : -2 * kk;
+        const pull = over ? 4 : y < 1.3 ? 7 : 4.5;
+        sx += ((sh.x - x) / (d + 0.2)) * pull * kk;
+        sz += ((sh.z - z) / (d + 0.2)) * pull * kk;
       }
       // open manholes suck you down
       for (const m of this.life.holeGrid.at(x, z)) {
@@ -393,6 +484,40 @@ export class Airflow {
         wz += 2.5 * k * noise3(x / 9, y / 6, z / 9 + t * 2.2, 62);
         wy += 1.5 * k * noise3(x / 9, y / 6, z / 9 + t * 2.2, 63);
       }
+    }
+
+    // ---------------------------------------------------------------- the massive vents
+    // ways in pull you down into them from a few metres around; ways out fire a column of tunnel
+    // air straight up past the rooftops (ride it and you're on the roofs in seconds)
+    if (y > -0.6) {
+      for (const v of this.under.shaftGrid.at(x, z)) {
+        if (v.kind !== "vent") continue;
+        const a = (x - v.x) * v.ux + (z - v.z) * v.uz, b = (x - v.x) * v.uz - (z - v.z) * v.ux;
+        const ea = Math.max(0, Math.abs(a) - VENT.halfLength), eb = Math.max(0, Math.abs(b) - VENT.halfWidth);
+        const d = Math.hypot(ea, eb); // distance outside the grate's rectangle (0 over it)
+        if (v.out) {
+          if (d > 2.5 || y > VENT.outReach) continue;
+          const k = (1 - d / 2.5) * (1 - y / VENT.outReach);
+          wy += VENT.outBlast * k;
+          wx *= 1 - 0.6 * k; wz *= 1 - 0.6 * k;
+        } else {
+          if (d > 8 || y > 10) continue;
+          const k = (1 - d / 8) * (1 - Math.max(0, y - 2) / 8);
+          wy -= VENT.inPull * k;
+          const L = Math.hypot(a, b) + 0.5;
+          wx += (-(v.ux * a + v.uz * b) / L) * 4 * k;
+          wz += (-(v.uz * a - v.ux * b) / L) * 4 * k;
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------- hidden currents, dust devils, downdrafts
+    {
+      const f = this.fh;
+      f.x = wx; f.y = wy; f.z = wz;
+      this.features.apply(x, y, z, t, f);
+      wx = f.x; wy = f.y; wz = f.z;
+      out.jet = f.jet; out.devil = f.devil;
     }
 
     // ---------------------------------------------------------------- the edges of the corridor

@@ -44,7 +44,9 @@ export const FLIGHT = {
   maxLift: 24,        // m/s^2 of lift: about 2.5 g
   radius: 0.12,
   safeImpact: 4.5,
-  damage: 0.036,      // integrity lost per m/s of impact over the safe speed (tanky enough to learn on)
+  /** how hard the air drags the leaf along with it (per second): normal, spread, curled */
+  catch: 0.7, catchSpread: 1.5, catchCurl: 0.15,
+  damage: 0.029,      // integrity lost per m/s of impact over the safe speed (tanky enough to learn on)
   dropRoofStreet: 0.8,
   dropStreetSubway: 1.15,
   dropChain: 1.35,
@@ -232,6 +234,25 @@ export class Glider {
     F.copy(lift).multiplyScalar(liftA).addScaledVector(e, -dragA);
     this.vel.addScaledVector(F, dt);
     this.vel.y -= T.g * dt;
+    // the catch: a leaf is a sail. Whatever it's doing, the air it's in drags it along (a lot when
+    // spread, hardly at all curled into a seed), so gusts, currents and drafts carry you
+    {
+      // A gliding leaf keeps its airspeed (that's its lift) and only gets shoved sideways; a slow or
+      // stalled one (resting, landed, hovering) is all sail and goes wherever the air goes.
+      // (weak down among the traffic, where the air is churned by cars and you'd be dragged into them)
+      const low = this.lane === "street" && this.pos.y < 3.5 ? 0.35 : 1;
+      const rate = (input.spread ? T.catchSpread : input.curl ? T.catchCurl : T.catch) * low;
+      const sail = 1 - Math.min(1, Math.max(0, (Math.hypot(this.vel.x, this.vel.z) - 2.5) / 4)); // 1 when barely moving, 0 when gliding
+      const kAll = 1 - Math.exp(-rate * sail * dt), kSide = 1 - Math.exp(-rate * 0.6 * dt);
+      const rx = W.x - this.vel.x, rz = W.z - this.vel.z;
+      // the part of the relative wind across the nose
+      const hx = Math.sin(this.heading), hz = Math.cos(this.heading), along = rx * hx + rz * hz;
+      const sx = rx - hx * along, sz = rz - hz * along;
+      this.vel.x += rx * kAll + sx * kSide * (1 - sail);
+      this.vel.z += rz * kAll + sz * kSide * (1 - sail);
+      // it lifts you with rising air, but never drags you down faster than you'd fall
+      if (W.y > this.vel.y) this.vel.y += (W.y - this.vel.y) * Math.max(kAll, kSide * 0.5) * 0.5;
+    }
 
     // ---- layer drops pay
     const lane = this.air.lane;
@@ -260,7 +281,7 @@ export class Glider {
     }
     this.pos.addScaledVector(this.vel, dt);
     this.collide();
-    if (this.air.vehicle) this.hitBy("a cab", 0.2);
+    if (this.air.vehicle) this.hitBy("a cab", 0.14);
     // brushing past people on the sidewalk knocks you about
     if (this.pos.y < 2.1 && this.pos.y > 0 && this.clock - this.lastBump > 0.8) {
       const who = this.flow.crowd.hit(this.pos.x, this.pos.y, this.pos.z);
@@ -320,6 +341,8 @@ export class Glider {
   }
 
   // ------------------------------------------------------------------ collisions
+  /** street furniture and park things: you mostly glance off them */
+  private soft = false;
   private contact(nx: number, ny: number, nz: number, depth: number, what: string) {
     this.pos.x += nx * depth; this.pos.y += ny * depth; this.pos.z += nz * depth;
     const vn = this.vel.x * nx + this.vel.y * ny + this.vel.z * nz;
@@ -329,7 +352,7 @@ export class Glider {
     // settling onto the ground is gentle; walls and ceilings are what tear a leaf
     // settling onto the ground barely hurts; glancing off a tunnel wall hurts less than a building
     // the water main's spray shoves you back but it's only water: it never tears the leaf
-    const safe = what === BARRIER_NAME.water ? Infinity : ny > 0.7 ? 14 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;
+    const safe = what === BARRIER_NAME.water ? Infinity : ny > 0.7 ? 14 : this.soft ? FLIGHT.safeImpact * 2 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;
     if (impact > safe && this.clock - this.lastHit > 0.15) {
       this.lastHit = this.clock;
       const dmg = (impact - safe) * FLIGHT.damage;
@@ -405,7 +428,11 @@ export class Glider {
       }
     }
     // Central Park: rocks, lamps, benches, trunks, the bridge, the rink boards
+    this.soft = true;
     if (p.y < 30) collideParkColliders(this.flow.parkSolids, p.x, p.y, p.z, r, (nx, ny, nz, d, name) => this.contact(nx, ny, nz, d, name), this.parkScratch);
+    // street furniture: lamp posts, signals, hydrants, sheds, shelters, parked cars
+    if (p.y < 12 && p.y > -0.5) collideParkColliders(this.flow.streetSolids, p.x, p.y, p.z, r, (nx, ny, nz, d, name) => this.contact(nx, ny, nz, d, name), this.parkScratch);
+    this.soft = false;
     // parade balloons: soft and bouncy, they don't hurt, they boing
     for (const b of this.flow.blockers.balloons) {
       const dx = p.x - b.x, dy = p.y - b.y, dz = p.z - b.z, d = Math.hypot(dx, dy, dz);

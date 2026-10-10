@@ -1,30 +1,30 @@
 # Human-pilot playtest
 
-32 runs, 8 per skill level, up to 20 min each. Route 8.83 km.
+24 runs, 6 per skill level, up to 25 min each. Route 8.83 km.
 
 | Pilot | finished | median finish | furthest (median) | deaths | stuck (avg) | street / roof / subway time | uptown m/s: street / roof / subway | drops | tricks |
 |---|---|---|---|---|---|---|---|---|---|
-| first go | 0/8 | - | 0.95 km | 6 | 0s | 50% / 1% / 49% | 6.7 / 5.9 / 0.2 | 2.9 | 0.1 |
-| casual | 0/8 | - | 1.43 km | 4 | 2s | 78% / 1% / 22% | 4.4 / 6.1 / 0.0 | 2.9 | 1.0 |
-| regular | 0/8 | - | 0.28 km | 5 | 0s | 53% / 0% / 47% | 5.8 / - / 0.1 | 1.4 | 0.0 |
-| speedrunner | 0/8 | - | 0.27 km | 8 | 0s | 29% / 0% / 71% | 6.9 / - / 0.0 | 3.5 | 0.1 |
+| first go | 0/6 | - | 1.43 km | 6 | 0s | 90% / 5% / 5% | 12.1 / 6.5 / 2.1 | 1.7 | 0.5 |
+| casual | 0/6 | - | 0.74 km | 5 | 0s | 93% / 0% / 7% | 8.5 / 8.0 / 8.5 | 0.5 | 0.2 |
+| regular | 0/6 | - | 0.66 km | 6 | 0s | 67% / 0% / 33% | 11.3 / 10.7 / 9.7 | 0.5 | 0.2 |
+| speedrunner | 0/6 | - | 1.03 km | 6 | 0s | 64% / 0% / 36% | 10.9 / 8.2 / 9.7 | 0.7 | 0.2 |
 
 ## What ended runs
 
-- **first go**: Torn apart on the tunnel wall ×2 (at 268, 869 m); Torn apart on a wall ×3 (at 951, 1156, 1571 m); Hit by a cab ×1 (at 672 m)
-- **casual**: Torn apart on the pavement ×1 (at 766 m); Torn apart on a wall ×2 (at 1952, 2347 m); Hit by a cab ×1 (at 1380 m)
-- **regular**: Torn apart on the tunnel wall ×4 (at 264, 269, 269, 269 m); Torn apart on a wall ×1 (at 1911 m)
-- **speedrunner**: Torn apart on the tunnel wall ×7 (at 264, 268, 268, 268, 268, 268, 269 m); Torn apart on a wall ×1 (at 1904 m)
+- **first go**: Hit by a cab ×2 (at 758, 1626 m); Eaten by a rat ×1 (at 344 m); Torn apart on a wall ×3 (at 1415, 1428, 2447 m)
+- **casual**: Hit by a cab ×2 (at 362, 405 m); Hit head-on by a downtown train ×2 (at 698, 884 m); Torn apart on the pavement ×1 (at 538 m)
+- **regular**: Hit by a cab ×4 (at 428, 480, 635, 690 m); Caught by the uptown train ×1 (at 653 m); Torn apart on the tunnel wall ×1 (at 1352 m)
+- **speedrunner**: Hit by a cab ×4 (at 326, 336, 523, 1181 m); Hit head-on by a downtown train ×1 (at 1031 m); Torn apart on the tunnel wall ×1 (at 1164 m)
 
 ## Sample pilot logs
 
-- first go #3: dead (Torn apart on the tunnel wall) at 0.87 km after 2:01. s866: heading for Fulton St; t104.7 a wall at 9.4 m/s (wind 1.6 street, y 1.7) -> 0.16; t108.9 a wall at 5.9 m/s (wind 6.4 street, y 3.6) -> 0.12; t113.1 a wall at 6.3 m/s (wind 2.4 street, y 2.1) -> 0.06; t120.6 the tunnel wall at 9.3 m/s (wind 4.3 subway, y -0.5) -> -0.01
-- first go #8: dead (Torn apart on a wall) at 0.95 km after 2:20. s468: heading for Wall St; s649: gave up on the stairs; t133.4 a wall at 9.6 m/s (wind 2.2 street, y 9.7) -> 0.37; t136.1 a wall at 7.0 m/s (wind 2.5 street, y 21.5) -> 0.28; t138.8 a wall at 10.8 m/s (wind 6.0 street, y 18.0) -> 0.05; t140.1 a wall at 7.3 m/s (wind 3.6 street, y 15.2) -> -0.05
-- first go #6: dead (Torn apart on a wall) at 1.16 km after 2:21. t124.4 a wall at 10.0 m/s (wind 9.5 street, y 6.1) -> 0.29; t134.1 a wall at 5.0 m/s (wind 6.8 street, y 30.9) -> 0.45; t137.7 a wall at 8.3 m/s (wind 1.7 street, y 32.6) -> 0.31; t140.7 a wall at 16.1 m/s (wind 5.0 street, y 38.5) -> -0.11
-- first go #7: dead (Hit by a cab) at 0.68 km after 2:40. s639: heading for Wall St; s673: gave up on the stairs; t142.1 a wall at 7.4 m/s (wind 6.3 street, y 4.4) -> 0.32; t146.5 hit by a cab (y 1.2) -> 0.13; t158.8 hit by a cab (y 0.4) -> 0.18; t160.3 hit by a cab (y 1.4) -> -0.02
-- first go #1: dead (Torn apart on a wall) at 1.57 km after 3:12. s726: heading for Wall St; s762: gave up on the stairs; t176.9 the pavement at 18.8 m/s (wind 6.7 street, y 0.1) -> 0.47; t184.0 hit by a cab (y 0.8) -> 0.36; t185.7 hit by a cab (y 0.1) -> 0.16; t192.2 a wall at 13.3 m/s (wind 0.4 street, y 5.2) -> -0.08
-- casual #5: dead (Torn apart on the pavement) at 0.77 km after 2:44. s194: heading for Bowling Green; s258: heading for Bowling Green; s394: gave up on the stairs; s746: heading for Wall St; t142.2 a wall at 13.3 m/s (wind 0.4 roof, y 94.5) -> 0.37; t147.0 a wall at 8.0 m/s (wind 5.9 street, y 122.7) -> 0.27; t158.9 a wall at 6.2 m/s (wind 0.2 street, y 125.1) -> 0.44; t164.0 the pavement at 39.3 m/s (wind 8.5 street, y 0.1) -> -0.43
-- casual #4: dead (Torn apart on a wall) at 1.95 km after 4:47. s819: heading for Fulton St; s866: gave up on the stairs; s1342: heading for City Hall; s1428: gave up on the stairs; t279.4 a wall at 7.4 m/s (wind 4.2 street, y 8.5) -> 0.46; t282.3 a wall at 11.1 m/s (wind 1.1 street, y 8.8) -> 0.23; t284.7 a wall at 9.9 m/s (wind 1.4 street, y 8.6) -> 0.03; t287.2 a wall at 10.2 m/s (wind 4.3 street, y 9.1) -> -0.17
-- first go #2: dead (Torn apart on the tunnel wall) at 0.27 km after 11:59. t692.4 the tunnel wall at 5.2 m/s (wind 6.5 subway, y -3.7) -> 0.08; t700.1 the tunnel wall at 6.9 m/s (wind 8.1 subway, y -4.9) -> 0.01; t707.6 the tunnel wall at 5.1 m/s (wind 8.4 subway, y -6.2) -> 0.05; t719.4 the tunnel wall at 6.3 m/s (wind 7.6 subway, y -6.2) -> -0.00
-- casual #8: dead (Hit by a cab) at 1.38 km after 5:01. s213: heading for Bowling Green; s488: heading for Wall St; s629: gave up on the stairs; t268.6 hit by a cab (y 0.9) -> 0.15; t295.9 the pavement at 15.1 m/s (wind 8.3 street, y 0.1) -> 0.25; t299.3 hit by a cab (y 1.6) -> 0.05; t300.6 hit by a cab (y 3.4) -> -0.15
-- casual #1: dead (Torn apart on a wall) at 2.35 km after 16:32. s824: heading for Fulton St; s866: gave up on the stairs; t874.9 a wall at 4.6 m/s (wind 0.3 street, y 0.9) -> 0.05; t891.4 a wall at 5.1 m/s (wind 0.7 street, y 0.4) -> 0.03; t956.5 a wall at 4.7 m/s (wind 3.6 street, y 0.7) -> 0.04; t992.3 a wall at 6.0 m/s (wind 3.4 street, y 0.7) -> -0.01
+- first go #3: dead (Hit by a cab) at 0.76 km after 0:50. s492: heading for Wall St; t43.1 bumped into someone -> 0.28; t43.8 hit by a cab (y 0.9) -> 0.11; t47.4 the pavement at 14.9 m/s (wind 11.4 street, y 0.1) -> 0.08; t50.3 hit by a cab (y 0.3) -> -0.12
+- first go #6: dead (Eaten by a rat) at 0.34 km after 1:10. 
+- first go #4: dead (Torn apart on a wall) at 1.41 km after 1:35. s585: heading for Wall St; s765: gave up on the stairs; s1383: heading for City Hall; t81.9 bumped into someone -> 0.43; t82.0 hit by a cab (y 1.1) -> 0.24; t94.2 a wall at 14.7 m/s (wind 5.2 street, y 0.5) -> 0.11; t94.8 a wall at 11.3 m/s (wind 10.6 street, y 1.3) -> -0.13
+- casual #4: dead (Hit by a cab) at 0.36 km after 0:28. s281: heading for Bowling Green; t22.7 bumped into someone -> 0.47; t23.5 hit by a cab (y 1.2) -> 0.27; t24.4 hit by a cab (y 3.1) -> 0.07; t27.9 hit by a cab (y 1.5) -> -0.13
+- casual #1: dead (Hit head-on by a downtown train) at 0.74 km after 1:46. s253: heading for Bowling Green; t35.7 bumped into someone -> 0.62; t54.0 the tunnel wall at 9.7 m/s (wind 5.5 subway, y -8.2) -> 0.73; t68.3 the tunnel wall at 9.6 m/s (wind 9.1 subway, y -8.5) -> 0.71; t85.5 the tunnel wall at 8.6 m/s (wind 12.7 subway, y -7.2) -> 0.71
+- first go #1: dead (Hit by a cab) at 1.63 km after 2:26. s256: heading for Bowling Green; s442: gave up on the stairs; s943: heading for Fulton St; s1152: gave up on the stairs; t128.6 a wall at 6.8 m/s (wind 3.9 street, y 2.6) -> 0.10; t141.6 bumped into someone -> 0.32; t142.9 hit by a cab (y 1.3) -> 0.16; t146.1 hit by a cab (y 2.7) -> -0.04
+- casual #5: dead (Hit by a cab) at 0.40 km after 0:38. s210: heading for Bowling Green; t23.8 bumped into someone -> 0.35; t31.0 hit by a cab (y 0.2) -> 0.31; t36.5 hit by a cab (y 2.2) -> 0.15; t38.1 hit by a cab (y 0.5) -> -0.05
+- casual #3: dead (Hit head-on by a downtown train) at 0.92 km after 1:38. s266: heading for Bowling Green; t84.9 the tunnel wall at 8.8 m/s (wind 15.2 subway, y -2.7) -> 0.68; t87.6 the tunnel wall at 14.9 m/s (wind 9.4 subway, y -7.3) -> 0.40; t88.1 the tunnel wall at 12.7 m/s (wind 23.0 subway, y -4.7) -> 0.21; t92.8 the tunnel wall at 14.7 m/s (wind 5.0 subway, y -9.4) -> 0.20
+- first go #5: dead (Torn apart on a wall) at 1.43 km after 2:34. s727: heading for Wall St; s920: gave up on the stairs; t145.0 a wall at 5.6 m/s (wind 2.9 street, y 2.2) -> 0.29; t149.5 a wall at 7.5 m/s (wind 2.2 street, y 1.3) -> 0.20; t150.9 a wall at 5.3 m/s (wind 2.3 street, y 0.9) -> 0.17; t153.9 a wall at 10.6 m/s (wind 2.1 street, y 2.8) -> -0.05
+- casual #6: dead (Torn apart on the pavement) at 0.54 km after 0:47. s255: heading for Bowling Green; s443: gave up on the stairs; t37.8 hit by a cab (y 1.5) -> 0.39; t39.6 hit by a cab (y 1.1) -> 0.19; t44.0 hit by a cab (y 1.6) -> 0.01; t47.5 the pavement at 15.5 m/s (wind 6.8 street, y 0.1) -> -0.05

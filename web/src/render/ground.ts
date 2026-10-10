@@ -6,6 +6,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { CityData, Poly } from "../world/data";
 import { ringArea } from "../world/data";
+import { cutRects, type Rect } from "./subwayEntrances";
 import { atlasMaterial, CELL, ChunkedQuads, loadGroundTextures, PolyIndex, ringNormals, ROW, rowV, STRIP_M, surfaceMaterial, type CellName } from "./groundArt";
 
 // ------------------------------------------------------------------ canvas textures
@@ -24,46 +25,6 @@ function canvasTex(size: number, draw: (c: CanvasRenderingContext2D, s: number) 
 let sd = 7;
 const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
 
-function speckle(c: CanvasRenderingContext2D, s: number, n: number, dark: number, light: number, size = 2) {
-  for (let i = 0; i < n; i++) {
-    c.fillStyle = rnd() < 0.5 ? `rgba(0,0,0,${dark * rnd()})` : `rgba(255,255,255,${light * rnd()})`;
-    const r = 0.5 + rnd() * size;
-    c.fillRect(rnd() * s, rnd() * s, r, r);
-  }
-}
-
-const dirtTex = () => canvasTex(512, (c, s) => {
-  c.fillStyle = "#6b5a46"; c.fillRect(0, 0, s, s);
-  speckle(c, s, 30000, 0.35, 0.2, 3);
-  for (let i = 0; i < 30; i++) { c.fillStyle = `rgba(${rnd() < 0.5 ? "60,48,36" : "120,104,84"},0.3)`; c.beginPath(); c.arc(rnd() * s, rnd() * s, 10 + rnd() * 50, 0, 7); c.fill(); }
-  c.strokeStyle = "rgba(40,30,20,0.4)"; c.lineWidth = 6; // tyre tracks
-  for (let i = 0; i < 3; i++) { c.beginPath(); const x = rnd() * s; c.moveTo(x, 0); c.bezierCurveTo(x + 80, s * 0.3, x - 80, s * 0.6, x + 20, s); c.stroke(); }
-});
-
-const hoardingTex = () => canvasTex(1024, (c, s) => {
-  // 12 m of plywood hoarding, painted, with posters and the odd tag
-  const paints = ["#2f5d8a", "#2d6a4f", "#e8e4da", "#394049", "#8a2f2f"];
-  let x = 0;
-  while (x < s) {
-    const w = 120 + rnd() * 260;
-    c.fillStyle = paints[Math.floor(rnd() * paints.length)];
-    c.fillRect(x, 0, w, s);
-    x += w;
-  }
-  c.strokeStyle = "rgba(0,0,0,0.25)"; c.lineWidth = 2;
-  for (let i = 0; i < s; i += s / 10) { c.beginPath(); c.moveTo(i, 0); c.lineTo(i, s); c.stroke(); }
-  for (let i = 0; i < 9; i++) {
-    const px = rnd() * (s - 120), py = s * 0.25 + rnd() * s * 0.3;
-    c.fillStyle = ["#f2e14c", "#f2f2f2", "#ff7a3c", "#7ad1ff", "#e6e6e6"][i % 5];
-    c.fillRect(px, py, 70 + rnd() * 60, 100 + rnd() * 60);
-    c.fillStyle = "rgba(0,0,0,0.7)"; c.font = "bold 22px Inter, Arial";
-    c.fillText(["LIVE", "SALE", "NOW", "NYC", "SOON"][i % 5], px + 8, py + 34);
-  }
-  c.fillStyle = "#ffffff"; c.fillRect(0, s * 0.82, s, s * 0.06);
-  c.fillStyle = "#1d1d1d"; c.font = "bold 40px Inter, Arial";
-  c.fillText("POST NO BILLS", 40, s * 0.865); c.fillText("POST NO BILLS", s / 2 + 40, s * 0.865);
-  speckle(c, s, 20000, 0.25, 0.1, 2);
-});
 
 // ------------------------------------------------------------------ geometry helpers
 
@@ -145,31 +106,7 @@ function bareTree(seed: number): THREE.BufferGeometry {
   return mergeGeometries(parts.map((p) => p.toNonIndexed()))!;
 }
 
-// ------------------------------------------------------------------ tower cranes
-
-function crane(h: number, jib: number): THREE.Group {
-  const g = new THREE.Group();
-  const yellow = new THREE.MeshStandardMaterial({ color: 0xe0a81e, roughness: 0.6, metalness: 0.3 });
-  const steel = new THREE.MeshStandardMaterial({ color: 0x55585c, roughness: 0.6, metalness: 0.5 });
-  const mast = new THREE.Mesh(new THREE.BoxGeometry(2, h, 2), yellow);
-  mast.position.y = h / 2;
-  const jibM = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.6, jib), yellow);
-  jibM.position.set(0, h + 1, jib / 2 - 6);
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 14), yellow);
-  counter.position.set(0, h + 1, -12);
-  const weight = new THREE.Mesh(new THREE.BoxGeometry(3, 2.6, 4), steel);
-  weight.position.set(0, h - 0.3, -16);
-  const cab = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.4, 2.6), steel);
-  cab.position.set(1.8, h - 0.4, 0);
-  const peak = new THREE.Mesh(new THREE.ConeGeometry(1.2, 8, 4), yellow);
-  peak.position.set(0, h + 5, 0);
-  const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, h * 0.6), steel);
-  cable.position.set(0, h - h * 0.3, jib * 0.6);
-  const hook = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), steel);
-  hook.position.set(0, h * 0.4, jib * 0.6);
-  for (const m of [mast, jibM, counter, weight, cab, peak, cable, hook]) { m.castShadow = true; g.add(m); }
-  return g;
-}
+// (the building sites' tower cranes are kit pieces now: render/architectureLots.ts)
 
 // ------------------------------------------------------------------ build
 
@@ -179,11 +116,17 @@ export class GroundMesh {
   private treeChunks: { g: THREE.Group; cx: number; cz: number }[] = [];
   private dress: { mesh: THREE.Mesh; cx: number; cz: number; r: number }[] = [];
   private waterNormal: THREE.Texture;
+  private holes: Rect[];
 
   /** opts.base: URL of the folder holding textures/ (default: next to the page).
-   *  opts.skipTree: spots where ground.ts must not plant a bare tree (e.g. Central Park, which plants its own). */
-  constructor(city: CityData, opts: { base?: string; skipTree?: (x: number, z: number) => boolean } = {}) {
+   *  opts.skipTree: spots where ground.ts must not plant a bare tree (e.g. Central Park, which plants its own).
+   *  opts.holes: openings to cut out of the street surfaces (the subway stairs and vents: subwayEntrances.streetOpenings);
+   *  opts.waterHoles: where the harbour plane (under the whole city) must not show inside a shaft (deepOpenings). */
+  constructor(city: CityData, opts: { base?: string; skipTree?: (x: number, z: number) => boolean; holes?: Rect[]; waterHoles?: Rect[] } = {}) {
     const raw = city.raw;
+    // the subway's openings are cut out of every street surface, so you really go down into them
+    this.holes = opts.holes ?? [];
+    const cut = (g: THREE.BufferGeometry) => cutRects(g, this.holes);
     const T = (t: THREE.Texture, metres: number) => { t.repeat.set(1 / metres, 1 / metres); return t; };
 
     // the harbour
@@ -199,7 +142,7 @@ export class GroundMesh {
     });
     this.waterNormal.colorSpace = THREE.NoColorSpace;
     this.waterNormal.repeat.set(220, 220);
-    this.water = new THREE.Mesh(new THREE.PlaneGeometry(14000, 14000).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x2a3b44, roughness: 0.08, metalness: 0.2, normalMap: this.waterNormal, normalScale: new THREE.Vector2(0.35, 0.35) }));
+    this.water = new THREE.Mesh(cutRects(new THREE.PlaneGeometry(14000, 14000).rotateX(-Math.PI / 2).translate(0, 0, 3000), opts.waterHoles ?? []).translate(0, 0, -3000), new THREE.MeshStandardMaterial({ color: 0x2a3b44, roughness: 0.08, metalness: 0.2, normalMap: this.waterNormal, normalScale: new THREE.Vector2(0.35, 0.35) }));
     this.water.position.set(0, -1.6, 3000);
     this.water.receiveShadow = true;
     this.root.add(this.water);
@@ -214,7 +157,7 @@ export class GroundMesh {
     const decalMat = atlasMaterial(gt.decals, gt.decalsN, { transparent: true, offset: -4, vertexColors: true });
 
     // the island, its seawall, and the base of everything (lots, the gaps between polygons)
-    const land = merge(raw.land.map((p) => flatPoly(p, 0)));
+    const land = cut(merge(raw.land.map((p) => flatPoly(p, 0))));
     const landMesh = new THREE.Mesh(land, walk(0x9a968f));
     landMesh.receiveShadow = true;
     const seawall = new THREE.Mesh(merge(raw.land.map((p) => wallRing(p[0], -1.8, 0))), new THREE.MeshStandardMaterial({ color: 0x5d5952, roughness: 0.9 }));
@@ -222,19 +165,19 @@ export class GroundMesh {
 
     // asphalt
     const roadMat = asphalt(0xffffff, -1);
-    const road = new THREE.Mesh(merge(raw.roadbed.map((p) => flatPoly(p, 0.02))), roadMat);
+    const road = new THREE.Mesh(cut(merge(raw.roadbed.map((p) => flatPoly(p, 0.02)))), roadMat);
     road.receiveShadow = true;
     this.root.add(road);
 
     // sidewalks, raised, with steel-edged kerbs, granite caps and grimy gutters full of dead leaves
-    const walks = new THREE.Mesh(merge(raw.sidewalk.map((p) => flatPoly(p, 0.15))), walk(0xffffff));
+    const walks = new THREE.Mesh(cut(merge(raw.sidewalk.map((p) => flatPoly(p, 0.15)))), walk(0xffffff));
     walks.receiveShadow = true;
     this.root.add(walks);
 
     // medians and plazas
-    const med = new THREE.Mesh(merge(raw.median.map((p) => flatPoly(p, 0.22))), walk(0xb0aca4, 0.6));
+    const med = new THREE.Mesh(cut(merge(raw.median.map((p) => flatPoly(p, 0.22)))), walk(0xb0aca4, 0.6));
     med.receiveShadow = true;
-    const plz = new THREE.Mesh(merge(raw.plaza.map((p) => flatPoly(p, 0.08))), walk(0xd6ccbc));
+    const plz = new THREE.Mesh(cut(merge(raw.plaza.map((p) => flatPoly(p, 0.08)))), walk(0xd6ccbc));
     plz.receiveShadow = true;
     this.root.add(med, plz);
 
@@ -243,26 +186,16 @@ export class GroundMesh {
     pathMat.color.setRGB(1.3, 1.29, 1.24);
     this.streetDressing(city, { kerbMat, gutterMat, paintMat, decalMat, driveMat: asphalt(0xffffff, -1), pathMat });
 
-    // building sites: dirt, hoardings, cranes on the big ones
-    const dirt = new THREE.Mesh(merge(raw.sites.map((s) => flatPoly(s.p, 0.1))), new THREE.MeshStandardMaterial({ map: T(dirtTex(), 8), roughness: 1 }));
+    // building sites (the old parks): churned clay with tyre ruts and puddles (Tesseract, tools/buildings).
+    // Their hoardings, sidewalk sheds, machines and tower cranes are kit pieces placed by
+    // render/architectureLots.ts (part of the buildings), so they're instanced and culled with the rest.
+    const siteTex = new THREE.TextureLoader().load(`${opts.base ?? "./"}models/buildings_site_dirt.webp`);
+    siteTex.wrapS = siteTex.wrapT = THREE.RepeatWrapping;
+    siteTex.colorSpace = THREE.SRGBColorSpace;
+    siteTex.anisotropy = 8;
+    const dirt = new THREE.Mesh(merge(raw.sites.map((s) => flatPoly(s.p, 0.1))), new THREE.MeshStandardMaterial({ map: T(siteTex, 8), roughness: 1 }));
     dirt.receiveShadow = true;
-    const fenceTex = hoardingTex();
-    fenceTex.repeat.set(1 / 12, 1 / 2.6);
-    const fences = new THREE.Mesh(merge(raw.sites.flatMap((s) => [wallRing(s.p[0], 0, 2.6), wallRing(s.p[0], 0, 2.6, true)])), new THREE.MeshStandardMaterial({ map: fenceTex, roughness: 0.85 }));
-    fences.castShadow = true; fences.receiveShadow = true;
-    this.root.add(dirt, fences);
-    raw.sites.forEach((s, i) => {
-      const a = Math.abs(ringArea(s.p[0]));
-      if (a < 1800) return;
-      let cx = 0, cz = 0;
-      const r = s.p[0];
-      for (let k = 0; k < r.length; k += 2) { cx += r[k]; cz += r[k + 1]; }
-      cx /= r.length / 2; cz /= r.length / 2;
-      const c = crane(55 + (i * 37) % 70, 50 + (i * 13) % 30);
-      c.position.set(cx, 0, cz);
-      c.rotation.y = (i * 1.7) % (Math.PI * 2);
-      this.root.add(c);
-    });
+    this.root.add(dirt);
 
     // winter lawns (Battery Park, Central Park): tired November turf with drifts of the
     // city's fallen leaves raked into it, and bare trees
@@ -509,7 +442,7 @@ export class GroundMesh {
     }
 
     const add = (list: { mesh: THREE.Mesh; cx: number; cz: number }[], r: number) => {
-      for (const c of list) { this.root.add(c.mesh); this.dress.push({ ...c, r }); }
+      for (const c of list) { c.mesh.geometry = cutRects(c.mesh.geometry, this.holes); this.root.add(c.mesh); this.dress.push({ ...c, r }); }
     };
     add(kerbs.build(m.kerbMat, { shadow: true }), 900);
     add(drives.build(m.driveMat, { shadow: true }), 1100);

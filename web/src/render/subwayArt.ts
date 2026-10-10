@@ -14,7 +14,8 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { TRAIN, TUNNEL, type Train, type Underground } from "../world/underground";
+import { STAIRS, TRAIN, TUNNEL, type Train, type Underground } from "../world/underground";
+import { entranceStyle } from "./subwayEntrances";
 
 /** heights the art is built to (world y) */
 export const SUBWAY_ART = {
@@ -360,10 +361,10 @@ export class SubwayArt {
       new THREE.Quaternion().setFromAxisAngle(Y, Math.atan2(dx, dz) + turn), new THREE.Vector3(1, 1, L / sub.step));
   }
 
-  private strip(name: string, items: { ss: number; m: THREE.Matrix4; c?: THREE.Color }[], radius = 110, underOnly = true, remap: [string, string][] = []) {
+  private strip(name: string, items: { ss: number; m: THREE.Matrix4; c?: THREE.Color }[], radius = 110, underOnly = true, remap: [string, string][] = [], model = name) {
     if (!items.length) return;
     const st = new Strip(name, items, radius, underOnly);
-    st.build(this.partsFor(name, remap), this.matMap(), this.root);
+    st.build(this.partsFor(model, remap), this.matMap(), this.root);
     this.strips.push(st);
   }
 
@@ -422,13 +423,16 @@ export class SubwayArt {
     this.strip("blue_light", blue, 120);
     this.strip("emergency_light", emerg, 100);
 
-    // the street entrances (railings, green globes, the sign), seen from the street
-    const ent: typeof track = [];
+    // the street entrances with the green railings (render/subwayEntrances.ts builds the other styles),
+    // on the sidewalk round the opening, facing the stairs' way down (the shaft's +a axis); the ways out
+    // get red globes
+    const ent: typeof track = [], entOut: typeof track = [];
     for (const sh of u.shafts) {
-      if (sh.kind !== "stairs") continue;
-      ent.push({ ss: sh.ss, m: new THREE.Matrix4().compose(new THREE.Vector3(sh.x, 0.02, sh.z), new THREE.Quaternion().setFromAxisAngle(Y, Math.atan2(sh.tx, sh.tz)), new THREE.Vector3(1, 1, 1)) });
+      if (sh.kind !== "stairs" || entranceStyle(sh, u) !== "railing") continue;
+      (sh.out ? entOut : ent).push({ ss: sh.ss, m: new THREE.Matrix4().compose(new THREE.Vector3(sh.x, STAIRS.top, sh.z), new THREE.Quaternion().setFromAxisAngle(Y, Math.atan2(sh.ux, sh.uz)), new THREE.Vector3(1, 1, 1)) });
     }
     this.strip("street_entrance", ent, 320, false);
+    this.strip("street_entrance_out", entOut, 320, false, [["globe_green", "sig_red"]], "street_entrance");
   }
 
   // --- the stations ------------------------------------------------------------------

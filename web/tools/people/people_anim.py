@@ -93,6 +93,12 @@ class Poser:
             pb.keyframe_insert("rotation_quaternion", frame=frame)
 
 
+def UMBRELLA_GRIP(B, sg):
+    """Where an umbrella's handle is held (armature space): in front of the chest, a little to the side."""
+    k = B["k"]
+    return (sg * 0.10 * k, -0.30 * k, B["chest"] - 0.02 * k)
+
+
 def foot_track(p, L, stance=0.62, lift=0.11, back=0.07, roll=True):
     """Foot motion relative to the hips for local phase p (0 = heel strike), stride L per cycle.
     Returns (dy, lift_z, pitch_deg): dy along +Y (backward), pitch > 0 = heel up."""
@@ -196,14 +202,14 @@ class Anim:
         print("[people] reach %s%s -> err %.3f m" % (p, side, best[0]), flush=True)
         return best[1:]
 
-    def torso(self, Q, T, a, stroll, lean_extra=0.0, yaw_scale=1.0):
+    def torso(self, Q, T, a, stroll, lean_extra=0.0, yaw_scale=1.0, brisk=False):
         B, p, st = self.B, self.p, self.st
         k = B["k"]
         hunch = st.get("hunch", 0)
-        lean = st.get("lean", 4) * (1.0 if not stroll else 0.7) + lean_extra
-        bob = (0.022 if not stroll else 0.015) * k
-        sway = (0.020 if not stroll else 0.024) * k
-        yawA = (7 if not stroll else 5) * yaw_scale
+        lean = st.get("lean", 4) * (1.0 if not stroll else 0.7) + lean_extra + (2.5 if brisk else 0.0)
+        bob = (0.022 if not stroll else 0.015) * k * (1.2 if brisk else 1.0)
+        sway = (0.020 if not stroll else 0.024) * k * (0.8 if brisk else 1.0)
+        yawA = (7 if not stroll else 5) * yaw_scale * (1.25 if brisk else 1.0)
         rollA = 4 if not stroll else 3
         T[p + "hips"] = Vector((sway * math.sin(a), 0.0, -bob * math.cos(2 * a) - 0.008 * k))
         Q[p + "hips"] = qz(-yawA * math.cos(a)) @ qy(-rollA * math.sin(a)) @ qx(2 + lean * 0.3)
@@ -224,24 +230,27 @@ class Anim:
         hunch = st.get("hunch", 0)
         swing = st.get("swing", 16)
         props = [x.partition(".")[0] for x in self.C.get("props", [])]
-        pushing = "stroller" in props
-        if clip in ("walk", "stroll"):
+        pushing = "stroller" in props or "dolly" in props
+        old = bool(self.C.get("old"))
+        if clip in ("walk", "stroll", "brisk"):
             cyc = self.C.get("_kidcycles", 1)
             ph = (t * cyc) % 1.0
             L = self.stride(clip) / cyc
             stroll = clip == "stroll"
+            brisk = clip == "brisk"
             a = TAU * ph
-            self.torso(Q, T, a, stroll, lean_extra=(4 if pushing else 0), yaw_scale=(0.4 if pushing else 1.0))
-            sw = swing * (1.0 if not stroll else 0.6)
+            self.torso(Q, T, a, stroll, lean_extra=(4 if pushing else 0), yaw_scale=(0.4 if pushing else 1.0), brisk=brisk)
+            sw = swing * (1.0 if not stroll else 0.6) * (1.3 if brisk else 1.0)
+            lift0 = (0.10 if not stroll else 0.075) * (1.1 if brisk else 1.0) * (0.72 if old else 1.0)
             for side, sg, off in (("L", 1, 0.0), ("R", -1, 0.5)):
                 pf = (ph + off) % 1.0
-                dy, lift, pitch = foot_track(pf, L, lift=(0.10 if not stroll else 0.075) * k * (1.1 if B["kid"] else 1.0))
+                dy, lift, pitch = foot_track(pf, L, lift=lift0 * k * (1.1 if B["kid"] else 1.0))
                 D[p + "foot_ik." + side] = self.foot_target(side, dy, lift, pitch, yaw=-4 * sg)
                 fwd = math.cos(TAU * pf)                  # +1 when this side's leg is forward -> arm back
                 arm = sw * fwd
                 Q[p + "shoulder." + side] = qz(sg * 3 * fwd * sw / 16) @ qy(sg * 2)
                 Q[p + "upperarm." + side] = qx(arm * 0.95 + 3) @ qy(-sg * (7 + (3 if self.C["coat"].startswith("puffer") else 0)))
-                bend = 14 + max(0.0, -fwd) * sw * 0.9 + (6 if stroll else 0)
+                bend = 14 + max(0.0, -fwd) * sw * 0.9 + (6 if stroll else 0) + (16 if brisk else 0)
                 Q[p + "forearm." + side] = qx(-bend)
                 Q[p + "hand." + side] = qx(-6) @ qz(sg * 10)
             self.arm_overrides(Q, clip, t, a)
@@ -266,6 +275,12 @@ class Anim:
                 Q[p + "forearm." + side] = qx(-12 - 4 * math.sin(a + 0.5 * sg))
                 Q[p + "hand." + side] = qx(-6) @ qz(sg * 12)
             self.arm_overrides(Q, clip, t, a)
+        elif clip == "jog":
+            self.jog(Q, T, D, t)
+        elif clip in ("talk", "hail", "cheer"):
+            self.social(Q, T, D, clip, t)
+        elif clip == "sit":
+            self.sit(Q, T, D, t)
         elif clip == "flinch":
             # 0..1: startle -> duck -> look up after the leaf -> settle
             s1 = smooth01(t / 0.12)
@@ -287,11 +302,11 @@ class Anim:
                 Q[p + "upperarm." + side] = qx(-75 * guard) @ qy(-sg * (8 + 22 * guard))
                 Q[p + "forearm." + side] = qx(-12 - 95 * guard)
                 Q[p + "hand." + side] = qx(-10 * guard) @ qz(sg * 20 * guard)
-            if pushing:      # keep at least one hand on the stroller
-                self.arm_overrides(Q, clip, t, 0.0, only=("stroller",))
+            # keep hands on the stroller / hand truck / umbrella
+            self.arm_overrides(Q, clip, t, 0.0, only=("stroller", "dolly", "umbrella"), pockets=False)
         return Q, T, D
 
-    def arm_overrides(self, Q, clip, t, a, only=None):
+    def arm_overrides(self, Q, clip, t, a, only=None, pockets=True):
         p, C, B = self.p, self.C, self.B
         k = B["k"]
         for pr in C.get("props", []):
@@ -299,6 +314,21 @@ class Anim:
             if only and name not in only:
                 continue
             sg = 1 if side == "L" else -1
+            if name == "dolly":
+                # both hands on the hand truck's handles, out in front at waist height
+                for s2, g2 in (("L", 1), ("R", -1)):
+                    ang = self.reach(s2, (g2 * 0.17 * k + self.ox, -0.36 * k, 1.0 * k))
+                    Q[p + "shoulder." + s2] = Quaternion()
+                    Q[p + "upperarm." + s2] = qx(ang[0]) @ qy(ang[1])
+                    Q[p + "forearm." + s2] = qx(ang[2])
+                    Q[p + "hand." + s2] = qx(20) @ qz(g2 * 70)
+                continue
+            if name == "umbrella":
+                ang = self.reach(side, UMBRELLA_GRIP(B, sg))
+                Q[p + "upperarm." + side] = qx(ang[0]) @ qy(ang[1])
+                Q[p + "forearm." + side] = qx(ang[2])
+                Q[p + "hand." + side] = qx(-10) @ qz(sg * 60)
+                continue
             if name == "phone":
                 Q[p + "upperarm." + side] = qx(-28 + 2 * math.sin(a)) @ qy(sg * 14)
                 Q[p + "forearm." + side] = qx(-82)
@@ -329,17 +359,189 @@ class Anim:
                     Q[p + "upperarm." + s2] = qx(ang[0]) @ qy(ang[1])
                     Q[p + "forearm." + s2] = qx(ang[2])
                     Q[p + "hand." + s2] = qx(20) @ qz(g2 * 70)
-        if C.get("style", {}).get("hands_pockets"):
+        if pockets and C.get("style", {}).get("hands_pockets"):
             for side, sg in (("L", 1), ("R", -1)):
                 Q[p + "upperarm." + side] = qx(4 + 3 * math.sin(a + sg)) @ qy(-sg * 12)
                 Q[p + "forearm." + side] = qx(-48)
                 Q[p + "hand." + side] = qz(sg * 15)
 
+    # ------------------------------------------------------------------ extra clips
+    def side_free(self, prefer="R"):
+        """A hand that isn't holding anything (None if both are busy)."""
+        busy = set()
+        for pr in self.C.get("props", []):
+            name, _, side = pr.partition(".")
+            if name in ("cup", "phone", "bag", "tote", "hold", "umbrella"):
+                busy.add(side)
+            if name in ("stroller", "dolly"):
+                busy |= {"L", "R"}
+        for s in (prefer, "L" if prefer == "R" else "R"):
+            if s not in busy:
+                return s
+        return None
+
+    def stand(self, Q, T, D, a, t, gawk_ok=True):
+        """The idle stance (weight shifts, breathing, looking about) without any prop overrides."""
+        B, p, st = self.B, self.p, self.st
+        k = B["k"]
+        hunch = st.get("hunch", 0)
+        sh = 0.03 * k * math.sin(a)
+        gawk = st.get("gawk") and gawk_ok
+        T[p + "hips"] = Vector((sh, 0.0, -0.006 * k * (1 + math.cos(2 * a)) - 0.004 * k))
+        Q[p + "hips"] = qy(-3.5 * math.sin(a)) @ qz(3 * math.sin(a + 0.6)) @ qx(2 + hunch * 0.2)
+        breath = math.sin(TAU * t * 3)
+        Q[p + "spine"] = qy(2.0 * math.sin(a)) @ qx(1 + 0.8 * breath + hunch * 0.3 - (4 if gawk else 0))
+        Q[p + "chest"] = qy(1.2 * math.sin(a)) @ qx(1.0 * breath + hunch * 0.8 - (3 if gawk else 0))
+        hd = st.get("head_down", 0)
+        look = 16 * math.sin(a * 2 + 0.4) * 0.6 + 8 * math.sin(a + 1.3)
+        up = (-16 - 8 * math.sin(a * 2)) if gawk else 0
+        Q[p + "neck"] = qz(look * 0.35 * (1.6 if gawk else 1)) @ qx(-1 + hd * 0.4 + up * 0.4)
+        Q[p + "head"] = qz(look * 0.65 * (1.6 if gawk else 1)) @ qx(-2 + hd * 0.7 - hunch * 0.3 + up * 0.6 + 3 * math.sin(a * 3)) @ qy(1.5 * math.sin(a))
+        for side, sg in (("L", 1), ("R", -1)):
+            D[p + "foot_ik." + side] = self.foot_target(side, (0.05 * sg) * k, 0.0, 0.0, yaw=-9 * sg)
+            Q[p + "shoulder." + side] = qy(sg * 1.0 * breath)
+            Q[p + "upperarm." + side] = qx(2 + 2 * math.sin(a + sg)) @ qy(-sg * (6 + (3 if self.C["coat"].startswith("puffer") else 0) + 1.5 * math.sin(a)))
+            Q[p + "forearm." + side] = qx(-12 - 4 * math.sin(a + 0.5 * sg))
+            Q[p + "hand." + side] = qx(-6) @ qz(sg * 12)
+        return breath
+
+    def jog(self, Q, T, D, t):
+        """An easy jog: a flight phase between steps, bent arms pumping, leaning into it."""
+        B, p, st = self.B, self.p, self.st
+        k = B["k"]
+        a = TAU * t
+        L = self.stride("jog")
+        lean = 7 + st.get("lean", 4) * 0.3
+        # lowest at mid-stance (t .18 / .68), up in the flight between
+        T[p + "hips"] = Vector((0.012 * k * math.sin(a), 0.0, -0.035 * k - 0.026 * k * math.cos(2 * TAU * (t - 0.18))))
+        Q[p + "hips"] = qz(-9 * math.cos(a)) @ qy(-3 * math.sin(a)) @ qx(3 + lean * 0.3)
+        Q[p + "spine"] = qz(7 * math.cos(a)) @ qx(lean * 0.4 + 1.5 * math.cos(2 * a))
+        Q[p + "chest"] = qz(9 * math.cos(a)) @ qx(lean * 0.35)
+        Q[p + "neck"] = qz(-5 * math.cos(a)) @ qx(-lean * 0.45)
+        Q[p + "head"] = qz(-7 * math.cos(a)) @ qx(-lean * 0.45 + 2.0 * math.cos(2 * a))
+        for side, sg, off in (("L", 1, 0.0), ("R", -1, 0.5)):
+            pf = (t + off) % 1.0
+            dy, lift, pitch = foot_track(pf, L, stance=0.34, lift=0.20 * k, back=0.08)
+            # heel kicks up behind early in the swing
+            if pf > 0.36:
+                s = (pf - 0.36) / 0.64
+                lift += 0.20 * k * math.sin(math.pi * min(1.0, s * 1.6)) * (1 - s)
+            D[p + "foot_ik." + side] = self.foot_target(side, dy, lift, pitch * 0.7, yaw=-3 * sg)
+            fwd = math.cos(TAU * pf)
+            Q[p + "shoulder." + side] = qz(sg * 5 * fwd) @ qy(sg * 2)
+            Q[p + "upperarm." + side] = qx(fwd * 36 + 6) @ qy(-sg * 12)
+            Q[p + "forearm." + side] = qx(-84 + 14 * fwd)
+            Q[p + "hand." + side] = qx(-12) @ qz(sg * 22)
+
+    def social(self, Q, T, D, clip, t):
+        """Standing about: chatting (gesturing, nodding), hailing a cab, clapping and cheering."""
+        B, p = self.B, self.p
+        k = B["k"]
+        a = TAU * t
+        self.stand(Q, T, D, a, t, gawk_ok=(clip == "talk"))
+        self.arm_overrides(Q, "idle", t, a, pockets=False)
+
+        def bump(x, lo, hi):
+            return math.sin(math.pi * (x - lo) / (hi - lo)) ** 2 if lo < x < hi else 0.0
+        if clip == "talk":
+            gs = self.side_free("R" if (self.C.get("ci", 0) % 2) else "L")
+            g = max(bump(t, 0.06, 0.40), 0.8 * bump(t, 0.52, 0.86))
+            beat = math.sin(TAU * t * 6)
+            nod = math.sin(TAU * t * 5) * (0.3 + g)
+            Q[p + "neck"] = Q[p + "neck"] @ qx(3 * nod)
+            Q[p + "head"] = Q[p + "head"] @ qx(4 * nod) @ qy(4 * math.sin(a))
+            if self.st.get("hands_pockets"):
+                for side, sg in (("L", 1), ("R", -1)):
+                    if side != gs:
+                        Q[p + "upperarm." + side] = qx(4 + 3 * math.sin(a + sg)) @ qy(-sg * 12)
+                        Q[p + "forearm." + side] = qx(-48)
+                        Q[p + "hand." + side] = qz(sg * 15)
+            if gs:
+                sg = 1 if gs == "L" else -1
+                Q[p + "upperarm." + gs] = qx(-14 - 24 * g + 4 * beat * g) @ qy(-sg * (10 + 8 * g))
+                Q[p + "forearm." + gs] = qx(-22 - 62 * g - 8 * beat * g)
+                Q[p + "hand." + gs] = qx(-10 * g) @ qz(sg * (12 + 40 * g))
+        elif clip == "hail":
+            hs = self.side_free("R")
+            r = smooth01(t / 0.14) * (1 - smooth01((t - 0.78) / 0.16))
+            wave = math.sin(TAU * t * 5)
+            Q[p + "spine"] = Q[p + "spine"] @ qx(3 * r)
+            Q[p + "neck"] = qz(20 * math.sin(a * 1.5)) @ qx(-3 * r)
+            Q[p + "head"] = qz(14 * math.sin(a * 1.5 + 0.3)) @ qx(-4 * r)
+            if hs:
+                sg = 1 if hs == "L" else -1
+                Q[p + "shoulder." + hs] = qy(-sg * 10 * r)
+                Q[p + "upperarm." + hs] = qx(2 - 150 * r) @ qy(-sg * (8 + 18 * r))
+                Q[p + "forearm." + hs] = qx(-12 - 16 * r - 14 * wave * r)
+                Q[p + "hand." + hs] = qx(-6) @ qz(sg * (12 + 28 * wave * r))
+        else:  # cheer: four claps then both arms up, waving
+            clap = 0.5 - 0.5 * math.cos(TAU * min(t, 0.6) / 0.6 * 4) if t < 0.6 else 1.0
+            up = bump(t, 0.58, 1.0) ** 0.5
+            wave = math.sin(TAU * t * 7)
+            T[p + "hips"] = T[p + "hips"] + Vector((0, 0, -0.012 * k * (1 - clap) * (1 - up) - 0.01 * k * up * (0.5 + 0.5 * wave)))
+            Q[p + "neck"] = qz(6 * math.sin(a)) @ qx(-8)
+            Q[p + "head"] = qz(8 * math.sin(a + 0.4)) @ qx(-10 - 4 * up)
+            for side, sg in (("L", 1), ("R", -1)):
+                if (1 - up) > 0.01:
+                    ua = qx(-52 - 6 * clap) @ qy(-sg * (-4 + 22 * clap))
+                    fa = qx(-62 - 10 * clap)
+                    hd = qz(sg * 55)
+                else:
+                    ua, fa, hd = Quaternion(), Quaternion(), Quaternion()
+                upq = qx(-150) @ qy(-sg * (22 + 6 * wave))
+                Q[p + "upperarm." + side] = ua.slerp(upq, up) if up > 0 else ua
+                Q[p + "forearm." + side] = fa.slerp(qx(-18 - 10 * wave), up) if up > 0 else fa
+                Q[p + "hand." + side] = hd.slerp(qz(sg * 20 * wave), up) if up > 0 else hd
+
+    def sit(self, Q, T, D, t, seat=0.46):
+        """Sitting on a step or a bench (seat height in metres), hands on the knees, looking about."""
+        B, p, st, P = self.B, self.p, self.st, self.P
+        k = B["k"]
+        a = TAU * t
+        lt = (P.tail[p + "thigh.L"] - P.head[p + "thigh.L"]).length
+        ls = (P.tail[p + "shin.L"] - P.head[p + "shin.L"]).length
+        rest_ank = P.rest[p + "foot_ik.L"].translation.z
+        # thighs level, shins straight down to the floor: that sets the seat height (people.json "seat")
+        hip_z = rest_ank + ls * 0.99
+        self.seat = hip_z - 0.085 * k
+        dz = hip_z - B["hipj"]
+        back = 0.04 * k
+        T[p + "hips"] = Vector((0.0, back, dz))
+        breath = math.sin(TAU * t * 3)
+        hunch = st.get("hunch", 0)
+        Q[p + "hips"] = qx(-4)
+        Q[p + "spine"] = qx(7 + hunch * 0.4 + 0.8 * breath)
+        Q[p + "chest"] = qx(5 + hunch * 0.6 + 0.8 * breath)
+        look = 22 * math.sin(a) + 8 * math.sin(a * 3 + 1.0)
+        Q[p + "neck"] = qz(look * 0.35) @ qx(-5 + st.get("head_down", 0) * 0.4)
+        Q[p + "head"] = qz(look * 0.65) @ qx(-4 + st.get("head_down", 0) * 0.6 + 2 * math.sin(a * 2)) @ qy(2 * math.sin(a))
+        # legs posed directly (thigh forward, knee bent) and the IK targets put where that leaves the ankles,
+        # so the solver starts from (and keeps) a sitting knee rather than kneeling
+        for side, sg in (("L", 1), ("R", -1)):
+            Q[p + "thigh." + side] = qx(-84 + 3 * sg * math.sin(a)) @ qy(-sg * 5)
+            Q[p + "shin." + side] = qx(84 - 3 * sg * math.sin(a))
+        _, Pp, _ = P.solve(Q, T, {})
+        for side, sg in (("L", 1), ("R", -1)):
+            ank = Pp[p + "foot." + side].copy()
+            R = P.rest[p + "foot_ik." + side]
+            D[p + "foot_ik." + side] = Matrix.Translation(ank) @ (qz(-8 * sg) @ R.to_quaternion()).to_matrix().to_4x4()
+        for side, sg in (("L", 1), ("R", -1)):
+            # hands resting on the thighs (solved with the torso at rest, then the hips' drop added back)
+            tgt = (sg * 0.11 * k, back - lt * 0.55 - back, hip_z + 0.11 * k - dz)
+            ang = self.reach(side, tgt)
+            Q[p + "shoulder." + side] = Quaternion()
+            Q[p + "upperarm." + side] = qx(ang[0]) @ qy(ang[1])
+            Q[p + "forearm." + side] = qx(ang[2])
+            Q[p + "hand." + side] = qx(12) @ qz(sg * 10)
+        self.arm_overrides(Q, "sit", t, a, pockets=False, only=("phone", "cup", "bag"))
+
     def stride(self, clip):
         B = self.B
-        base = 1.30 if clip == "walk" else 1.02
+        if clip == "jog":
+            return 1.85 * B["H"] / 1.75
+        base = {"walk": 1.30, "brisk": 1.50}.get(clip, 1.02)
         if B["kid"]:
-            base = 0.98 if clip == "walk" else 0.80
+            base = {"walk": 0.98, "brisk": 1.1}.get(clip, 0.80)
             return base * B["H"] / 1.2
         if self.C.get("old"):
             base *= 0.88

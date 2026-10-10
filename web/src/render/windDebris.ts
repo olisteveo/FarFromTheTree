@@ -6,7 +6,6 @@
 import * as THREE from "three";
 import type { AirSample, Airflow } from "../world/airflow";
 
-const N = 260;
 
 function leafTexture() {
   const c = document.createElement("canvas");
@@ -30,18 +29,23 @@ function leafTexture() {
 
 export class WindDebris {
   readonly mesh: THREE.InstancedMesh;
-  private p = new Float32Array(N * 3);
-  private v = new Float32Array(N * 3);
-  private rot = new Float32Array(N * 3);
-  private spin = new Float32Array(N * 3);
-  private kind = new Uint8Array(N); // 0 leaf, 1 paper
-  private alive = new Uint8Array(N);
+  private p: Float32Array;
+  private v: Float32Array;
+  private rot: Float32Array;
+  private spin: Float32Array;
+  private kind: Uint8Array; // 0 leaf, 1 paper
+  private alive: Uint8Array;
+  private readonly n: number;
   private s: AirSample = { x: 0, y: 0, z: 0, lane: "street", vehicle: false, train: false };
   private turn = 0;
   private seed = 1;
   enabled = true;
 
-  constructor(private flow: Airflow) {
+  /** count: how many bits of litter (fewer on low quality) */
+  constructor(private flow: Airflow, count = 260) {
+    const N = (this.n = count);
+    this.p = new Float32Array(N * 3); this.v = new Float32Array(N * 3); this.rot = new Float32Array(N * 3); this.spin = new Float32Array(N * 3);
+    this.kind = new Uint8Array(N); this.alive = new Uint8Array(N);
     const geo = new THREE.PlaneGeometry(0.24, 0.24);
     // two UV halves: leaf (left) and paper (right): the instance picks one via a uv offset attribute
     const half = new Float32Array(N);
@@ -89,17 +93,17 @@ export class WindDebris {
     const fx = focus.x, fy = focus.y, fz = focus.z;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), pos = new THREE.Vector3();
     // sample the wind for a sixth of them each frame (their velocity eases toward it in between)
-    this.turn = (this.turn + 1) % 6;
-    for (let i = 0; i < N; i++) {
+    this.turn = (this.turn + 1) % 10;
+    for (let i = 0; i < this.n; i++) {
       const o = i * 3;
       let x = this.p[o], y = this.p[o + 1], z = this.p[o + 2];
       const far = (x - fx) ** 2 + (z - fz) ** 2 > 42 * 42 || Math.abs(y - fy) > 30;
       if (!this.alive[i] || far) { this.respawn(i, fx, fy, fz, under); continue; }
-      if (i % 6 === this.turn) {
+      if (i % 10 === this.turn) {
         this.flow.sample(x, y, z, t, this.s);
-        this.v[o] += (this.s.x - this.v[o]) * Math.min(1, dt * 6 * 3.2);
-        this.v[o + 2] += (this.s.z - this.v[o + 2]) * Math.min(1, dt * 6 * 3.2);
-        this.v[o + 1] += (this.s.y - this.v[o + 1]) * Math.min(1, dt * 6 * 1.6);
+        this.v[o] += (this.s.x - this.v[o]) * Math.min(1, dt * 10 * 3.2);
+        this.v[o + 2] += (this.s.z - this.v[o + 2]) * Math.min(1, dt * 10 * 3.2);
+        this.v[o + 1] += (this.s.y - this.v[o + 1]) * Math.min(1, dt * 10 * 1.6);
       }
       // they fall slowly (paper more slowly) and rest on the ground until the air's strong enough
       this.v[o + 1] -= (this.kind[i] ? 1.2 : 1.8) * dt;
@@ -124,7 +128,7 @@ export class WindDebris {
       q.setFromEuler(e.set(this.rot[o], this.rot[o + 1], this.rot[o + 2]));
       this.mesh.setMatrixAt(i, m.compose(pos.set(x, y + 0.02, z), q, one));
     }
-    this.mesh.count = N;
+    this.mesh.count = this.n;
     this.mesh.instanceMatrix.needsUpdate = true;
   }
 }

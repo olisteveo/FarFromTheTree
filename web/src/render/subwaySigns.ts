@@ -34,6 +34,9 @@ export class SubwaySigns {
   /** the ways in, for finding the next one ahead */
   readonly ins: Shaft[] = [];
   private insS: number[] = [];
+  /** ways out (exit stairs, the big out vents, relief vents), for the pointer underground */
+  private outs: Shaft[] = [];
+  private mode: "in" | "out" = "in";
   private beam: THREE.Mesh;
   private chevron: THREE.Mesh;
   private pointer: HTMLElement;
@@ -45,8 +48,10 @@ export class SubwaySigns {
 
   constructor(city: CityData, under: Underground, hud: HTMLElement) {
     const stairs = under.shafts.filter((s) => s.kind === "stairs");
-    for (const s of stairs) if (!s.out) this.ins.push(s);
+    // ways in: the stairs that draw air down, and the massive vents that do
+    for (const s of under.shafts) if ((s.kind === "stairs" || s.kind === "vent") && !s.out) this.ins.push(s);
     this.insS = this.ins.map((s) => city.route.nearest(s.x, s.z).s);
+    this.outs = under.shafts.filter((s) => s.out || s.relief).sort((a, b) => a.ss - b.ss);
     const mk = (list: Shaft[], tex: THREE.Texture, w: number, h: number, y: number, glow: number) => {
       const mat = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false });
       mat.color.setScalar(glow);
@@ -55,9 +60,9 @@ export class SubwaySigns {
       const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.11, y, 8).translate(0, y / 2, 0), new THREE.MeshStandardMaterial({ color: 0x1f3a28, roughness: 0.5, metalness: 0.5 }), list.length);
       const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
       list.forEach((s, i) => {
-        // stand the post at the kerb side of the stairs, the sign facing along the street
-        const L = Math.hypot(s.tx, s.tz) || 1, ax = s.tx / L, az = s.tz / L;
-        const px = s.x - ax * (s.r + 0.4), pz = s.z - az * (s.r + 0.4);
+        // stand the post behind the opening (the far side from the steps), the sign facing the way in
+        const ax = s.ux, az = s.uz;
+        const px = s.x + ax * (s.r + 0.45), pz = s.z + az * (s.r + 0.45);
         const yaw = Math.atan2(ax, az) + Math.PI / 2;
         posts.setMatrixAt(i, m.compose(p.set(px, 0, pz), q.identity(), one));
         front.setMatrixAt(i, m.compose(p.set(px, y + h / 2, pz), q.setFromEuler(e.set(0, yaw, 0)), one));
@@ -91,11 +96,16 @@ export class SubwaySigns {
   }
 
   /** Each frame: show the way to the next way in ahead while flying the street. */
-  update(t: number, leaf: THREE.Vector3, routeS: number, onStreet: boolean, cam: THREE.Camera, dt: number) {
+  /** underground: subS is the leaf's distance along the subway line (null on the street) */
+  update(t: number, leaf: THREE.Vector3, routeS: number, onStreet: boolean, cam: THREE.Camera, dt: number, subS: number | null = null) {
     if ((this.pick -= dt) <= 0) {
       this.pick = 0.5;
       this.target = null;
-      if (onStreet) {
+      this.mode = subS !== null ? "out" : "in";
+      if (subS !== null) {
+        // the next way out ahead (or just behind you)
+        for (const s of this.outs) if (s.ss > subS - 15 && s.ss < subS + 380) { this.target = s; break; }
+      } else if (onStreet) {
         let best = 1e9;
         for (let i = 0; i < this.ins.length; i++) {
           const s = this.ins[i], ahead = this.insS[i] - routeS;
@@ -112,14 +122,15 @@ export class SubwaySigns {
     this.beam.visible = this.chevron.visible = mat.uniforms.a.value > 0.02 && !!s;
     if (!s) { this.pointer.classList.remove("show"); return; }
     const d = Math.hypot(s.x - leaf.x, s.z - leaf.z);
-    this.beam.position.set(s.x, 0, s.z);
+    this.beam.position.set(s.x, this.mode === "out" ? -9.4 : 0, s.z);
     // fade the beam out as you get there (you can see the sign by then)
     mat.uniforms.a.value *= Math.min(1, Math.max(0.15, (d - 6) / 30));
-    this.chevron.position.set(s.x, 8 + Math.sin(t * 2.5) * 0.4, s.z);
+    this.chevron.position.set(s.x, (this.mode === "out" ? -5 : 8) + Math.sin(t * 2.5) * 0.4, s.z);
+    this.chevron.visible &&= this.mode === "in";
     this.chevron.quaternion.copy(cam.quaternion);
     this.chevron.scale.setScalar(Math.max(1, d / 40));
     // the screen-edge pointer
-    this.v.set(s.x, 1.5, s.z).project(cam);
+    this.v.set(s.x, this.mode === "out" ? -5 : 1.5, s.z).project(cam);
     const behind = this.v.z > 1;
     let sx = this.v.x, sy = -this.v.y;
     if (behind) { sx = -sx; sy = -sy; }
@@ -131,6 +142,8 @@ export class SubwaySigns {
     this.pointer.style.top = `${onScreen ? py - 6 : py}%`;
     (this.pointer.querySelector(".arrow") as HTMLElement).style.transform = `rotate(${onScreen ? 90 : (Math.atan2(sy, sx) * 180) / Math.PI}deg)`;
     (this.pointer.querySelector("b") as HTMLElement).textContent = `${Math.round(d)} m`;
+    (this.pointer.querySelector(".label") as HTMLElement).firstChild!.textContent = this.mode === "out" ? "EXIT ↑ " : "SUBWAY ";
+    this.pointer.classList.toggle("exit", this.mode === "out");
     this.pointer.classList.add("show");
   }
 }

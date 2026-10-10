@@ -59,8 +59,9 @@ export function blockerMeshes(b: Blockers): THREE.Group {
   const lanternPos: THREE.Matrix4[] = [], lanternCol: THREE.Color[] = [];
   const strings: number[] = [];
   const barrierGeo: THREE.BufferGeometry[] = [];
-  const people: THREE.Matrix4[] = [];
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  /** balloon handlers on the ropes (drawn by PeopleView: see userData.handlers) */
+  const handlers: { x: number; z: number; yaw: number; seed: number }[] = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
   const festivalBanner = new THREE.MeshBasicMaterial({ map: banner("MULBERRY STREET FESTIVAL · STREET CLOSED", "#b51f1f", "#ffd84a"), side: THREE.FrontSide, toneMapped: false });
   const policeBanner = new THREE.MeshBasicMaterial({ map: banner("POLICE LINE · DO NOT CROSS", "#1d3f8a", "#ffffff"), side: THREE.FrontSide });
   const paradeBanner = new THREE.MeshBasicMaterial({ map: banner("THANKSGIVING DAY PARADE · ROUTE CLOSED", "#7a2a12", "#ffcf5a"), side: THREE.FrontSide });
@@ -142,15 +143,11 @@ export function blockerMeshes(b: Blockers): THREE.Group {
       }
       addBanner(marketBanner, bar, yaw, bar.height + 0.9, 1.2);
     } else {
-      // blue sawhorse barriers and a packed crowd behind
+      // blue sawhorse barriers (the packed crowd behind them is the crowd's: world/crowd.ts, drawn by PeopleView)
       for (let a = -bar.half; a <= bar.half; a += 2.4) {
         const x = bar.x + bar.ax * a, z = bar.z + bar.az * a;
         barrierGeo.push(new THREE.BoxGeometry(2.3, 0.25, 0.08).rotateY(yaw + Math.PI / 2).translate(x, 0.95, z));
         barrierGeo.push(new THREE.BoxGeometry(0.08, 1.0, 0.6).rotateY(yaw + Math.PI / 2).translate(x - bar.ax * 1.1, 0.5, z - bar.az * 1.1));
-        for (let k = 0; k < 6; k++) {
-          const d = -1 - rnd() * 7, sa = a + (rnd() - 0.5) * 2.2;
-          people.push(m.clone().compose(p.set(bar.x + bar.ax * sa + bar.nx * d, 0, bar.z + bar.az * sa + bar.nz * d), q.setFromAxisAngle(Y, rnd() * 6.28), s.set(1, 0.9 + rnd() * 0.25, 1)));
-        }
       }
       addBanner(bar.kind === "parade" ? paradeBanner : policeBanner, bar, yaw, 1.5, 0.6);
       if (bar.kind === "parade") addBanner(paradeBanner, bar, yaw, bar.height - 0.6, 1.2);
@@ -203,7 +200,7 @@ export function blockerMeshes(b: Blockers): THREE.Group {
       for (const [u, f] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [-1.4, 0], [1.4, 0]]) {
         const gx = bl.x + sx * u * 5.5 + fx * f * 7, gz = bl.z + sz * u * 5.5 + fz * f * 7;
         ropes.push(bl.x + sx * u * 3 + fx * f * 3, bl.y - 3.5, bl.z + sz * u * 3 + fz * f * 3, gx, 1.0, gz);
-        people.push(m.clone().compose(p.set(gx + fx * 0.4, 0, gz + fz * 0.4), q.setFromAxisAngle(Y, bl.yaw), s.set(1, 1, 1)));
+        handlers.push({ x: gx + fx * 0.4, z: gz + fz * 0.4, yaw: Math.atan2(bl.x - gx, bl.z - gz), seed: 8_800_000 + handlers.length });
       }
     }
     const rg = new THREE.BufferGeometry();
@@ -219,17 +216,7 @@ export function blockerMeshes(b: Blockers): THREE.Group {
     g.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x2a1a14 })));
   }
   if (barrierGeo.length) g.add(new THREE.Mesh(mergeGeometries(barrierGeo.map((x) => x.toNonIndexed()))!, new THREE.MeshStandardMaterial({ color: 0x2a5ab0, roughness: 0.6 })));
-  if (people.length) {
-    const body = mergeGeometries([
-      new THREE.CylinderGeometry(0.2, 0.25, 1.1, 8).translate(0, 0.6, 0),
-      new THREE.SphereGeometry(0.13, 8, 6).translate(0, 1.32, 0),
-    ].map((x) => x.toNonIndexed()))!;
-    const im = new THREE.InstancedMesh(body, new THREE.MeshStandardMaterial({ roughness: 0.85 }), people.length);
-    const cols = [0x2a2a30, 0x5a2a2a, 0x2a3a5a, 0x6b5a40, 0x1e1e1e, 0x3a4a3a, 0x8a7a6a];
-    people.forEach((mm, i) => { im.setMatrixAt(i, mm); im.setColorAt(i, new THREE.Color(cols[i % cols.length])); });
-    im.castShadow = true;
-    g.add(im);
-  }
+  g.userData.handlers = handlers;
   g.userData.update = (t: number) => {
     if (spray) {
       const a = spray.geometry.attributes.position as THREE.BufferAttribute;

@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { TUNNEL, ratAt, type Underground } from "../world/underground";
 import { Grid } from "../world/data";
+import { cutRects, subwayCuts } from "./subwayEntrances";
 
 function tex(w: number, h: number, draw: (c: CanvasRenderingContext2D) => void, repeat = true) {
   const cv = document.createElement("canvas");
@@ -114,6 +115,26 @@ export class SubwayMesh {
     };
     // where each vent shaft meets the tunnel roof (lateral offset in the same sign as Polyline.nearest)
     const ventHoles = u.shafts.filter((g) => g.kind === "grate").map((g) => { const n = sub.nearest(g.x, g.z); return { ss: n.s, off: n.off, r: g.r }; });
+    // where the stairwells, passages and big vents come through the walls and roof (render/subwayEntrances.ts)
+    const cuts = subwayCuts(u);
+    /** a wall quad (a: bottom at s, b: bottom at s + step), with doorways cut where passages arrive */
+    const wallQuad = (arr: number[], uv: number[], side: number, s: number, a: number[], b: number[], ca: number, cb: number) => {
+      const hs = cuts.walls.filter((h) => h.side === side && h.s1 > s && h.s0 < s + step);
+      if (!hs.length) { quad(arr, uv, [a[0], TUNNEL.floor, a[2]], [b[0], TUNNEL.floor, b[2]], [b[0], cb, b[2]], [a[0], ca, a[2]], s, s + step, TUNNEL.floor, ca); return; }
+      const ts = [0, 1, ...hs.flatMap((h) => [(h.s0 - s) / step, (h.s1 - s) / step])].filter((t) => t >= 0 && t <= 1).sort((p, q) => p - q);
+      const P = (t: number, y: number) => [a[0] + (b[0] - a[0]) * t, y, a[2] + (b[2] - a[2]) * t];
+      for (let i = 0; i < ts.length - 1; i++) {
+        const t0 = ts[i], t1 = ts[i + 1];
+        if (t1 - t0 < 1e-5) continue;
+        const c0 = ca + (cb - ca) * t0, c1 = ca + (cb - ca) * t1, sm = s + step * (t0 + t1) / 2;
+        const on = hs.filter((h) => sm > h.s0 && sm < h.s1);
+        const u0 = s + step * t0, u1 = s + step * t1;
+        if (!on.length) { quad(arr, uv, P(t0, TUNNEL.floor), P(t1, TUNNEL.floor), P(t1, c1), P(t0, c0), u0, u1, TUNNEL.floor, c0); continue; }
+        const y0 = Math.min(...on.map((h) => h.y0)), y1 = Math.max(...on.map((h) => h.y1));
+        if (y0 > TUNNEL.floor) quad(arr, uv, P(t0, TUNNEL.floor), P(t1, TUNNEL.floor), P(t1, y0), P(t0, y0), u0, u1, TUNNEL.floor, y0);
+        if (y1 < Math.min(c0, c1)) quad(arr, uv, P(t0, y1), P(t1, y1), P(t1, c1), P(t0, c0), u0, u1, y1, c0);
+      }
+    };
     const step = 4;
     for (let s = 0; s < u.end; s += step) {
       if (u.isBlocked(s + step / 2) && u.blocked[0].kind === "flood" && s > u.blocked[0].ss0 + 6 && s < u.blocked[0].ss1 - 6) continue;
@@ -123,8 +144,8 @@ export class SubwayMesh {
       for (const side of [-1, 1]) {
         const ax = a.x + a.tz * wa.hw * side, az = a.z - a.tx * wa.hw * side;
         const bx = b.x + b.tz * wb.hw * side, bz = b.z - b.tx * wb.hw * side;
-        if (wa.k > 0.4) quad(wall, wallUv, [ax, TUNNEL.floor, az], [bx, TUNNEL.floor, bz], [bx, wb.ceil, bz], [ax, wa.ceil, az], s, s + step, TUNNEL.floor, wa.ceil);
-        else quad(twallP, twallUv, [ax, TUNNEL.floor, az], [bx, TUNNEL.floor, bz], [bx, wb.ceil, bz], [ax, wa.ceil, az], s, s + step, TUNNEL.floor, wa.ceil);
+        if (wa.k > 0.4) wallQuad(wall, wallUv, side, s, [ax, 0, az], [bx, 0, bz], wa.ceil, wb.ceil);
+        else wallQuad(twallP, twallUv, side, s, [ax, 0, az], [bx, 0, bz], wa.ceil, wb.ceil);
       }
       const L = (p: typeof a, w: number, y: number) => [p.x + p.tz * w, y, p.z - p.tx * w];
       quad(floor, floorUv, L(a, wa.hw, TUNNEL.floor), L(a, -wa.hw, TUNNEL.floor), L(b, -wb.hw, TUNNEL.floor), L(b, wb.hw, TUNNEL.floor), wa.hw, -wa.hw, s, s + step); // wound to face up
@@ -150,7 +171,16 @@ export class SubwayMesh {
     mk(wall, wallUv, tileMat).name = "wall";
     mk(twallP, twallUv, tunnelWallMat).name = "twall";
     mk(floor, floorUv, floorMat).name = "floor";
-    mk(ceil, null, ceilMat).name = "ceil";
+    {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(ceil, 3));
+      const cg = cutRects(g, cuts.ceil);
+      cg.computeVertexNormals();
+      const m = new THREE.Mesh(cg, ceilMat);
+      m.receiveShadow = true;
+      m.name = "ceil";
+      this.root.add(m);
+    }
     this.root.add(this.legacy);
 
     // track: two pairs of rails and the ties, work lights along both walls
@@ -282,30 +312,13 @@ export class SubwayMesh {
       }
     }
 
-    // stair shafts and passages, and their street-level railings and green globes
-    const shaftParts: THREE.BufferGeometry[] = [], rail: THREE.BufferGeometry[] = [], globes: THREE.BufferGeometry[] = [], grates: THREE.BufferGeometry[] = [];
+    // the small grates over the tunnel (the stairwells, passages, street entrances and big vents are
+    // render/subwayEntrances.ts's)
+    const shaftParts: THREE.BufferGeometry[] = [], grates: THREE.BufferGeometry[] = [];
     for (const s of u.shafts) {
-      if (s.kind === "stairs") {
-        // the stairwell down from the street, as far as the station ceiling (the platform stairs below are subwayArt's)
-        const top = 0.6, bot = TUNNEL.ceiling + 0.1;
-        shaftParts.push(new THREE.BoxGeometry(s.r * 2, top - bot, s.r * 2).translate(s.x, (top + bot) / 2, s.z));
-        // the passage from the stairs to the platform: stop it at the station wall, or its inside
-        // shows as a box hanging in the station
-        const full = Math.hypot(s.tx, s.tz) || 1, ux = s.tx / full, uz = s.tz / full;
-        let L = full;
-        for (let t = 0; t <= full; t += 0.25) {
-          const n = sub.nearest(s.x + ux * t, s.z + uz * t);
-          if (Math.abs(n.off) < width(n.s).hw + 0.1) { L = Math.max(0.5, t); break; }
-        }
-        shaftParts.push(new THREE.BoxGeometry(3.8, 2.8, L).rotateY(Math.atan2(s.tx, s.tz)).translate(s.x + ux * L / 2, -4, s.z + uz * L / 2));
-        for (const [dx, dz, w, d] of [[0, s.r + 0.05, s.r * 2 + 0.2, 0.06], [0, -s.r - 0.05, s.r * 2 + 0.2, 0.06], [s.r + 0.05, 0, 0.06, s.r * 2 + 0.2]] as const) rail.push(new THREE.BoxGeometry(w, 1.0, d).translate(s.x + dx, 0.6, s.z + dz));
-        globes.push(new THREE.SphereGeometry(0.22, 12, 8).translate(s.x + s.r, 2.3, s.z + s.r));
-        globes.push(new THREE.SphereGeometry(0.22, 12, 8).translate(s.x + s.r, 2.3, s.z - s.r));
-        rail.push(new THREE.CylinderGeometry(0.05, 0.05, 2.1).translate(s.x + s.r, 1.05, s.z + s.r), new THREE.CylinderGeometry(0.05, 0.05, 2.1).translate(s.x + s.r, 1.05, s.z - s.r));
-      } else {
-        shaftParts.push(new THREE.BoxGeometry(s.r * 2, -TUNNEL.ceiling + 0.6, s.r * 2).translate(s.x, TUNNEL.ceiling / 2 + 0.3, s.z));
-        grates.push(new THREE.PlaneGeometry(s.r * 2, s.r * 2).rotateX(-Math.PI / 2).translate(s.x, 0.06, s.z));
-      }
+      if (s.kind !== "grate") continue;
+      shaftParts.push(new THREE.BoxGeometry(s.r * 2, -TUNNEL.ceiling + 0.6, s.r * 2).translate(s.x, TUNNEL.ceiling / 2 + 0.3, s.z));
+      grates.push(new THREE.PlaneGeometry(s.r * 2, s.r * 2).rotateX(-Math.PI / 2).translate(s.x, 0.06, s.z));
     }
     const beams: THREE.BufferGeometry[] = [], ducts: THREE.BufferGeometry[] = [];
     for (const g of u.shafts) {
@@ -322,10 +335,6 @@ export class SubwayMesh {
     this.root.add(new THREE.Mesh(mergeGeometries(beams)!, beamMat));
     const shaftMat = new THREE.MeshStandardMaterial({ map: tile, roughness: 0.6, side: THREE.BackSide });
     this.root.add(new THREE.Mesh(mergeGeometries(shaftParts.map((g) => g.toNonIndexed()))!, shaftMat));
-    this.legacy.add(new THREE.Mesh(mergeGeometries(rail)!, new THREE.MeshStandardMaterial({ color: 0x1f2a22, metalness: 0.6, roughness: 0.5 })));
-    const gm = new THREE.MeshBasicMaterial({ toneMapped: false });
-    gm.color.setRGB(0.6, 2.4, 1.0);
-    this.legacy.add(new THREE.Mesh(mergeGeometries(globes)!, gm));
     const grille = tex(128, 128, (c) => { c.clearRect(0, 0, 128, 128); c.fillStyle = "#1a1a1a"; for (let i = 0; i < 128; i += 16) { c.fillRect(i, 0, 5, 128); c.fillRect(0, i, 128, 3); } }, false);
     this.root.add(new THREE.Mesh(mergeGeometries(grates)!, new THREE.MeshStandardMaterial({ map: grille, transparent: true, alphaTest: 0.3, metalness: 0.6, roughness: 0.5 })));
 

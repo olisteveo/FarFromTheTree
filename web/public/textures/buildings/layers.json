@@ -1,0 +1,478 @@
+{
+ "layers": [
+  {
+   "name": "tenement_a",
+   "W": 10.4,
+   "H": 12.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.8,
+     0.78,
+     0.74
+    ],
+    "vary": 0.1,
+    "painted": false
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "tenement_b",
+   "W": 10.4,
+   "H": 12.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.8,
+     0.78,
+     0.74
+    ],
+    "vary": 0.1,
+    "painted": false
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "tenement_c",
+   "W": 10.4,
+   "H": 12.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "common",
+    "mortar": [
+     0.8,
+     0.78,
+     0.74
+    ],
+    "vary": 0.05,
+    "painted": true
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "tenement_d",
+   "W": 10.4,
+   "H": 12.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.55,
+     0.53,
+     0.5
+    ],
+    "vary": 0.1,
+    "painted": false
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "castiron_a",
+   "W": 11.100000000000001,
+   "H": 12.899999999999999,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 3,
+   "floors": 3
+  },
+  {
+   "name": "castiron_b",
+   "W": 11.100000000000001,
+   "H": 12.899999999999999,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 3,
+   "floors": 3
+  },
+  {
+   "name": "castiron_c",
+   "W": 11.100000000000001,
+   "H": 12.899999999999999,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 3,
+   "floors": 3
+  },
+  {
+   "name": "prewar_a",
+   "W": 12.0,
+   "H": 13.6,
+   "wall": {
+    "kind": "brick",
+    "bond": "flemish",
+    "mortar": [
+     0.82,
+     0.8,
+     0.76
+    ],
+    "vary": 0.09
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "prewar_b",
+   "W": 12.0,
+   "H": 13.6,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.82,
+     0.8,
+     0.76
+    ],
+    "vary": 0.14
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "prewar_c",
+   "W": 12.0,
+   "H": 13.6,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.82,
+     0.8,
+     0.76
+    ],
+    "vary": 0.09
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "deco_a",
+   "W": 9.600000000000001,
+   "H": 14.8,
+   "wall": {
+    "kind": "stone",
+    "course": 0.62,
+    "block": 1.6,
+    "mortar": [
+     0.78,
+     0.76,
+     0.7
+    ],
+    "vary": 0.05
+   },
+   "bays": 3,
+   "floors": 4
+  },
+  {
+   "name": "deco_b",
+   "W": 9.600000000000001,
+   "H": 14.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.7,
+     0.66,
+     0.6
+    ],
+    "vary": 0.08
+   },
+   "bays": 3,
+   "floors": 4
+  },
+  {
+   "name": "modern_a",
+   "W": 9.600000000000001,
+   "H": 14.8,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 6,
+   "floors": 4
+  },
+  {
+   "name": "modern_b",
+   "W": 9.600000000000001,
+   "H": 14.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.6,
+     0.57,
+     0.52
+    ],
+    "vary": 0.07
+   },
+   "bays": 6,
+   "floors": 4
+  },
+  {
+   "name": "glass_a",
+   "W": 9.0,
+   "H": 12.0,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 6,
+   "floors": 3
+  },
+  {
+   "name": "glass_b",
+   "W": 9.0,
+   "H": 12.0,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 6,
+   "floors": 3
+  },
+  {
+   "name": "glass_c",
+   "W": 9.0,
+   "H": 12.0,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 6,
+   "floors": 3
+  },
+  {
+   "name": "brick_a",
+   "W": 11.2,
+   "H": 11.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.78,
+     0.76,
+     0.72
+    ],
+    "vary": 0.12
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "brick_b",
+   "W": 11.2,
+   "H": 11.8,
+   "wall": {
+    "kind": "brick",
+    "bond": "running",
+    "mortar": [
+     0.85,
+     0.84,
+     0.8
+    ],
+    "vary": 0.05
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "civic_a",
+   "W": 10.8,
+   "H": 13.799999999999999,
+   "wall": {
+    "kind": "stone",
+    "course": 0.55,
+    "block": 1.35,
+    "mortar": [
+     0.84,
+     0.82,
+     0.76
+    ],
+    "vary": 0.04
+   },
+   "bays": 3,
+   "floors": 3
+  },
+  {
+   "name": "shop_generic_0",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_generic_1",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_generic_2",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_chinatown_0",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_chinatown_1",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_soho_0",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_soho_1",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_midtown_0",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_midtown_1",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_lobby_0",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_lobby_1",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "shop_residential_0",
+   "W": 9.0,
+   "H": 4.6,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 2,
+   "floors": 1
+  },
+  {
+   "name": "roof_tar",
+   "W": 8.0,
+   "H": 8.0,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 1,
+   "floors": 1
+  },
+  {
+   "name": "roof_gravel",
+   "W": 8.0,
+   "H": 8.0,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 1,
+   "floors": 1
+  },
+  {
+   "name": "roof_membrane",
+   "W": 8.0,
+   "H": 8.0,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 1,
+   "floors": 1
+  },
+  {
+   "name": "party_brick",
+   "W": 12.0,
+   "H": 12.0,
+   "wall": {
+    "kind": "brick",
+    "bond": "common",
+    "mortar": [
+     0.74,
+     0.72,
+     0.68
+    ],
+    "vary": 0.14
+   },
+   "bays": 4,
+   "floors": 4
+  },
+  {
+   "name": "party_parge",
+   "W": 12.0,
+   "H": 12.0,
+   "wall": {
+    "kind": "none"
+   },
+   "bays": 4,
+   "floors": 4
+  }
+ ]
+}

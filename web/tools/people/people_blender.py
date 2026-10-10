@@ -3,7 +3,7 @@
   blender -b -t 8 --python people_blender.py -- <out_dir> <atlas_png> <preview_dir>
 
 Builds every character from Python (mesh + UVs into the shared atlas + armature + skin weights),
-keys walk / stroll / idle / flinch actions procedurally, bakes them into vertex animation data
+keys walk / stroll / idle / flinch (and, per EXTRA_CLIPS, brisk / jog / talk / hail / cheer / sit) actions procedurally, bakes them into vertex animation data
 (per-frame vertex positions + normals), writes people.glb / people_vat.bin / people.json, and
 renders review previews.
 
@@ -481,7 +481,30 @@ CHARACTERS = [
     dict(name="stroller", H=1.69, female=True, build=1.0, face="nia", hair="bun", hair_cell="hair_black",
          coat="puffer_long", coat_cell="puffer", coat_mask="A", legs="denim", shoes="sneaker", scarf="stripe_scarf",
          gloves=None, hat=None, props=["stroller"], style=dict(swing=0, lean=6)),
+    # ---- the street-life cast: a runner, a delivery man with a hand truck, a cart vendor, someone under an umbrella
+    dict(name="runner", H=1.72, female=True, build=0.95, face="priya", hair="bun", hair_cell="hair_black",
+         coat="short", coat_cell="windbreaker", coat_mask="A", legs="leggings", shoes="sneaker", scarf=None,
+         gloves=None, hat="beanie", hat_cell="knit", hat_mask="B", props=[], style=dict(swing=20, lean=5)),
+    dict(name="dolly", H=1.80, female=False, build=1.08, face="omar", hair="short", hair_cell="hair_black",
+         coat="short", coat_cell="hivis", coat_mask=None, legs="denim", shoes="boot_tan", boots=True, scarf=None,
+         gloves="leather_brown", hat="cap", hat_cell="nylon", hat_mask="B", props=["dolly"], style=dict(swing=0, lean=5)),
+    dict(name="vendor", H=1.74, female=False, build=1.1, face="arjun", hair="short", hair_cell="hair_black",
+         coat="puffer_short", coat_cell="puffer", coat_mask="A", legs="sweats", shoes="sneaker", scarf=None,
+         gloves=None, hat="cap", hat_cell="nylon", hat_mask="B", props=[], style=dict(swing=14, lean=3)),
+    dict(name="umbrella", H=1.70, female=True, build=1.0, face="mei", hair="long", hair_cell="hair_black",
+         coat="long", coat_cell="trench", coat_mask=None, legs="leggings", shoes="leather_black", boots=True, scarf="plaid_red",
+         gloves=None, hat=None, props=["umbrella.R"], style=dict(swing=14, lean=3)),
 ]
+
+# clips beyond the walk / stroll / idle / flinch everybody has
+EXTRA_CLIPS = {
+    "commuter": ["brisk", "talk", "hail"], "puffer": ["brisk", "talk"], "parka": ["brisk", "talk", "cheer", "sit"],
+    "texter": ["talk", "sit"], "shopper": ["brisk", "talk", "hail"], "courier": ["brisk", "cheer", "sit"],
+    "gent": ["talk", "sit"], "nana": ["talk", "sit"], "student": ["brisk", "talk", "cheer", "sit"],
+    "banker": ["brisk", "talk", "hail", "cheer"], "hoodie": ["brisk", "talk", "cheer", "sit"], "kid": ["cheer"],
+    "trench": ["brisk", "talk", "hail"], "hivis": ["brisk", "talk", "cheer"], "tourist": ["talk", "cheer", "sit"],
+    "runner": ["jog"], "vendor": ["talk"], "umbrella": ["brisk", "talk"],
+}
 
 # vertex mask (COLOR_0): r = coat tint, g = accessory tint, b = hair tint, a = flag / 8
 #   flags: 1 = face/skin region (per-instance face swap), 2 = optional hat, 3 = scarf (hue shift),
@@ -1005,6 +1028,52 @@ def add_prop(mb, pr, C, B, p, ox, fat):
                     segs=8, sqv=1.0, axis=(1, 0, 0), rings_n=2)
         loft(mb, [dict(c=(X(-0.23 * k), hy, hz), rx=0.016, ry=0.016, ax=(1, 0, 0), ref=(0, 0, 1)),
                   dict(c=(X(0.23 * k), hy, hz), rx=0.016, ry=0.016, ax=(1, 0, 0), ref=(0, 0, 1))], 6, rub, rigid(cart), v0=0.2, v1=0.8)
+    elif name == "dolly":
+        # a hand truck pushed ahead, tilted back onto its wheels, three cartons strapped on
+        mt = cell("metal")
+        gx, gy, _, _ = cell("gear")
+        rub = (gx + 64, gy + 64, 64, 64)
+        kraft = cell("paperbag")
+        cart = p + "cart"
+        hy, hz = -0.36 * k, 1.0 * k           # handles
+        by, bz = -0.80 * k, 0.10 * k          # axle
+        for s in (1, -1):
+            x = X(0.17 * k * s)
+            loft(mb, [dict(c=(x, hy + 0.04 * k, hz + 0.05 * k), rx=0.013, ry=0.013), dict(c=(x, hy, hz), rx=0.013, ry=0.013),
+                      dict(c=(x, by + 0.04 * k, bz + 0.06 * k), rx=0.013, ry=0.013)], 4, mt, rigid(cart), v0=0.1, v1=0.9)
+            box(mb, (X(0.21 * k * s), by, bz), (0.035 * k, 0.2 * k, 0.2 * k), rub, rigid(cart), Z4, ref=(0, 0, 1),
+                segs=8, sqv=1.0, axis=(1, 0, 0), rings_n=2)
+        for f in (0.35, 0.7):     # cross bars
+            c0 = Vector((0, hy, hz)).lerp(Vector((0, by, bz)), f)
+            loft(mb, [dict(c=(X(-0.17 * k), c0.y, c0.z), rx=0.01, ry=0.01, ax=(1, 0, 0), ref=(0, 0, 1)),
+                      dict(c=(X(0.17 * k), c0.y, c0.z), rx=0.01, ry=0.01, ax=(1, 0, 0), ref=(0, 0, 1))], 4, mt, rigid(cart), v0=0.2, v1=0.8)
+        box(mb, (X(0), by - 0.12 * k, 0.03 * k), (0.40 * k, 0.24 * k, 0.025 * k), mt, rigid(cart), Z4, segs=4, sqv=0.1, rings_n=2)
+        z = 0.05 * k
+        for i, (w_, d_, h_) in enumerate(((0.40, 0.34, 0.30), (0.38, 0.32, 0.28), (0.34, 0.28, 0.24))):
+            t = (z + h_ * k / 2 - bz) / (hz - bz)
+            yc = by + (hy - by) * max(0.0, t) - d_ * k / 2 - 0.03 * k
+            box(mb, (X(0.0), yc, z + h_ * k / 2), (w_ * k, d_ * k, h_ * k), kraft, rigid(cart), MASKS["B"] if i == 1 else Z4,
+                ref=(0, 1, 0), segs=4, sqv=0.12, rings_n=2)
+            z += h_ * k + 0.005
+    elif name == "umbrella":
+        # an open umbrella held up over the head (shaft from the hand, canopy above the hat)
+        from people_anim import UMBRELLA_GRIP
+        gxy = UMBRELLA_GRIP(B, sg)
+        g = Vector((X(gxy[0]), gxy[1], gxy[2]))
+        zt = B["crown"] + 0.30 * k
+        top = Vector((g.x + 0.0, g.y + 0.06 * k, zt))
+        mt = cell("metal")
+        ch = p + "chest"
+        loft(mb, [dict(c=g + Vector((0, 0, -0.10 * k)), rx=0.012, ry=0.012), dict(c=g, rx=0.011, ry=0.011),
+                  dict(c=top, rx=0.007, ry=0.007)], 4, cell("leather_black"), rigid(ch), v0=0.1, v1=0.9, cap0=True)
+        nyl = cell("nylon")
+        R = 0.50 * k
+        rings = [dict(c=top + Vector((0, 0.02 * k, -0.20 * k)), rx=R, ry=R * 0.98, ax=(0, 0.1, 1), ref=(0, 1, 0)),
+                 dict(c=top + Vector((0, 0.01 * k, -0.08 * k)), rx=R * 0.62, ry=R * 0.6, ax=(0, 0.1, 1), ref=(0, 1, 0)),
+                 dict(c=top + Vector((0, 0, 0.0)), rx=0.025, ry=0.025, ax=(0, 0.1, 1), ref=(0, 1, 0))]
+        for fl in (False, True):
+            loft(mb, rings, 8, nyl, rigid(ch), mask=MASKS["B"], v0=0.0, v1=1.0, flip=fl,
+                 cap1=(not fl) and (0, 0, 0.03 * k))
     elif name == "hold":
         pass
 
@@ -1109,6 +1178,13 @@ CLIPS = [  # name, frames baked, seconds per cycle at the reference speed, loop
     ("idle", 16, 3.6, True),
     ("flinch", 16, 1.1, False),
 ]
+# the extra clips (see EXTRA_CLIPS for who has which): frames, seconds per cycle, loop
+EXTRA_SPEC = {"brisk": (20, 0.98, True), "jog": (16, 0.66, True), "talk": (20, 3.6, True), "hail": (16, 3.2, True),
+              "sit": (12, 4.4, True), "cheer": (16, 3.0, True)}
+
+
+def clips_for(name):
+    return CLIPS + [(c,) + EXTRA_SPEC[c] for c in EXTRA_CLIPS.get(name, [])]
 
 
 def key_clip(arm_ob, anims, clip, F, loop):
@@ -1454,7 +1530,7 @@ def main():
             # the two hands meet beside the parent's right hip
             C["_hold_target"] = K["_hold_target"] = (ox * 0.55, -0.08, 0.78 * B["k"])
             anims_spec.append((K, KB, "k_", ox))
-        if any(pr.startswith("stroller") for pr in C.get("props", [])):
+        if any(pr.startswith("stroller") or pr.startswith("dolly") for pr in C.get("props", [])):
             skel["cart"] = ((0, -0.85 * B["k"], 0.3), (0, -0.85 * B["k"], 0.6), None, True)
         arm = make_armature(C["name"], skel, iks)
         ob = make_mesh(C["name"], mb, arm)
@@ -1462,14 +1538,14 @@ def main():
         anims = [Anim(c, b, poser, prefix=pp, ox=o) for c, b, pp, o in anims_spec]
         print("[people] %-11s tris=%d verts=%d" % (C["name"], mb.ntris(), len(mb.v)), flush=True)
         clips = {}
-        for clip, F, secs, loop in CLIPS:
+        for clip, F, secs, loop in clips_for(C["name"]):
             clips[clip] = key_clip(arm, anims, clip, F, loop)
         # lead anchors: palm of each hand
         anchors = {}
         for s in ("L", "R"):
             hb = arm.data.bones["hand." + s]
             anchors["hand" + s] = anchor_vertex(ob, hb.head_local.lerp(hb.tail_local, 0.6), "hand." + s)
-        built.append(dict(C=C, B=B, ob=ob, arm=arm, anims=anims, clips=clips, ci=ci, kind="person", cliplist=CLIPS,
+        built.append(dict(C=C, B=B, ob=ob, arm=arm, anims=anims, clips=clips, ci=ci, kind="person", cliplist=clips_for(C["name"]),
                           anchors=anchors))
     for D in DOGS:
         if ONLY and D["name"] not in ONLY:
@@ -1533,8 +1609,10 @@ def main():
             nn = oct_encode(N.reshape(-1, 3)).reshape(F, nv, 1)
             blk = np.concatenate([q, nn], axis=2)                                         # F, nv, 4
             blocks.append(blk)
-            stride = E["anims"][0].stride(clip) if clip in ("walk", "stroll") else 0.0
+            stride = E["anims"][0].stride(clip) if clip in ("walk", "stroll", "brisk", "jog") else 0.0
             cmeta["clips"][clip] = {"base": texel, "frames": F, "loop": loop, "seconds": secs, "stride": round(stride, 4)}
+            if clip == "sit":
+                cmeta["seat"] = round(getattr(E["anims"][0], "seat", 0.45), 4)
             block_meta.append([texel, F, nv])
             texel += F * nv
         (meta_chars if E["kind"] == "person" else meta_dogs).append(cmeta)
@@ -1565,6 +1643,7 @@ def main():
         "mask": "COLOR_0: r = coat tint, g = accessory tint, b = hair tint, a*8 = flag (1 face, 2 optional hat, 3 scarf hue, 4 child face)",
         "tintGain": 1.65,
         "clips": {c: {"frames": F, "seconds": s_, "loop": l} for c, F, s_, l in CLIPS},
+        "extraClips": {c: {"frames": F, "seconds": s_, "loop": l} for c, (F, s_, l) in EXTRA_SPEC.items()},
         "dogClips": {c: {"frames": F, "seconds": s_, "loop": l} for c, F, s_, l in DOG_CLIPS},
         "strideNote": "stride = metres covered by one full walk cycle (two steps) at the mesh's native size",
         "characters": meta_chars,
@@ -1575,6 +1654,12 @@ def main():
         json.dump(meta, f, indent=1)
     print("[people] VAT texels=%d (%dx%d), file=%d bytes" % (texel, W, Hh, os.path.getsize(vat_path)), flush=True)
     previews(built)
+
+
+PREVIEW_CLIPS = {"commuter": ("walk", "brisk", "talk", "hail"), "runner": ("jog", "walk"), "gent": ("walk", "sit"), "nana": ("sit",),
+                 "hoodie": ("cheer", "talk"), "dolly": ("walk", "idle"), "umbrella": ("walk", "brisk"), "vendor": ("talk",),
+                 "kid": ("cheer",), "parent_kid": ("walk",), "stroller": ("walk",), "texter": ("sit",), "banker": ("hail",),
+                 "student": ("brisk", "sit")}
 
 
 def srgb2lin(c):
@@ -1653,7 +1738,9 @@ def previews(built):
             o["ob"].hide_render = o is not E
         x, y = E["arm"].location.x, E["arm"].location.y
         dog = E["kind"] == "dog"
-        sel = ("walk", "idle") if dog else (("walk", "flinch", "idle") if E["C"]["name"] in ("commuter", "parent_kid", "gent", "tourist", "stroller") else ("walk",))
+        sel = ("walk", "idle") if dog else tuple(c for c in PREVIEW_CLIPS.get(E["C"]["name"], ()) if c in E["clips"])
+        if not sel:
+            continue
         for clip in sel:
             E["arm"].animation_data.action = E["clips"][clip]
             F = dict((c, f) for c, f, _, _ in E["cliplist"])[clip]

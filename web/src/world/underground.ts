@@ -6,7 +6,7 @@
 // Blocked stretches force you back up: Prince St is flooded (a water main burst), and
 // the line ends at 57 St - 7 Av.
 
-import { Grid, type CityData } from "./data";
+import { Grid, inRing, type CityData } from "./data";
 
 export const TUNNEL = {
   halfWidth: 7.2,
@@ -21,9 +21,27 @@ export const TUNNEL = {
   columnRadius: 0.22,
 };
 
-export interface Shaft { x: number; z: number; r: number; tx: number; tz: number; kind: "stairs" | "grate"; ss: number; name: string; relief?: boolean;
-  /** stairs that breathe warm station air up and out (ways out); the others draw air down (ways in) */
-  out?: boolean }
+/** A street entrance's stairwell, in its own frame: origin at the shaft (x, z), +a along (ux, uz)
+ *  toward the tunnel, b across, y up. The opening is a square in the sidewalk (|a|, |b| < half);
+ *  the stairs start at the open side (a = -half) at the sidewalk top and go down toward the
+ *  tunnel at `slope` until they reach the passage floor, under a ceiling once they are below the
+ *  pavement; the passage then runs on to the station. The art (render/subwayEntrances.ts) is built
+ *  to exactly these numbers. */
+export const STAIRS = { half: 2.1, halfWidth: 1.95, top: 0.15, slope: 0.7, headroom: 3.1, roofUnder: -0.15, passageFloor: -6.4, passageCeiling: -2.2, passageHalfWidth: 2.3 };
+/** where the stairs reach the passage floor (a) */
+export const STAIRS_FOOT = -STAIRS.half + (STAIRS.top - STAIRS.passageFloor) / STAIRS.slope;
+/** Massive vents over the tunnel between stations: a long grate in the street, a straight drop
+ *  to the tunnel roof. The ways in suck you down into the subway; the ways out fire you up past
+ *  the rooftops. Local frame like the stairs: a along the tunnel, b across. */
+export const VENT = { halfLength: 4.6, halfWidth: 1.4, every: 260, inPull: 9, outBlast: 24, outReach: 34 };
+/** Station platforms: solid from the platform edge to the wall, up to the platform top. */
+export const PLATFORM = { edge: 4.95, height: 1.1, columnEvery: 9, columnSpan: 63, columnOff: 7.0, columnRadius: 0.3 };
+
+export interface Shaft { x: number; z: number; r: number; tx: number; tz: number; kind: "stairs" | "grate" | "vent"; ss: number; name: string; relief?: boolean;
+  /** stairs/vents that breathe air up and out (ways out); the others draw air down (ways in) */
+  out?: boolean;
+  /** unit direction of the local +a axis (stairs: toward the tunnel; vents and grates: along it) */
+  ux: number; uz: number }
 
 export interface Blocked { ss0: number; ss1: number; kind: "flood" | "end"; name: string }
 
@@ -60,7 +78,9 @@ export class Underground {
       const sorted = list.map((e) => ({ e, s: sub.nearest(e.x, e.z).s })).sort((a, b) => a.s - b.s);
       sorted.forEach(({ e, s }, i) => {
         const p = sub.at(s);
-        this.addShaft({ x: e.x, z: e.z, r: 2.1, tx: p.x - e.x, tz: p.z - e.z, kind: "stairs", ss: s, name: e.n, out: i % 2 === 1 });
+        const L = Math.hypot(p.x - e.x, p.z - e.z) || 1, ux = (p.x - e.x) / L, uz = (p.z - e.z) / L;
+        const at = this.fitSidewalk(e.x, e.z, ux, uz);
+        this.addShaft({ x: at[0], z: at[1], r: STAIRS.half, tx: p.x - at[0], tz: p.z - at[1], ux, uz, kind: "stairs", ss: s, name: e.n, out: i % 2 === 1 });
       });
     }
     const wallSt = this.stations.find((s) => /Wall St/.test(s.name))?.ss ?? 380;
@@ -68,22 +88,62 @@ export class Underground {
     // relief vents just before the flood and the end of the line: the tunnel air (and you) escape up them
     for (const ss of [this.blocked[0].ss0 - 7, this.end - 7]) {
       const p = sub.at(ss);
-      const s: Shaft = { x: p.x, z: p.z, r: 3.4, tx: 0, tz: 0, kind: "grate", ss, name: "relief vent", relief: true };
+      const s: Shaft = { x: p.x, z: p.z, r: 3.4, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "grate", ss, name: "relief vent", relief: true };
       this.shafts.push(s);
       this.shaftGrid.add(s, p.x - 16, p.z - 16, p.x + 16, p.z + 16); // its pull reaches right across the tunnel
     }
-    // grates over the tunnel between stations
+    // massive vents over the tunnel between stations: alternately ways in and ways out
+    const vents: number[] = [];
+    let flip = 0;
+    for (let s = 150; s < this.end - 60; s += VENT.every) {
+      let ss = s;
+      // keep clear of the stations (their stairs do that job) and the closed stretches
+      const st = this.stations.find((q) => Math.abs(q.ss - ss) < TUNNEL.stationHalfLength + 40);
+      if (st) ss = st.ss + Math.sign(ss - st.ss || 1) * (TUNNEL.stationHalfLength + 45);
+      if (this.isBlocked(ss) || this.isBlocked(ss + 10) || this.isBlocked(ss - 10) || ss > this.end - 60) continue;
+      if (this.stations.some((q) => Math.abs(q.ss - ss) < TUNNEL.stationHalfLength + 30)) continue;
+      const p = sub.at(ss), side = flip % 2 ? 1 : -1;
+      const off = (TUNNEL.halfWidth - VENT.halfWidth - 0.6) * side;
+      this.addShaft({ x: p.x + p.tz * off, z: p.z - p.tx * off, r: VENT.halfLength, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "vent", ss, name: flip % 2 ? "air vent (out)" : "air vent (in)", out: flip % 2 === 1 });
+      vents.push(ss);
+      flip++;
+    }
+    // small grates over the tunnel between stations (not right next to a big vent)
     for (let s = 40; s < this.end - 20; s += TUNNEL.grateEvery) {
       if (this.stations.some((st) => Math.abs(st.ss - s) < TUNNEL.stationHalfLength + 10)) continue;
-      if (this.isBlocked(s)) continue;
+      if (this.isBlocked(s) || vents.some((v) => Math.abs(v - s) < 30)) continue;
       const p = sub.at(s);
-      this.addShaft({ x: p.x - p.tz * 4.5, z: p.z + p.tx * 4.5, r: 1.3, tx: 0, tz: 0, kind: "grate", ss: s, name: "" });
+      this.addShaft({ x: p.x - p.tz * 4.5, z: p.z + p.tx * 4.5, r: 1.3, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "grate", ss: s, name: "" });
     }
     this.rats = makeRats(this);
   }
 
+  /** Slide a stair opening (nudging it up to 3.5 m) until its whole square sits in one sidewalk. */
+  private fitSidewalk(x: number, z: number, ux: number, uz: number): [number, number] {
+    const walks = this.city.raw.sidewalk;
+    const fits = (cx: number, cz: number) => {
+      const h = STAIRS.half + 0.15, w = STAIRS.halfWidth + 0.15;
+      const corners = [[-h, -w], [-h, w], [h, w], [h, -w]].map(([a, b]) => [cx + ux * a + uz * b, cz + uz * a - ux * b]);
+      return walks.some((p) => corners.every(([px, pz]) => inRing(p[0], px, pz) && !p.slice(1).some((hole) => inRing(hole, px, pz))));
+    };
+    if (fits(x, z)) return [x, z];
+    let best: [number, number] | null = null, bd = Infinity;
+    for (let da = -3.5; da <= 3.5; da += 0.5) for (let db = -3.5; db <= 3.5; db += 0.5) {
+      const d = Math.hypot(da, db);
+      if (d >= bd) continue;
+      const cx = x + ux * da + uz * db, cz = z + uz * da - ux * db;
+      if (fits(cx, cz)) { best = [cx, cz]; bd = d; }
+    }
+    return best ?? [x, z];
+  }
+
   private addShaft(s: Shaft) {
     this.shafts.push(s);
+    if (s.kind === "vent") {
+      const h = VENT.halfLength + 6;
+      this.shaftGrid.add(s, s.x - h, s.z - h, s.x + h, s.z + h);
+      return;
+    }
     // the whole footprint: the shaft and the passage that runs from it to the tunnel
     const x1 = s.x + s.tx, z1 = s.z + s.tz;
     this.shaftGrid.add(s, Math.min(s.x, x1) - 4, Math.min(s.z, z1) - 4, Math.max(s.x, x1) + 4, Math.max(s.z, z1) + 4);
@@ -104,6 +164,7 @@ export class Underground {
     const n = this.city.subway.nearest(x, z, this.hint, this.near);
     this.hint = n.s;
     let best = -Infinity;
+    let tunnelHW = TUNNEL.halfWidth;
     if (info) { info.ss = n.s; info.off = n.off; info.inShaft = null; }
     const blk = this.isBlocked(n.s);
     if (blk) best = -Math.min(n.s - blk.ss0, blk.ss1 - n.s);
@@ -115,6 +176,7 @@ export class Underground {
         if (d < TUNNEL.stationHalfLength + 30) k = Math.max(k, Math.min(1, (TUNNEL.stationHalfLength + 30 - d) / 30));
       }
       const hw = TUNNEL.halfWidth + (TUNNEL.stationHalfWidth - TUNNEL.halfWidth) * k;
+      tunnelHW = hw;
       const ceil = TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k;
       const lateral = hw - n.d;
       best = Math.min(lateral, y - TUNNEL.floor, ceil - y);
@@ -123,6 +185,22 @@ export class Underground {
       const b = this.blocked[0];
       const flood = Math.min(Math.abs(n.s - b.ss0), Math.abs(n.s - b.ss1));
       best = Math.min(best, endWall, n.s < b.ss0 || n.s > b.ss1 ? flood + 0.0 : -flood);
+      // station platforms: solid from the edge to the wall, up to the platform top; and their columns
+      if (k > 0.6) {
+        const top = TUNNEL.floor + PLATFORM.height;
+        const dx = PLATFORM.edge - Math.abs(n.off), dy = y - top;
+        const pd = Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0);
+        best = Math.min(best, pd);
+        if (k > 0.95 && Math.abs(Math.abs(n.off) - PLATFORM.columnOff) < 1.5) {
+          for (const st of this.stations) {
+            const ds = n.s - st.ss;
+            if (Math.abs(ds) > PLATFORM.columnSpan + 2) continue;
+            const j = Math.round(ds / PLATFORM.columnEvery), dd = ds - j * PLATFORM.columnEvery;
+            if (Math.abs(j * PLATFORM.columnEvery) > PLATFORM.columnSpan) continue;
+            best = Math.min(best, Math.hypot(dd, Math.abs(n.off) - PLATFORM.columnOff) - PLATFORM.columnRadius);
+          }
+        }
+      }
       // the row of columns between the tracks (not in the stations, where the platforms are)
       if (k < 0.3) {
         const ds = Math.abs(((n.s % TUNNEL.columnEvery) + TUNNEL.columnEvery) % TUNNEL.columnEvery - TUNNEL.columnEvery / 2);
@@ -131,20 +209,30 @@ export class Underground {
       }
     }
     for (const s of this.shaftGrid.at(x, z)) {
-      // vertical shaft from the street down to the passage level
-      const dh = s.r - Math.hypot(x - s.x, z - s.z);
-      const top = s.kind === "grate" ? 0.6 : 0.6;
-      const bottom = s.kind === "grate" ? TUNNEL.ceiling - 0.5 : -6.2;
-      const v = Math.min(dh, y - bottom, top - y);
-      if (v > best) { best = v; if (info) info.inShaft = s; }
-      if (s.kind === "stairs") {
-        // the passage from the foot of the stairs to the tunnel
-        const L = Math.hypot(s.tx, s.tz) || 1, ux = s.tx / L, uz = s.tz / L;
-        const t = Math.max(0, Math.min(L, (x - s.x) * ux + (z - s.z) * uz));
-        const px = s.x + ux * t, pz = s.z + uz * t;
-        const pr = 2.3 - Math.hypot(x - px, z - pz);
-        const pv = Math.min(pr, y - -6.4, -2.2 - y);
-        if (pv > best) { best = pv; if (info) info.inShaft = s; }
+      const a = (x - s.x) * s.ux + (z - s.z) * s.uz, b = (x - s.x) * s.uz - (z - s.z) * s.ux;
+      if (s.kind === "grate") {
+        // a vertical shaft from the street down to the tunnel roof
+        const v = Math.min(s.r - Math.hypot(x - s.x, z - s.z), y - (TUNNEL.ceiling - 0.5), 0.6 - y);
+        if (v > best) { best = v; if (info) info.inShaft = s; }
+      } else if (s.kind === "vent") {
+        // a long box straight down to the tunnel roof
+        const v = Math.min(VENT.halfLength - Math.abs(a), VENT.halfWidth - Math.abs(b), y - (TUNNEL.ceiling - 0.5), 0.6 - y);
+        if (v > best) { best = v; if (info) info.inShaft = s; }
+      } else {
+        // the stairs: down from the open side of the opening toward the tunnel
+        const aa = Math.max(-STAIRS.half, Math.min(STAIRS_FOOT, a));
+        const floor = STAIRS.top - STAIRS.slope * (aa + STAIRS.half);
+        const ceil = a < STAIRS.half ? 0.8 : Math.min(STAIRS.roofUnder, floor + STAIRS.headroom);
+        const sv = Math.min(STAIRS.halfWidth - Math.abs(b), (y - floor) * 0.82, ceil - y, a + STAIRS.half, STAIRS_FOOT + 0.6 - a);
+        if (sv > best) { best = sv; if (info && (y > -0.4 || n.d > tunnelHW - 0.3)) info.inShaft = s; }
+        // the passage from the foot of the stairs to the station
+        const L = Math.hypot(s.tx, s.tz) || 1;
+        const t = Math.max(STAIRS_FOOT - 0.6, Math.min(L, a));
+        const px = s.x + s.ux * t, pz = s.z + s.uz * t;
+        const pr = STAIRS.passageHalfWidth - Math.hypot(x - px, z - pz);
+        const pv = Math.min(pr, y - STAIRS.passageFloor, STAIRS.passageCeiling - y);
+        // (the passage is only "the passage" up to the station/tunnel wall: inside, it's the tunnel)
+        if (pv > best) { best = pv; if (info && n.d > tunnelHW - 0.3) info.inShaft = s; }
       }
     }
     return best;
@@ -152,7 +240,12 @@ export class Underground {
 
   /** Is (x, z) over a hole in the street (stairs or grate)? */
   openingAt(x: number, z: number): Shaft | null {
-    for (const s of this.shaftGrid.at(x, z)) if (Math.hypot(x - s.x, z - s.z) < s.r) return s;
+    for (const s of this.shaftGrid.at(x, z)) {
+      const a = (x - s.x) * s.ux + (z - s.z) * s.uz, b = (x - s.x) * s.uz - (z - s.z) * s.ux;
+      if (s.kind === "grate" ? Math.hypot(x - s.x, z - s.z) < s.r
+        : s.kind === "vent" ? Math.abs(a) < VENT.halfLength && Math.abs(b) < VENT.halfWidth
+        : Math.abs(a) < STAIRS.half && Math.abs(b) < STAIRS.halfWidth) return s;
+    }
     return null;
   }
 }

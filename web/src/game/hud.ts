@@ -43,7 +43,7 @@ export class Hud {
       <div class="toast"></div>
       <div class="screen"></div>
       <div class="keys"><span class="key">W</span><span class="key">S</span> dive / flare · <span class="key">A</span><span class="key">D</span> bank · <span class="key">SPACE</span> spread · <span class="key">SHIFT</span> curl · <span class="key">Q</span><span class="key">E</span> corkscrew · <span class="key">R</span> fall again</div>
-      <div class="credit">${city.raw.meta.credit}</div>`;
+      <div class="credit">${city.raw.meta.credit} Distant city and New Jersey: © OpenStreetMap contributors.</div>`;
     this.timer = root.querySelector(".time")!;
     this.best = root.querySelector(".best")!;
     this.marker = root.querySelector(".marker")!;

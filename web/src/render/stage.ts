@@ -57,7 +57,33 @@ const GradeShader = {
     }`,
 };
 
-function skyMaterial(sunDir: THREE.Vector3) {
+// ------------------------------------------------------------------ sky and haze
+// One description of the late-November air, shared by the sky dome and the fog on every
+// material: whatever sits far away dissolves into exactly the colour of the sky behind it, so
+// distance reads as depth (bluer, paler, warmer toward the sun) rather than a grey wall.
+
+/** GLSL: the haze colour seen looking along d (linear), and the sky without clouds. */
+function hazeGLSL(sun: THREE.Vector3) {
+  const v = (x: number) => x.toFixed(5);
+  return /* glsl */ `
+    const vec3 SKY_SUN = vec3(${v(sun.x)}, ${v(sun.y)}, ${v(sun.z)});
+    vec3 skyHaze(vec3 d) {
+      vec2 flatD = normalize(d.xz + vec2(1e-5));
+      float az = max(dot(flatD, normalize(SKY_SUN.xz)), 0.0);
+      // cold and pale away from the sun, a soft peach under it
+      vec3 col = mix(vec3(0.53, 0.60, 0.70), vec3(0.80, 0.68, 0.56), pow(az, 4.0) * 0.85);
+      // forward scattering around the low sun (kept under the bloom threshold: readable, not blinding)
+      col += vec3(0.30, 0.22, 0.13) * pow(max(dot(normalize(d), SKY_SUN), 0.0), 12.0);
+      return col;
+    }
+    vec3 skyClear(vec3 d) {
+      float h = max(d.y, 0.0);
+      vec3 zen = vec3(0.21, 0.31, 0.47);
+      return mix(skyHaze(d), zen, pow(smoothstep(0.0, 1.0, h), 0.6));
+    }`;
+}
+
+function skyMaterial(sunDir: THREE.Vector3, octaves = 5) {
   return new THREE.ShaderMaterial({
     side: THREE.BackSide,
     depthWrite: false,
@@ -66,35 +92,103 @@ function skyMaterial(sunDir: THREE.Vector3) {
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
     fragmentShader: `
       uniform vec3 uSun; uniform float uTime; varying vec3 vDir;
-      float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      ${hazeGLSL(sunDir)}
+      float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
       float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
         return mix(mix(h21(i), h21(i+vec2(1,0)), f.x), mix(h21(i+vec2(0,1)), h21(i+vec2(1,1)), f.x), f.y); }
-      float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 5; i++){ s += vn(p) * a; p *= 2.03; a *= 0.5; } return s; }
+      float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < ${octaves}; i++){ s += vn(p) * a; p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; } return s; }
       void main(){
         vec3 d = normalize(vDir);
         float h = d.y;
         float toSun = max(dot(d, uSun), 0.0);
-        // late November: a pale, cold sky that warms toward the low sun
-        vec3 zenith = vec3(0.30, 0.42, 0.62);
-        vec3 horizon = vec3(0.78, 0.76, 0.76);
-        vec3 col = mix(horizon, zenith, pow(max(h, 0.0), 0.55));
-        col = mix(col, vec3(1.0, 0.74, 0.48), pow(toSun, 6.0) * 0.55 * (1.0 - smoothstep(0.0, 0.5, h)));
-        col += vec3(1.0, 0.8, 0.55) * pow(toSun, 64.0) * 0.6;   // soft glow, no blinding disc
-        col += vec3(1.0, 0.92, 0.8) * smoothstep(0.9993, 0.9998, toSun) * 1.2;
-        // thin high cloud, lit from the sun side
-        vec2 uv = d.xz / max(h, 0.08) * 0.6 + uTime * 0.004;
-        float cl = smoothstep(0.45, 0.85, fbm(uv * 1.6)) * smoothstep(0.02, 0.25, h);
-        col = mix(col, mix(vec3(0.82, 0.82, 0.86), vec3(1.0, 0.82, 0.66), pow(toSun, 3.0)), cl * 0.65);
-        col = mix(col, horizon * 0.95, 1.0 - smoothstep(-0.02, 0.06, h)); // haze at the horizon
+        vec3 col = skyClear(d);
+        // the sun itself: a small, soft disc (the bloom gives it a modest halo)
+        col += vec3(1.0, 0.86, 0.66) * smoothstep(0.99986, 0.99996, toSun) * 5.0;
+        col += vec3(1.0, 0.8, 0.6) * pow(toSun, 400.0) * 0.5;
+        // soft stratocumulus with breaks: a cloud deck, lit from the sun side, grey-blue underneath
+        if (h > 0.0) {
+          vec2 uv = d.xz / (h + 0.12) * 1.5 + vec2(uTime * 0.006, uTime * 0.002);
+          vec2 w = vec2(fbm(uv * 0.7 + 3.1), fbm(uv * 0.7 - 7.4));
+          float c = fbm(uv * 1.3 + w * 1.4);
+          float cover = smoothstep(0.40, 0.68, c);
+          // a cheap light march: thinner toward the sun means a brighter edge
+          float c2 = fbm(uv * 1.3 + w * 1.4 + normalize(uSun.xz) * 0.16);
+          float lit = clamp(0.45 + (c - c2) * 4.0, 0.0, 1.0);
+          vec3 under = vec3(0.40, 0.43, 0.49);
+          vec3 edge = mix(vec3(0.78, 0.78, 0.80), vec3(0.98, 0.84, 0.68), pow(toSun, 3.0));
+          vec3 cc = mix(under, edge, lit * 0.8 + pow(toSun, 8.0) * 0.3);
+          float fade = smoothstep(0.015, 0.22, h); // the deck melts into the haze toward the horizon
+          col = mix(col, cc, cover * 0.85 * fade);
+          // the disc shows through the thin parts only
+        }
+        if (h < 0.0) col = skyHaze(d); // below the horizon: the same haze the fog fades into
         gl_FragColor = vec4(col, 1.0);
       }`,
   });
 }
 
+/**
+ * Height fog for every material that uses three's fog chunks. With FogExp2 above ground the
+ * density thins with height (towers poke out of the haze), the colour is the sky's own haze
+ * along the view ray, and everything is fully hazed by ~15 km (the horizon). Underground
+ * (density > 0.004) it is the old exp2 murk in the fog colour.
+ */
+function installFog(sun: THREE.Vector3) {
+  const C = THREE.ShaderChunk as unknown as Record<string, string>;
+  C.fog_pars_vertex = /* glsl */ `
+    #ifdef USE_FOG
+      varying float vFogDepth;
+      varying vec3 vFogRay;
+    #endif`;
+  C.fog_vertex = /* glsl */ `
+    #ifdef USE_FOG
+      vFogDepth = - mvPosition.z;
+      vFogRay = mvPosition.xyz * mat3( viewMatrix ); // camera -> vertex, in world space
+    #endif`;
+  C.fog_pars_fragment = /* glsl */ `
+    #ifdef USE_FOG
+      uniform vec3 fogColor;
+      varying float vFogDepth;
+      varying vec3 vFogRay;
+      #ifdef FOG_EXP2
+        uniform float fogDensity;
+        ${hazeGLSL(sun)}
+      #else
+        uniform float fogNear;
+        uniform float fogFar;
+      #endif
+    #endif`;
+  C.fog_fragment = /* glsl */ `
+    #ifdef USE_FOG
+      vec3 fogCol = fogColor;
+      #ifdef FOG_EXP2
+        float fogFactor;
+        if ( fogDensity > 0.004 ) {
+          fogFactor = 1.0 - exp( - fogDensity * fogDensity * vFogDepth * vFogDepth );
+        } else {
+          float fd = length( vFogRay );
+          const float FH = 1.0 / 330.0; // haze scale height (m)
+          float y0 = max( cameraPosition.y, 0.0 ), y1 = max( cameraPosition.y + vFogRay.y, 0.0 );
+          float dy = ( y1 - y0 ) * FH;
+          float avg = abs( dy ) > 1e-3 ? ( exp( - y0 * FH ) - exp( - y1 * FH ) ) / dy : exp( - y0 * FH );
+          float tau = fogDensity * max( fd - 40.0, 0.0 ) * avg;
+          fogFactor = max( 1.0 - exp( - tau ), smoothstep( 9000.0, 15000.0, fd ) );
+          fogCol = skyHaze( vFogRay / max( fd, 1e-3 ) );
+        }
+      #else
+        float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+      #endif
+      gl_FragColor.rgb = mix( gl_FragColor.rgb, fogCol, fogFactor );
+    #endif`;
+}
+
+/** Ground-level haze density above ground (per metre; see installFog). */
+const HAZE = 0.0002;
+
 export class Stage {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(72, 1, 0.05, 6000);
+  readonly camera = new THREE.PerspectiveCamera(72, 1, 0.05, 16000);
   readonly sun = new THREE.DirectionalLight(0xffd2a0, 3.4);
   readonly hemi = new THREE.HemisphereLight(0xa8b4c8, 0x4a4038, 0.6);
   readonly sunDir = new THREE.Vector3();
@@ -119,8 +213,9 @@ export class Stage {
     // grid frame (avenues along +z) is behind and to the left of a player heading uptown
     const az = THREE.MathUtils.degToRad(247 - 28.9), el = THREE.MathUtils.degToRad(11);
     this.sunDir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize(); // east is -x
+    installFog(this.sunDir); // before any material compiles
 
-    this.sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMaterial(this.sunDir));
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMaterial(this.sunDir, quality === "low" ? 4 : 5));
     this.sky.frustumCulled = false;
     this.sky.renderOrder = -1;
     this.scene.add(this.sky);
@@ -145,7 +240,7 @@ export class Stage {
     this.sun.shadow.normalBias = 0.8;
     this.scene.add(this.sun, this.sun.target, this.hemi);
 
-    this.fog = new THREE.FogExp2(0xb9bcc4, 0.00042);
+    this.fog = new THREE.FogExp2(0xb9bcc4, HAZE);
     this.scene.fog = this.fog;
 
     const w = window.innerWidth, h = window.innerHeight;
@@ -164,7 +259,16 @@ export class Stage {
       this.ao.setQualityMode(quality === "high" ? "Medium" : "Performance");
       this.composer.addPass(this.ao);
     }
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.55, 0.9);
+    // the sun glinting off glass is thousands of times brighter than the sky: cap the HDR peaks before the
+    // bloom so a reflection is a sparkle, not a blown-out disc across a third of the screen (AgX maps
+    // anything this bright to white anyway, so the image itself barely changes)
+    this.composer.addPass(new ShaderPass({
+      uniforms: { tDiffuse: { value: null } },
+      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+        void main() { vec4 c = texture2D(tDiffuse, vUv); float m = max(max(c.r, c.g), c.b); gl_FragColor = vec4(c.rgb * min(1.0, 4.0 / max(m, 1e-4)), c.a); }`,
+    }));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.3, 0.45, 1.0);
     this.composer.addPass(this.bloom);
     this.grade = new ShaderPass(GradeShader);
     this.composer.addPass(this.grade);
@@ -195,14 +299,14 @@ export class Stage {
     this.sky.visible = !underground; // no daylight leaking through anything down there
     this.scene.background = underground ? new THREE.Color(0x050403) : null;
     (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
-    this.fog.density = underground ? 0.045 : 0.00042;
+    this.fog.density = underground ? 0.045 : HAZE;
     this.fog.color.set(underground ? 0x0d0b09 : 0xb9bcc4);
     const ug = this.grade.uniforms;
     ug.uSpeed.value += (speed - ug.uSpeed.value) * 0.08;
     ug.uTime.value = t;
     ug.uHurt.value = hurt;
     ug.uCold.value = 0.8;
-    this.bloom.strength = underground ? 0.6 : 0.3;
+    this.bloom.strength = underground ? 0.32 : 0.3;
   }
 
   render() {

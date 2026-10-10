@@ -6,6 +6,7 @@
 import type { CityData } from "../world/data";
 import type { Blockers } from "../world/blockers";
 import type { Shaft, Underground } from "../world/underground";
+import type { WindFeatures } from "../world/windFeatures";
 
 const S = 0.36; // map pixels per metre in the baked map
 
@@ -19,6 +20,10 @@ export class Minimap {
   private acc = 0;
   private zoom = 1;
   private size = 190;
+  /** the wind's secrets you've found, drawn once found */
+  features: WindFeatures | null = null;
+  found: Set<number> = new Set();
+  clock = 0;
 
   constructor(root: HTMLElement, private city: CityData, private under: Underground, private blockers: Blockers, private goal: { x: number; z: number }) {
     this.el = document.createElement("div");
@@ -33,7 +38,7 @@ export class Minimap {
     root.appendChild(this.el);
     this.x = this.c.getContext("2d")!;
     this.x.scale(dpr, dpr);
-    this.ins = under.shafts.filter((s) => s.kind === "stairs" && !s.out);
+    this.ins = under.shafts.filter((s) => (s.kind === "stairs" || s.kind === "vent") && !s.out);
     this.bake = this.bakeMap();
   }
 
@@ -127,6 +132,25 @@ export class Minimap {
       for (const b of this.blockers.list) {
         g.fillStyle = "rgba(230, 60, 40, 0.28)"; g.strokeStyle = "rgba(255, 90, 60, 0.8)"; g.lineWidth = 2 * lw;
         g.beginPath(); g.arc(this.px(b.x), this.py(b.z), b.r * S, 0, 7); g.fill(); g.stroke();
+      }
+      // hidden currents you've found (cyan), and the dust devils (white swirls)
+      if (this.features) {
+        g.strokeStyle = "rgba(90, 230, 255, 0.85)"; g.lineWidth = 3 * lw; g.lineCap = "round";
+        for (const id of this.found) {
+          const j = this.features.jets[id];
+          if (!j) continue;
+          g.beginPath();
+          for (let k = 0; k < j.pts.length; k += 6) { const X = this.px(j.pts[k]), Y = this.py(j.pts[k + 2]); if (k === 0) g.moveTo(X, Y); else g.lineTo(X, Y); }
+          g.stroke();
+        }
+        for (const d of this.features.devils) {
+          const [dx, dz] = this.features.devilAt(d, this.clock);
+          const X = this.px(dx), Y = this.py(dz);
+          g.strokeStyle = "rgba(255, 255, 255, 0.75)"; g.lineWidth = 1.6 * lw;
+          g.beginPath();
+          for (let a = 0; a < 9.5; a += 0.3) { const rr = (1 + a * 0.75) * lw; const px = X + Math.cos(a + this.clock * 3) * rr, py = Y + Math.sin(a + this.clock * 3) * rr; if (a === 0) g.moveTo(px, py); else g.lineTo(px, py); }
+          g.stroke();
+        }
       }
       // subway ways in
       const t = performance.now() / 1000;
