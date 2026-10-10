@@ -72,6 +72,9 @@ function pickQuality(): Quality {
 }
 
 const stage = new Stage(canvas, pickQuality());
+// the facade images start decoding now (off the main thread), while the city loads. Same quality as the
+// renderer: on its own it took iPhones for desktops (full-size facades, no building streaming)
+const tex = buildFacadeTextures({ quality: stage.quality });
 
 /** low quality (phones, small laptops): less simulated around you, fewer effects */
 
@@ -88,7 +91,6 @@ const flow = new Airflow(city);
   const courtSites = new Set(flow.streetLayout.courts.map((c) => c.site).filter((i) => i >= 0));
   (city.raw as { sites: typeof city.raw.sites }).sites = city.raw.sites.filter((_, i) => !courtSites.has(i));
 }
-const tex = buildFacadeTextures();
 const buildings = new BuildingsMesh(city, tex);
 // Central Park plants its own trees (render/centralPark.ts): the ground only does Battery Park's and the streets'
 const parkBounds = flow.parkLayout.bounds;
@@ -279,11 +281,16 @@ const SHOWCASE: number[][] = [
   [760, 9, 7505, 21, -2],       // the parade and its turkey
 ];
 let showcase = !freeCam && !params.get("at") && !params.get("sub") && !params.get("replay") && params.get("fly") !== "1" && params.get("showcase") !== "0";
-let showT = 0, showYaw = 0;
-if (showcase) {
-  const v = SHOWCASE[Math.floor(Math.random() * SHOWCASE.length)];
+let showT = 0, showYaw = 0, lastView = -1;
+function pickShowcase() {
+  let i = Math.floor(Math.random() * SHOWCASE.length);
+  if (i === lastView) i = (i + 1) % SHOWCASE.length;
+  lastView = i;
+  const v = SHOWCASE[i];
   freePos.set(v[0], v[1], v[2]); showYaw = freeYaw = THREE.MathUtils.degToRad(v[3]); freePitch = THREE.MathUtils.degToRad(v[4]);
+  showT = 0;
 }
+if (showcase) pickShowcase();
 const viewing = () => !!freeCam || showcase;
 
 function blocked(p: THREE.Vector3): boolean {
@@ -591,13 +598,15 @@ function restartRun() {
 function setPaused(on: boolean) { pause.show(on); }
 const pause = new PauseMenu(hudEl, {
   onRestart: () => restartRun(),
+  onTitle: () => { restartRun(); showcase = true; pickShowcase(); },
   onShow: (on) => audio.pause(on),
   onStory: () => {
     restartRun();
     introPlaying = true;
     playIntro(document.body, () => audio.start(), true).then(() => { introPlaying = false; input.endFrame(); });
   },
-  setVolume: (v) => audio.setVolume(v),
+  setMusic: (v) => audio.setMusicVolume(v),
+  setSound: (v) => audio.setVolume(v),
 });
 // away from the game (another tab, the phone locked): pause the run
 document.addEventListener("visibilitychange", () => { if (document.hidden && leaf.state === "flying" && !replay) setPaused(true); });
@@ -645,4 +654,4 @@ if (LOW) for (const ms of [6000, 15000, 30000]) setTimeout(() => shrinkTextures(
 
 // the views, for timing and debugging from the console
 Object.assign(window, { ffttViews: { chinatown, traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
-Object.assign(window, { fftt: { THREE, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances } });
+Object.assign(window, { fftt: { THREE, tex, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances } });

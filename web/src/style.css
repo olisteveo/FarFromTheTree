@@ -191,6 +191,8 @@ body.is-touch .minimap { top: calc(70px + env(safe-area-inset-top)); }
 .pause-card button.primary { background: #ffb04a; color: #2a1606; border-color: #ffb04a; }
 .pause-vol { display: flex; align-items: center; gap: 10px; margin-top: 6px; color: rgba(255, 240, 225, 0.8); font: 500 13px Inter, system-ui, sans-serif; }
 .pause-vol input { flex: 1; accent-color: #ffb04a; }
+.pause-vol span { width: 46px; }
+.pause-sub { margin-top: 8px; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255, 240, 225, 0.5); }
 .pause-hint { text-align: center; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255, 255, 255, 0.4); margin-top: 4px; }
 body.is-touch .pause-hint { display: none; }
 body.is-touch .pause-button { width: 44px; height: 44px; font-size: 17px; }

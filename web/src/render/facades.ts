@@ -98,6 +98,8 @@ export interface FacadeTextures {
   /** resolves when every layer is in (or failed: the placeholders stay) */
   ready: Promise<void>;
   groundH: (st: Style) => number;
+  /** called when albedo / normal are replaced (the materials re-point at them) */
+  onSwap?: () => void;
 }
 
 /** A neutral stand-in per layer until the real images arrive: wall colour, a hint of glass. */
@@ -160,30 +162,62 @@ export function buildFacadeTextures(opts: { base?: string; quality?: FacadeQuali
     groundH: (st) => (st === "castiron" ? 4.6 : st === "glass" || st === "modern" ? 5.5 : 4.4),
   };
   tex.ready = (async () => {
+    // the full arrays from the start, every layer the neutral stand-in; each style's real images
+    // drop in as soon as they're decoded (off the main thread where the browser can), so the
+    // city fills in a style at a time instead of all at once at the end
     const albedo = makeArray(AS, true), normal = makeArray(NS, false);
+    new Uint32Array((albedo.image.data as Uint8Array).buffer).fill(0x80c0c6c8); // r 200, g 198, b 192, a 128
+    new Uint32Array((normal.image.data as Uint8Array).buffer).fill(0xffdc8080); // 128, 128, 220, 255
+    albedo.needsUpdate = normal.needsUpdate = true;
+    tex.albedo = albedo; tex.normal = normal;
+    tex.onSwap?.();
     const ad = albedo.image.data as Uint8Array, nd = normal.image.data as Uint8Array;
-    let ok = 0;
-    // a few at a time: decoding is the slow part and shouldn't hitch the frame
-    const jobs = FACADE_LAYERS.map((l, i) => async () => {
-      try {
-        const [a, n] = await Promise.all([decode(`${base}textures/buildings/${l.name}_c.webp`, AS), decode(`${base}textures/buildings/${l.name}_n.webp`, NS)]);
-        // flip rows: image row 0 is the top of the tile, texture v = 1 is the top
-        for (let y = 0; y < AS; y++) ad.set(a.subarray((AS - 1 - y) * AS * 4, (AS - y) * AS * 4), i * AS * AS * 4 + y * AS * 4);
-        for (let y = 0; y < NS; y++) nd.set(n.subarray((NS - 1 - y) * NS * 4, (NS - y) * NS * 4), i * NS * NS * 4 + y * NS * 4);
-        ok++;
-      } catch (e) {
-        console.warn("facade layer missing", l.name, e);
-        for (let k = 0; k < AS * AS; k++) ad.set([200, 198, 192, 128], (i * AS * AS + k) * 4);
-        for (let k = 0; k < NS * NS; k++) nd.set([128, 128, 220, 255], (i * NS * NS + k) * 4);
-      }
-    });
-    const queue = [...jobs];
-    await Promise.all(Array.from({ length: 4 }, async () => { while (queue.length) await queue.shift()!(); }));
-    if (!ok) return;
-    albedo.needsUpdate = true;
-    normal.needsUpdate = true;
-    tex.albedo = albedo;
-    tex.normal = normal;
+    // the commonest walls first: once they're all in, the arrays go up to the GPU (and again at the end).
+    // (Two whole uploads: three's per-layer updates didn't reach the mipmaps.)
+    const rank = (n: string) => (/^(party|brick|prewar)/.test(n) ? 0 : /^(castiron|deco)/.test(n) ? 1 : 2);
+    const order = FACADE_LAYERS.map((l, i) => ({ l, i })).sort((a, b) => rank(a.l.name) - rank(b.l.name));
+    let firstLeft = order.filter((o) => rank(o.l.name) === 0).length * 2;
+    const put = (_arr: THREE.DataArrayTexture, data: Uint8Array, px: Uint8Array | Uint8ClampedArray, size: number, i: number) => {
+      data.set(px, i * size * size * 4);
+      if (rank(FACADE_LAYERS[i].name) === 0 && --firstLeft === 0) albedo.needsUpdate = normal.needsUpdate = true;
+    };
+    const useWorkers = typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined";
+    if (useWorkers) {
+      const N = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4) - 2));
+      const workers = Array.from({ length: N }, () => new Worker(new URL("./facadeWorker.ts", import.meta.url), { type: "module" }));
+      let next = 0;
+      const pending = new Map<number, (d: Uint8Array | null) => void>();
+      for (const w of workers) w.onmessage = (e) => { pending.get(e.data.id)?.(e.data.error ? null : e.data.data); pending.delete(e.data.id); };
+      const job = (w: Worker, url: string, size: number) => new Promise<Uint8Array | null>((res) => { const id = next++; pending.set(id, res); w.postMessage({ id, url: new URL(url, location.href).href, size }); }); // (a worker resolves relative URLs against its own script)
+      const queue = [...order];
+      await Promise.all(workers.map(async (w) => {
+        while (queue.length) {
+          const { l, i } = queue.shift()!;
+          const [a, n] = await Promise.all([job(w, `${base}textures/buildings/${l.name}_c.webp`, AS), job(w, `${base}textures/buildings/${l.name}_n.webp`, NS)]);
+          if (a) put(albedo, ad, a, AS, i); else console.warn("facade layer missing", l.name);
+          if (n) put(normal, nd, n, NS, i);
+        }
+      }));
+      for (const w of workers) w.terminate();
+    } else {
+      const flip = (px: Uint8ClampedArray, size: number) => {
+        const out = new Uint8Array(size * size * 4);
+        for (let y = 0; y < size; y++) out.set(px.subarray((size - 1 - y) * size * 4, (size - y) * size * 4), y * size * 4);
+        return out;
+      };
+      const queue = [...order];
+      await Promise.all(Array.from({ length: 4 }, async () => {
+        while (queue.length) {
+          const { l, i } = queue.shift()!;
+          try {
+            const [a, n] = await Promise.all([decode(`${base}textures/buildings/${l.name}_c.webp`, AS), decode(`${base}textures/buildings/${l.name}_n.webp`, NS)]);
+            put(albedo, ad, flip(a, AS), AS, i);
+            put(normal, nd, flip(n, NS), NS, i);
+          } catch (e) { console.warn("facade layer missing", l.name, e); }
+        }
+      }));
+    }
+    albedo.needsUpdate = normal.needsUpdate = true;
   })();
   return tex;
 }

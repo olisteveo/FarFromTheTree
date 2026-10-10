@@ -1,10 +1,12 @@
-// The pause menu: Esc / P (or the ⏸ button on screen) during a run. Resume, start again, watch the
-// story, and the volume (remembered). The game also pauses itself when the tab or app goes away.
+// The pause menu: Esc / P (or the ⏸ button on screen) during a run. Resume, start again, back to the
+// title screen, watch the story, and the settings: music and sound volumes (remembered). The game also pauses itself when the tab or app goes away.
 
 export interface PauseHandlers {
   onRestart(): void;
+  onTitle(): void;
   onStory(): void;
-  setVolume(v: number): void;
+  setMusic(v: number): void;
+  setSound(v: number): void;
   /** opened or closed (the sound stops while it's open) */
   onShow(open: boolean): void;
 }
@@ -22,9 +24,11 @@ export class PauseMenu {
     this.button.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); this.show(true); });
     root.appendChild(this.button);
 
-    let vol = 0.9;
-    try { const v = Number(localStorage.getItem("fftt.volume")); if (localStorage.getItem("fftt.volume") !== null && isFinite(v)) vol = v; } catch { /* no storage */ }
-    h.setVolume(vol);
+    const saved = (key: string, d: number) => {
+      try { const s = localStorage.getItem(key); const v = Number(s); return s !== null && isFinite(v) ? v : d; } catch { return d; }
+    };
+    const music = saved("fftt.music", 1), sound = saved("fftt.volume", 0.9);
+    h.setMusic(music); h.setSound(sound);
 
     this.el = document.createElement("div");
     this.el.className = "pause-menu";
@@ -33,8 +37,11 @@ export class PauseMenu {
         <div class="pause-title">Paused</div>
         <button data-act="resume" class="primary">Resume</button>
         <button data-act="restart">Fall again</button>
+        <button data-act="title">Back to the title</button>
         <button data-act="story">Watch the story</button>
-        <label class="pause-vol">Volume <input type="range" min="0" max="1" step="0.05" value="${vol}"/></label>
+        <div class="pause-sub">Settings</div>
+        <label class="pause-vol"><span>Music</span><input data-vol="music" type="range" min="0" max="1" step="0.05" value="${music}"/></label>
+        <label class="pause-vol"><span>Sound</span><input data-vol="sound" type="range" min="0" max="1" step="0.05" value="${sound}"/></label>
         <div class="pause-hint">Esc to resume</div>
       </div>`;
     this.el.addEventListener("pointerdown", (e) => e.stopPropagation());
@@ -43,14 +50,16 @@ export class PauseMenu {
       if (!act) return;
       this.show(false);
       if (act === "restart") h.onRestart();
+      else if (act === "title") h.onTitle();
       else if (act === "story") h.onStory();
     });
-    const range = this.el.querySelector("input")!;
-    range.addEventListener("input", () => {
-      const v = Number(range.value);
-      h.setVolume(v);
-      try { localStorage.setItem("fftt.volume", String(v)); } catch { /* no storage */ }
-    });
+    for (const range of this.el.querySelectorAll<HTMLInputElement>("input[data-vol]")) {
+      range.addEventListener("input", () => {
+        const v = Number(range.value), music = range.dataset.vol === "music";
+        (music ? h.setMusic : h.setSound)(v);
+        try { localStorage.setItem(music ? "fftt.music" : "fftt.volume", String(v)); } catch { /* no storage */ }
+      });
+    }
     root.appendChild(this.el);
   }
 

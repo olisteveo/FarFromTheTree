@@ -37,7 +37,9 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
   // per layer: bays, floors, reflectivity, room depth
   const grid: THREE.Vector4[] = FACADE_LAYERS.map((l) => new THREE.Vector4(l.bays, l.floors, /^glass/.test(l.name) ? 1 : 0, /^glass|^modern/.test(l.name) ? 6 : 4));
   const uAlb = { value: tex.albedo }, uNor = { value: tex.normal };
-  tex.ready.then(() => { uAlb.value = tex.albedo; uNor.value = tex.normal; });
+  const swap = () => { uAlb.value = tex.albedo; uNor.value = tex.normal; };
+  tex.onSwap = swap;
+  tex.ready.then(swap);
   const interior = tex.quality !== "low";
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uAlb = uAlb;

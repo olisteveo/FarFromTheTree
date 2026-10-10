@@ -53,7 +53,22 @@ export class Audio {
   /** phones: the score in mono at a low sample rate (four layers decoded in full stereo are ~165 MB) */
   lowMusic = false;
 
-  constructor(private city: CityData) {}
+  /** the music files start downloading with the page (decoding has to wait for the first tap or key) */
+  private musicFiles: Promise<{ meta: Record<MusicLayer, { loop: number }>; data: Partial<Record<MusicLayer, Promise<ArrayBuffer>>> } | null>;
+  private musicVolume = 1;
+
+  constructor(private city: CityData) {
+    this.musicFiles = fetch("./music/music.json").then((r) => r.json()).then((meta) => ({
+      meta,
+      data: Object.fromEntries((["title", "street", "subway", "roof"] as MusicLayer[]).map((n) => [n, fetch(`./music/${n}.mp3`).then((r) => r.arrayBuffer())])),
+    })).catch(() => null);
+  }
+
+  /** the music on its own, 0..1 (the pause menu) */
+  setMusicVolume(v: number) {
+    this.musicVolume = v;
+    if (this.musicBus) this.musicBus.gain.setTargetAtTime(1.25 * v, this.ctx!.currentTime, 0.05);
+  }
 
   /** Call on the first user gesture (browsers only allow sound after one). */
   private volume = 0.9;
@@ -99,7 +114,9 @@ export class Audio {
     this.worldFilter = ctx.createBiquadFilter(); this.worldFilter.type = "lowpass"; this.worldFilter.frequency.value = 20000;
     this.worldBus = ctx.createGain(); this.worldBus.connect(this.worldFilter).connect(this.master);
     this.sfxBus = ctx.createGain(); this.sfxBus.connect(this.master);
-    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 1.25; // (on top: the city's noise buries strings) this.musicBus.connect(this.master);
+    // the music sits on top (the city's noise buries strings), with its own volume apart from the sound's
+    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 1.25 * this.musicVolume;
+    this.musicBus.connect(comp);
     this.loading = this.load();
     this.loadMusic();
   }
@@ -174,11 +191,12 @@ export class Audio {
    *  looped from 0.5 s for exactly the loop's length, so it's seamless. All start on one beat grid. */
   private async loadMusic() {
     const ctx = this.ctx!;
-    let meta: Record<MusicLayer, { loop: number }>;
-    try { meta = await (await fetch("./music/music.json")).json(); } catch { return; }
+    const files = await this.musicFiles;
+    if (!files) return;
+    const meta = files.meta;
     for (const name of ["title", "street", "subway", "roof"] as MusicLayer[]) {
       try {
-        let buf = await ctx.decodeAudioData(await (await fetch(`./music/${name}.mp3`)).arrayBuffer());
+        let buf = await ctx.decodeAudioData(await files.data[name]!);
         if (this.lowMusic) buf = this.squash(buf, 22050);
         const L = meta[name].loop;
         const src = ctx.createBufferSource();
