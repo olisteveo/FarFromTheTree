@@ -133,6 +133,21 @@ function skyMaterial(sunDir: THREE.Vector3, octaves = 5) {
  * along the view ray, and everything is fully hazed by ~15 km (the horizon). Underground
  * (density > 0.004) it is the old exp2 murk in the fog colour.
  */
+/** Custom ShaderMaterials don't write logarithmic depth by themselves: inject three's log-depth chunks
+ *  (only for shaders that don't already have them) so they sort against everything else. */
+function useLogDepthInShaderMaterials() {
+  const proto = THREE.ShaderMaterial.prototype as THREE.ShaderMaterial & { __logDepth?: boolean };
+  if (proto.__logDepth) return;
+  proto.__logDepth = true;
+  const lastBrace = (src: string, insert: string) => { const i = src.lastIndexOf("}"); return i < 0 ? src : src.slice(0, i) + "\n" + insert + "\n" + src.slice(i); };
+  proto.onBeforeCompile = function (this: THREE.ShaderMaterial, sh) {
+    if ((this as unknown as { isRawShaderMaterial?: boolean }).isRawShaderMaterial) return;
+    if (sh.vertexShader.includes("logdepthbuf") || !sh.vertexShader.includes("gl_Position")) return;
+    sh.vertexShader = (sh.vertexShader.includes("#include <common>") ? "" : "#include <common>\n") + "#include <logdepthbuf_pars_vertex>\n" + lastBrace(sh.vertexShader, "#include <logdepthbuf_vertex>");
+    sh.fragmentShader = "#include <logdepthbuf_pars_fragment>\n" + lastBrace(sh.fragmentShader, "#include <logdepthbuf_fragment>");
+  };
+}
+
 /** far: the camera's far plane; the haze is total before it so the city never ends in a hard edge */
 function installFog(sun: THREE.Vector3, far: number) {
   const C = THREE.ShaderChunk as unknown as Record<string, string>;
@@ -207,7 +222,12 @@ export class Stage {
     this.quality = quality;
     this.camera.far = quality === "high" ? 16000 : quality === "medium" ? 9000 : 4500;
     this.camera.updateProjectionMatrix();
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", stencil: false });
+    // Phones often give the page only a 16-bit depth buffer: at that precision anything past ~100 m
+    // can't tell road from road markings or a facade from its far-city stand-in, and they flash.
+    // A logarithmic depth buffer spreads the precision over distance, so on low quality use one,
+    // and teach the custom shaders to write log depth too.
+    if (quality === "low") useLogDepthInShaderMaterials();
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", stencil: false, logarithmicDepthBuffer: quality === "low" });
     this.maxRatio = Math.min(window.devicePixelRatio, quality === "high" ? 1.5 : 1);
     this.renderer.setPixelRatio(this.maxRatio);
     this.renderer.toneMapping = THREE.AgXToneMapping;

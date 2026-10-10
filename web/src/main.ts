@@ -341,7 +341,9 @@ gui.onChange((e) => { if (e.object !== streaks) leaderboard.eligible = false; })
 // ------------------------------------------------------------------ loop
 const autopilot = params.get("fly") === "1";
 if (autopilot || freeCam || params.get("at") || params.get("sub") || params.get("replay")) leaderboard.eligible = false;
-const STEP = 1 / 240;
+// the flight sim's step: 240 Hz, or 120 Hz on low quality (the test pilots fly at 120 Hz too)
+const STEP = LOW ? 1 / 120 : 1 / 240;
+let lowFrame = 0;
 let last = performance.now(), acc = 0, wall = 0, bestS = 0;
 let underMix = 0;
 let lastHint = "";
@@ -407,8 +409,11 @@ function tick(dt: number, render: boolean) {
     flow.traffic.update(leaf.clock, leaf.pos.x, leaf.pos.z, LOW ? 260 : 400);
   } else if (!freeCam) {
     acc += dt;
-    flow.traffic.update(leaf.clock, leaf.pos.x, leaf.pos.z, LOW ? 260 : 400);
-    flow.crowd.update(leaf.clock, leaf.pos.x, leaf.pos.z, LOW ? 110 : 170);
+    // (on low quality the traffic and the crowd move every other frame: phones' CPUs are slow)
+    if (!LOW || (lowFrame ^= 1)) {
+      flow.traffic.update(leaf.clock, leaf.pos.x, leaf.pos.z, LOW ? 260 : 400);
+      flow.crowd.update(leaf.clock, leaf.pos.x, leaf.pos.z, LOW ? 110 : 170);
+    }
     let steps = 0;
     while (acc >= STEP && steps < 12) {
       leaf.step(STEP, input.state);
