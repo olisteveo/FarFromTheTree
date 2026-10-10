@@ -95,11 +95,11 @@ export class Audio {
     this.master = ctx.createGain();
     this.master.gain.value = this.volume;
     this.master.connect(comp).connect(ctx.destination);
-    this.ambBus = ctx.createGain(); this.ambBus.connect(this.master);
+    this.ambBus = ctx.createGain(); this.ambBus.gain.value = 0.75; this.ambBus.connect(this.master);
     this.worldFilter = ctx.createBiquadFilter(); this.worldFilter.type = "lowpass"; this.worldFilter.frequency.value = 20000;
     this.worldBus = ctx.createGain(); this.worldBus.connect(this.worldFilter).connect(this.master);
     this.sfxBus = ctx.createGain(); this.sfxBus.connect(this.master);
-    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 0.55; this.musicBus.connect(this.master);
+    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 1.25; // (on top: the city's noise buries strings) this.musicBus.connect(this.master);
     this.loading = this.load();
     this.loadMusic();
   }

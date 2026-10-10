@@ -7,7 +7,7 @@ const hide = `const keep = new Set(); for (const c of document.querySelectorAll(
 for (let i = 0; i < 120; i++) { if (await ev("return !!(window.ffttViews && ffttViews.chinatown && ffttViews.chinatown.ready)")) break; await sleep(500); }
 await sleep(9000);
 for (const [name, cam] of cams) {
-  if (name !== cams[0][0]) { await nav("?nointro&" + (cam.startsWith("at:") ? "at=" + cam.slice(3) : "cam=" + cam) + (process.env.CT_Q ? "&q=" + process.env.CT_Q : "")); for (let i = 0; i < 120; i++) { if (await ev("return !!(window.ffttViews && ffttViews.chinatown && ffttViews.chinatown.ready)")) break; await sleep(500); } await sleep(4000); }
+  if (name !== cams[0][0]) { await nav("?nointro&" + (cam.startsWith("at:") ? "at=" + cam.slice(3) : "cam=" + cam) + (process.env.CT_Q ? "&q=" + process.env.CT_Q : "") + (process.env.CT_EXTRA || "")); for (let i = 0; i < 120; i++) { if (await ev("return !!(window.ffttViews && ffttViews.chinatown && ffttViews.chinatown.ready)")) break; await sleep(500); } await sleep(4000); }
   await ev(hide);
   await sleep(1500);
   await shot(name);
