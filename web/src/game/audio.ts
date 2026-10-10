@@ -50,6 +50,7 @@ export class Audio {
   private musicT0 = -1;
   /** hold the music (the intro film has its own) */
   musicHold = false;
+  private musicRoof = false;
   /** phones: the score in mono at a low sample rate (four layers decoded in full stereo are ~165 MB) */
   lowMusic = false;
 
@@ -261,11 +262,16 @@ export class Audio {
 
     // ---------------------------------------------------------------- the score
     {
+      // the rooftop music only once you're well up over the roofs, and back to the street's only once
+      // you're well down among them (flying along the roofline it used to flicker between the two)
+      const roofline = Math.max(12, H * 0.9);
+      if (!this.musicRoof && lp.y > roofline + 8) this.musicRoof = true;
+      else if (this.musicRoof && lp.y < roofline - 3) this.musicRoof = false;
       const layer: MusicLayer | null = this.musicHold ? null
         : leaf.state === "attached" || leaf.state === "planted" ? "title"
         : leaf.state === "dead" ? "title"
-        : under ? "subway" : roof ? "roof" : "street";
-      const fast = under || layer === "subway" ? 0.35 : 0.9; // dropping into the subway hits at once
+        : under ? "subway" : this.musicRoof ? "roof" : "street";
+      const fast = under || layer === "subway" ? 0.35 : 1.6; // dropping into the subway hits at once
       for (const [name, g] of this.music) {
         const lvl = name === layer ? (leaf.state === "dead" ? 0.45 : 1) : 0;
         g.gain.setTargetAtTime(lvl, now, lvl > 0 && name === "subway" ? 0.25 : fast);

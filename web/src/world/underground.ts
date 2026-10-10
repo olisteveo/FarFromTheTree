@@ -95,16 +95,34 @@ export class Underground {
     // out (warm station air rising into the cold street, steaming)
     const byStation = new Map<string, typeof city.raw.entrances>();
     for (const e of city.raw.entrances) (byStation.get(e.n) ?? byStation.set(e.n, []).get(e.n)!).push(e);
+    // At each station the stairs at the downtown end are the ways in and the ones at the uptown end the
+    // ways out: you're going uptown, so you drop in at one end, ride through and come out at the other.
+    // (Real entrances come in pairs on the corners of a street: alternating them put a way out right
+    // beside every way in, and the leaf went down one and straight back up the other.)
     for (const list of byStation.values()) {
       const sorted = list.map((e) => ({ e, s: sub.nearest(e.x, e.z).s })).sort((a, b) => a.s - b.s);
+      const st = this.stations.find((q) => q.name === list[0].n);
+      const mid = st && sorted.some((q) => q.s < st.ss) && sorted.some((q) => q.s >= st.ss) ? st.ss : (sorted[0].s + sorted[sorted.length - 1].s) / 2;
       sorted.forEach(({ e, s }, i) => {
         const p = sub.at(s);
         const L = Math.hypot(p.x - e.x, p.z - e.z) || 1, ux = (p.x - e.x) / L, uz = (p.z - e.z) / L;
         const at = this.fitSidewalk(e.x, e.z, ux, uz);
         // (entrances on the same spot in the data, or nudged onto one another: just the one)
         if (this.shafts.some((o) => o.kind === "stairs" && Math.hypot(o.x - at[0], o.z - at[1]) < 5)) return;
-        this.addShaft({ x: at[0], z: at[1], r: STAIRS.half, tx: p.x - at[0], tz: p.z - at[1], ux, uz, kind: "stairs", ss: s, name: e.n, out: i % 2 === 1 });
+        this.addShaft({ x: at[0], z: at[1], r: STAIRS.half, tx: p.x - at[0], tz: p.z - at[1], ux, uz, kind: "stairs", ss: s, name: e.n, out: sorted.length > 1 ? s >= mid && !(i === 0) : false });
       });
+      // no way out within 30 m of a way in: a way out that close becomes a way in too (but every
+      // station keeps its most uptown way out)
+      const mine = this.shafts.filter((q) => q.kind === "stairs" && q.name === list[0].n);
+      const last = mine.reduce((a, b) => (b.ss > a.ss ? b : a), mine[0]);
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const o of mine) {
+          if (!o.out || o === last) continue;
+          if (mine.some((q) => !q.out && Math.hypot(q.x - o.x, q.z - o.z) < 30)) { o.out = false; changed = true; }
+        }
+      }
+      if (mine.length > 1) for (const q of mine) if (q !== last && !q.out && Math.hypot(q.x - last.x, q.z - last.z) < 30) q.out = true;
     }
     const wallSt = this.stations.find((s) => /Wall St/.test(s.name))?.ss ?? 380;
     this.noTrains = [{ ss0: -2000, ss1: wallSt - 110 }, this.blocked[0]];
@@ -161,6 +179,12 @@ export class Underground {
         // the same line run backwards, from a few metres out in the street down into the station
         const n = p.length / 3, rev: number[] = [s.x - s.ux * (STAIRS.half + 5), 2.4, s.z - s.uz * (STAIRS.half + 5)];
         for (let i = n - 1; i >= 0; i--) rev.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+        // and on down over the tracks on this side, turning uptown into the tunnel's draught
+        const q = sub.nearest(p[0], p[2]), side = q.off >= 0 ? 1 : -1, lane = side * TRAIN.track;
+        for (const [ds, y] of [[4, -5.8], [10, -6.2], [18, -6.2]] as const) {
+          const a = sub.at(q.s + ds);
+          rev.push(a.x + a.tz * lane, y, a.z - a.tx * lane);
+        }
         s.entryPath = new Float32Array(rev);
       }
     }

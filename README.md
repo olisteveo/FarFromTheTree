@@ -1,82 +1,105 @@
-# Far from the Tree
+# Far From the Tree
 
-A leaf physics roguelike built in s&box. Ride wind currents through five zones of stylised Manhattan from Battery Park to Central Park.
+**Play it: [farfromthetree.world](https://farfromthetree.world)**
 
-## Status
+Battery Park, late November. Every other leaf in the city has fallen. You're the last one: let go,
+ride the wind uptown through Manhattan and plant your seed in Central Park.
 
-- **Phase**: First-flight POC — testing whether the leaf feels fun
-- **Engine**: s&box (Source 2 / C#)
-- **Project ident**: `farfromthetree`
-- **Scope**: Battery Park (tutorial) → Chinatown → SoHo → Midtown → Central Park, all 3 vertical layers, 7 Days to Die-tier visuals
-- **Mode**: Nature's Way only at v1 (one life, leaderboard, instant restart)
+A speedrun-flavoured leaf-flight game in the browser (three.js + TypeScript), built on real New York
+open data: the real streets, buildings, subway line, stations and entrances along an 8.8 km route.
+It runs on PC and phones (touch controls), with a global leaderboard.
+
+## How it plays
+
+- **Three layers.** The rooftops are slow and safe, the street is in the middle (cabs, people,
+  pets, parked cars), and the subway is the fastest and deadliest (trains, rats). Closed streets
+  (a burst water main, the Mulberry St festival, the Union Square market, Times Square, the
+  Thanksgiving parade) force you to change layer.
+- **The wind carries you.** Avenue tailwinds, cross-street gusts, gust fronts sweeping uptown,
+  steam, dust devils, tower downdrafts, and 28 hidden currents graded breeze / stream / gale (a gale
+  grabs you and carries you). Closed streets push warm air up and over.
+- **The subway.** Dive at a way in (the downtown end of each station) and its air draws you down the
+  stairs and onto the tracks; ride the tunnel's draught uptown; the ways out at the uptown end of each
+  station, and the massive vents, fire you back up into the street.
+- **The edge of the map** is a visible wall of wind that carries you back; over the rivers the wind
+  drags you into the water.
+- **Controls:** W/S dive and flare, A/D bank, Space spread (catch the wind), Shift curl (punch
+  through it), Q/E corkscrew, double-tap S to loop, R to fall again, Esc to pause. On phones: a
+  thumb stick under the leaf and buttons.
+
+## Features
+
+- Stylised Manhattan from NYC Open Data: building footprints and heights with procedural facades,
+  street furniture, traffic, crowds and pets; a distant city, harbour and bridges to the horizon.
+- Hand-built landmarks: Chinatown's paifang gates, lanterns and the Manhattan Bridge with its arch
+  and colonnade; Central Park's south end (the Pond, Gapstow Bridge, Wollman Rink); subway stations
+  with fare control, platforms and trains.
+- An orchestral score (strings, horn, harp, timpani) in layers that crossfade as you change layer:
+  melancholy on the street, open over the roofs, driving in the subway.
+- A pixel-art intro film, a random view of the city behind the title, a pause menu with music and
+  sound volumes, achievements, discoveries, a minimap, run recording and replays.
+- Quality tiers: phones get a leaner city (streamed buildings, smaller textures, no far city).
+
+## Running it locally
+
+```
+cd web
+npm install
+npm run dev          # http://localhost:5173
+npm run build        # type-checks src and tools, then builds web/dist
+```
+
+Useful URL flags: `?nointro`, `?q=low|medium|high`, `?at=<metres along the route>,<height>`,
+`?sub=<metres along the subway>`, `?cam=x,y,z,yawDeg,pitchDeg` (free camera), `?fly=1` (autopilot).
+
+## Deploying
+
+`web/` deploys to Cloudflare Pages on every push to `main` (build `npm run build`, output `dist`,
+Node 22). The leaderboard is a Pages Function (`web/functions/api`) on a D1 database bound as `DB`;
+runs get a server-side ticket so a submitted time can't beat the real clock.
 
 ## Repo layout
 
 ```
-Assets/scenes/             # .scene files (JSON GameObject hierarchies)
-Code/                      # gameplay C# (compiled into your game assembly)
-  LeafController.cs        # the leaf — tilt input, drag/lift, tumble, wind accumulator
-  WindZone.cs              # trigger volume that pushes overlapping leaves
-  LeafCamera.cs            # auto chase cam, FOV widens with speed
-Editor/                    # editor-only C# (custom menus, tooling)
-farfromthetree.sbproj      # s&box project manifest
+web/
+  src/
+    main.ts            the game loop, camera, wiring
+    sim/               the leaf (glider.ts) and the test pilots (pilot.ts)
+    world/             city data, the wind (airflow.ts, windFeatures.ts), the subway (underground.ts),
+                       traffic, crowds, blockers
+    render/            everything drawn: buildings and facades, far city, streets, subway, Chinatown,
+                       Central Park, people, effects
+    game/              HUD, audio and music, pause menu, touch controls, tutorial, leaderboard
+  functions/api/       the leaderboard (Cloudflare Pages Functions + D1)
+  public/              city data, models, textures, sounds, music, the intro film
+  tools/               the asset pipelines and the test tools (below)
+  results/             bot playtest reports
 ```
 
-## Project location
+### Asset pipelines (web/tools)
 
-`C:\Dev\FarFromTheTree` — outside OneDrive so build artifacts and the s&box editor cache don't fight with sync.
+- `build-city.ts` turns the NYC Open Data downloads into `public/city.json` and `public/far.dat`.
+- `chinatown/`, `park/`, `entrances/`, `subway/`, `street/`, `people/`, `vehicles/`, `buildings/`:
+  textures authored as Tesseract compositions and models built by headless Blender (run at idle
+  priority).
+- `audio/`: the sound library, synthesised in Python.
+- `music/`: the score, written as code (`compose.py`) and played with the
+  [VSCO 2 Community Edition](https://github.com/sgossner/VSCO-2-CE) orchestral samples (CC0,
+  downloaded to `samples/`, not in git); `export.py` writes `public/music`.
+- `cutscene/`: the intro film.
 
-## Editor setup — first flight
+### Test tools
 
-The components are written; the scene needs them attached. After opening the project:
+- `play.ts`: many full runs by human-like bot pilots in parallel (low priority), reported in
+  `results/`.
+- `entry-approach.ts`, `exit-test.ts`: can a leaf get into and out of the subway.
+- `pilot-trace.ts`, `wind-features.ts`, `in-out-gap.ts` and others: traces and checks.
+- `shot.ps1`: headless screenshots of any game URL.
 
-### 1. Open the project
-1. Launch `sbox.exe`
-2. **File → Open Project** → select `farfromthetree.sbproj`
-3. Open `Assets/scenes/minimal.scene`
+## Credits
 
-You should see a flat green plane and a few falling cubes. We'll modify this scene into a leaf flight test.
+Map data: NYC Open Data (OTI, DOT, Parks, MTA); distant city and New Jersey © OpenStreetMap
+contributors. Buildings are styled, not copied. Orchestral samples: VSCO 2 Community Edition (CC0).
 
-### 2. Make the leaf
-1. **Right-click in the scene → Create Object → Empty**, name it `Leaf`
-2. With Leaf selected, in the Inspector add components (one at a time, click *Add Component*):
-   - **Model Renderer** — set Model to `models/dev/box.vmdl`, Tint to a warm orange/red, Scale `(0.3, 0.5, 0.05)` so it's leaf-shaped
-   - **Box Collider** — leave defaults
-   - **Rigidbody** — Gravity ON, LinearDamping 0, AngularDamping 0.5
-   - **Leaf Controller** (our component) — leave properties at defaults for now; the Body field auto-populates
-3. Position the Leaf around `(0, 0, 200)` so it starts in the air
-
-### 3. Make a wind zone
-1. **Create Object → Empty**, name it `TestWind`
-2. Add components:
-   - **Box Collider** — set IsTrigger ON, scale up to `(500, 500, 500)`
-   - **Wind Zone** — Direction `(1, 0, 0.5)` (forward + slight upward), Strength `3000`
-3. Position somewhere the leaf will fall through, e.g. `(200, 0, 50)`
-
-### 4. Set up the camera
-1. The scene already has a default camera. Find it (or create a new GameObject with **Camera Component**), name it `LeafCam`
-2. Add the **Leaf Camera** component, set its Target to the Leaf GameObject
-3. The camera will auto-follow on play
-
-### 5. Press play
-Hit play. The leaf should fall, you should be able to tilt it with WASD. If you fly through the wind zone, you should feel the push.
-
-## What to watch for during first flight
-
-- Does the leaf feel **floaty** (good) or **draggy** (drag too high) or **like a brick** (lift too low)?
-- Does WASD tilt feel **responsive** (good) or **sluggish** (TiltLerpRate too low) or **twitchy** (too high)?
-- Does the wind zone feel like a real **push** (good) or **invisible** (Strength too low)?
-- Camera lag: comfortable or **disorienting**?
-
-All values are `[Property]`-exposed, tune them in the Inspector while playing. When something feels right, write the number down — that's the value we bake in.
-
-## Known unknowns
-
-The C# uses standard s&box API patterns but a couple of method names are educated guesses (e.g. `Body.ApplyForce`, `Body.ApplyTorque`). If the editor flags compile errors, paste them in chat and we'll correct.
-
-## Next
-
-Once flight feels right:
-1. Build the **Battery Park tutorial scene** properly (tree, harbour, Statue silhouette, first gust)
-2. Add the **RunTimer + restart** system
-3. Stretch to Chinatown
+The first prototype was an s&box (C#) project; its files (`Assets/`, `Code/`, `Editor/`,
+`farfromthetree.sbproj`) are still in the repo but the game is now the web version in `web/`.
