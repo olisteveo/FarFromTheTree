@@ -221,6 +221,7 @@ minimap.features = flow.features;
 minimap.found = discoveries.found;
 stage.scene.add(subwaySigns.root);
 const audio = new Audio(city);
+audio.lowMusic = LOW;
 // phones only allow sound to start inside a gesture: unlock it on every tap/click/key until it runs
 // (and again if the browser suspends it, e.g. after switching apps)
 for (const ev of ["touchend", "pointerup", "click", "keydown"] as const) addEventListener(ev, () => { if (!audio.running) audio.unlock(); }, { capture: true, passive: true });
@@ -554,6 +555,7 @@ function tick(dt: number, render: boolean) {
   leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);
   // the leaf meter only once you're off the tree (it sat over the title screen's text)
   leafMeter.el.classList.toggle("away", leaf.state === "attached");
+  audio.musicHold = introPlaying;
   audio.update(dt, leaf, cam, city.district(ns.s).name);
   recorder.update(dt, leaf, input.state, ns.s, city.district(ns.s).name);
   tutorial.update(dt, leaf, input.state);

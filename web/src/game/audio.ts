@@ -15,6 +15,7 @@ import { TRAIN } from "../world/underground";
 
 interface Entry { file: string; loop: boolean; gain: number; category: string; duration: number }
 type Bank = Record<string, AudioBuffer>;
+type MusicLayer = "title" | "street" | "roof" | "subway";
 
 const AMBIENCES = ["amb_harbour", "amb_street", "amb_chinatown", "amb_timessquare", "amb_rooftop", "amb_park", "amb_construction", "amb_tunnel", "amb_station"] as const;
 type Amb = (typeof AMBIENCES)[number];
@@ -43,6 +44,14 @@ export class Audio {
   private wasInVent = false;
   private t = 0;
   private loading: Promise<void> | null = null;
+  // ---- the score (tools/music): layers in time with each other, crossfaded by where you are
+  private musicBus!: GainNode;
+  private music = new Map<MusicLayer, GainNode>();
+  private musicT0 = -1;
+  /** hold the music (the intro film has its own) */
+  musicHold = false;
+  /** phones: the score in mono at a low sample rate (four layers decoded in full stereo are ~165 MB) */
+  lowMusic = false;
 
   constructor(private city: CityData) {}
 
@@ -90,7 +99,9 @@ export class Audio {
     this.worldFilter = ctx.createBiquadFilter(); this.worldFilter.type = "lowpass"; this.worldFilter.frequency.value = 20000;
     this.worldBus = ctx.createGain(); this.worldBus.connect(this.worldFilter).connect(this.master);
     this.sfxBus = ctx.createGain(); this.sfxBus.connect(this.master);
+    this.musicBus = ctx.createGain(); this.musicBus.gain.value = 0.55; this.musicBus.connect(this.master);
     this.loading = this.load();
+    this.loadMusic();
   }
 
   private async load() {
@@ -159,6 +170,42 @@ export class Audio {
     return { src, panner };
   }
 
+  /** The score's layers: each file is its loop with the first second appended (tools/music/export.py),
+   *  looped from 0.5 s for exactly the loop's length, so it's seamless. All start on one beat grid. */
+  private async loadMusic() {
+    const ctx = this.ctx!;
+    let meta: Record<MusicLayer, { loop: number }>;
+    try { meta = await (await fetch("./music/music.json")).json(); } catch { return; }
+    for (const name of ["title", "street", "subway", "roof"] as MusicLayer[]) {
+      try {
+        let buf = await ctx.decodeAudioData(await (await fetch(`./music/${name}.mp3`)).arrayBuffer());
+        if (this.lowMusic) buf = this.squash(buf, 22050);
+        const L = meta[name].loop;
+        const src = ctx.createBufferSource();
+        src.buffer = buf; src.loop = true; src.loopStart = 0.5; src.loopEnd = 0.5 + L;
+        const g = ctx.createGain(); g.gain.value = 0;
+        src.connect(g).connect(this.musicBus);
+        const now = ctx.currentTime + 0.05;
+        if (this.musicT0 < 0) this.musicT0 = now;
+        src.start(now, 0.5 + ((now - this.musicT0) % L));
+        this.music.set(name, g);
+      } catch { /* no music: the city's own sound */ }
+    }
+  }
+
+  /** mono at a lower sample rate (the context resamples it on playback) */
+  private squash(b: AudioBuffer, rate: number): AudioBuffer {
+    const n = Math.floor((b.length * rate) / b.sampleRate), out = this.ctx!.createBuffer(1, n, rate), o = out.getChannelData(0);
+    const chans = Array.from({ length: b.numberOfChannels }, (_, i) => b.getChannelData(i)), k = b.sampleRate / rate;
+    for (let i = 0; i < n; i++) {
+      const x = i * k, j = Math.floor(x), f = x - j;
+      let v = 0;
+      for (const c of chans) v += c[j] * (1 - f) + (c[j + 1] ?? c[j]) * f;
+      o[i] = v / chans.length;
+    }
+    return out;
+  }
+
   reset() { this.lastIntegrity = 1; this.lastState = ""; }
 
   update(dt: number, leaf: Glider, cam: { position: { x: number; y: number; z: number }; matrixWorld: { elements: number[] } }, district: string) {
@@ -193,6 +240,19 @@ export class Audio {
       if (nearSite) want.amb_construction = roof ? 0.25 : 0.6;
     }
     for (const a of AMBIENCES) { this.ensureLoop(a); this.setLoop(a, want[a] * 0.9, 1.5); }
+
+    // ---------------------------------------------------------------- the score
+    {
+      const layer: MusicLayer | null = this.musicHold ? null
+        : leaf.state === "attached" || leaf.state === "planted" ? "title"
+        : leaf.state === "dead" ? "title"
+        : under ? "subway" : roof ? "roof" : "street";
+      const fast = under || layer === "subway" ? 0.35 : 0.9; // dropping into the subway hits at once
+      for (const [name, g] of this.music) {
+        const lvl = name === layer ? (leaf.state === "dead" ? 0.45 : 1) : 0;
+        g.gain.setTargetAtTime(lvl, now, lvl > 0 && name === "subway" ? 0.25 : fast);
+      }
+    }
 
     // ---------------------------------------------------------------- wind and flutter
     const air = leaf.state === "flying" ? leaf.airspeed : 0.5;
