@@ -85,5 +85,5 @@ export class TouchControls {
   }
 
   /** Hide while a menu (the leaderboard form) needs the screen. */
-  show(on: boolean) { this.el.classList.toggle("hidden", !on); }
+  show(on: boolean, title = false) { this.el.classList.toggle("hidden", !on); this.el.classList.toggle("title", title); }
 }

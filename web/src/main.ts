@@ -402,7 +402,7 @@ function tick(dt: number, render: boolean) {
   if (subwayArtReady) subwayArt.update(cam.position, underMix, flow.trainsAt(leaf.clock), focus);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
-  touch?.show(leaf.state === "flying" || leaf.state === "attached");
+  touch?.show(leaf.state === "flying", leaf.state === "attached"); // controls once the run has started; restart after it ends
   subwaySigns.update(wall, leaf.pos, ns.s, leaf.state === "flying" && leaf.lane === "street" && !replay, cam, dt);
   minimap.el.classList.toggle("away", leaf.state === "attached");
   if (leaf.state !== "attached") minimap.update(dt, leaf.pos.x, leaf.pos.y, leaf.pos.z, leaf.heading, leaf.lane === "subway", ns.s, subwaySigns.next);
