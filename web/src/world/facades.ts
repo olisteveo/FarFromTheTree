@@ -25,12 +25,14 @@ export interface FacadeProp {
 
 const h01 = (a: number, b: number) => { let x = (Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca77)) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d) >>> 0; x ^= x >>> 12; return (x >>> 0) / 4294967296; };
 
+// balcony: the share of buildings of the style that have them (and those have them all the way up and
+// along, in a regular pattern: a building has balconies or it doesn't)
 const RATES: Record<string, { ac: number; cat: number; balcony: number }> = {
-  tenement: { ac: 0.16, cat: 0.012, balcony: 0.025 },
-  brick: { ac: 0.14, cat: 0.008, balcony: 0.07 },
-  prewar: { ac: 0.08, cat: 0.006, balcony: 0.04 },
-  castiron: { ac: 0.05, cat: 0.004, balcony: 0.012 },
-  modern: { ac: 0.02, cat: 0, balcony: 0.08 },
+  tenement: { ac: 0.16, cat: 0.012, balcony: 0.035 },
+  brick: { ac: 0.14, cat: 0.008, balcony: 0.09 },
+  prewar: { ac: 0.08, cat: 0.006, balcony: 0.055 },
+  castiron: { ac: 0.05, cat: 0.004, balcony: 0.02 },
+  modern: { ac: 0.02, cat: 0, balcony: 0.14 },
   glass: { ac: 0, cat: 0, balcony: 0 }, // balconies on curtain walls just look like floating boxes
   deco: { ac: 0.04, cat: 0.003, balcony: 0.015 },
   civic: { ac: 0, cat: 0, balcony: 0 },
@@ -58,6 +60,9 @@ export class Facades {
     const groundH = b.style === "castiron" ? 4.6 : b.style === "glass" || b.style === "modern" ? 5.5 : 4.4;
     const floors = Math.floor((Math.min(b.h, 60) - groundH) / t.floorH);
     if (floors < 1) return;
+    // balconies: all or nothing per building, every bay or every other bay (the same all the way up)
+    const balconies = h01(b.seed, 9901) < rate.balcony;
+    const stride = h01(b.seed, 9902) < 0.35 ? 1 : 2, phase = stride === 2 && h01(b.seed, 9903) < 0.5 ? 1 : 0;
     let u = 0;
     for (let i = 0; i < n; i++) {
       const ax = ring[i * 2], az = ring[i * 2 + 1], bx = ring[((i + 1) % n) * 2], bz = ring[((i + 1) % n) * 2 + 1];
@@ -76,12 +81,12 @@ export class Facades {
           const wx = ax + tx * along, wz = az + tz * along;
           const yWin = groundH + f * t.floorH;
           const seed = (b.seed + bay * 7 + f) >>> 0;
-          if (r < rate.ac) {
+          if (balconies && f > 0 && along > 2 && along < L - 2 && (bay - phase) % stride === 0) {
+            this.props.push({ kind: "balcony", x: wx + nx * 0.75, y: yWin, z: wz + nz * 0.75, tx, tz, nx, nz, hw: 1.4, hh: 0.55, hd: 0.75, seed });
+          } else if (r < rate.ac) {
             this.props.push({ kind: "ac", x: wx + nx * 0.32, y: yWin + 0.55, z: wz + nz * 0.32, tx, tz, nx, nz, hw: 0.38, hh: 0.24, hd: 0.3, seed, blows: h01(seed, 3) < 0.35 });
           } else if (r < rate.ac + rate.cat) {
             this.props.push({ kind: "cat", x: wx + nx * 0.25, y: yWin + 0.85, z: wz + nz * 0.25, tx, tz, nx, nz, hw: 0.2, hh: 0.2, hd: 0.2, seed });
-          } else if (r < rate.ac + rate.cat + rate.balcony && f > 0 && along > 2 && along < L - 2) {
-            this.props.push({ kind: "balcony", x: wx + nx * 0.75, y: yWin, z: wz + nz * 0.75, tx, tz, nx, nz, hw: 1.4, hh: 0.55, hd: 0.75, seed });
           }
         }
       }
