@@ -22,7 +22,10 @@ type MusicLayer = "title" | "street" | "roof" | "subway" | "dead" | "planted";
 const MUSIC_FILES: Record<MusicLayer, string[]> = {
   title: ["title"], street: ["street"], roof: ["roof"], subway: ["subway_a", "subway_b"], dead: ["dead"], planted: ["planted"],
 };
-interface Track { el: HTMLAudioElement; gain: GainNode | null; quietSince: number }
+/** A player the soundtrack runs on: two of them, so one can fade in while the other fades out. Both are
+ *  started inside the first tap (an iPhone only lets a media element start in one; after that the game
+ *  can swap what they play), then the game loads each layer's piece onto whichever is free. */
+interface Deck { el: HTMLAudioElement; gain: GainNode | null; file: string | null; quietSince: number }
 /** the soundtrack's level against the city's sounds (the files are levelled to -18 LUFS) */
 const MUSIC_LEVEL = 0.62;
 
@@ -55,7 +58,10 @@ export class Audio {
   private loading: Promise<void> | null = null;
   // ---- the soundtrack: one piece per layer, crossfaded by where you are
   private musicBus!: GainNode;
-  private tracks = new Map<string, Track>();
+  private decks: Deck[] = [];
+  private deck = 0;
+  /** where each piece had got to, so a layer carries on where you left it */
+  private musicAt = new Map<string, number>();
   private musicLayer: MusicLayer | null = null;
   private musicIdx: Partial<Record<MusicLayer, number>> = {};
   /** hold the music (the intro film has its own) */
@@ -66,32 +72,51 @@ export class Audio {
 
   private musicVolume = 1;
   private primed = false;
+  private musicRetry = 0;
 
   constructor(private city: CityData) {
-    // the theme starts downloading with the page; the rest when first needed
-    for (const [layer, files] of Object.entries(MUSIC_FILES) as [MusicLayer, string[]][]) {
-      for (const f of files) {
-        const el = new window.Audio(`./music/${f}.mp3`);
-        el.preload = layer === "title" ? "auto" : "none";
-        el.loop = files.length === 1;
-        if (files.length > 1) el.addEventListener("ended", () => this.nextInLayer(layer));
-        this.tracks.set(f, { el, gain: null, quietSince: 0 });
-      }
+    // two players; the theme starts downloading with the page
+    for (let i = 0; i < 2; i++) {
+      const el = new window.Audio();
+      el.preload = "auto";
+      const d: Deck = { el, gain: null, file: null, quietSince: 0 };
+      el.addEventListener("ended", () => this.ended(d));
+      this.decks.push(d);
     }
+    this.load1(this.decks[0], "title", 0);
   }
 
-  /** a layer with several pieces (the subway): on to the next when one ends */
-  private nextInLayer(layer: MusicLayer) {
+  private load1(d: Deck, file: string, at: number) {
+    d.file = file;
+    d.el.loop = !Object.values(MUSIC_FILES).some((f) => f.length > 1 && f.includes(file));
+    d.el.src = `./music/${file}.mp3${at > 0.5 ? `#t=${at.toFixed(1)}` : ""}`;
+  }
+
+  /** a piece ran out without looping (the subway's): on to the layer's next one */
+  private ended(d: Deck) {
+    const layer = this.musicLayer;
+    if (!layer || d !== this.decks[this.deck]) return;
     const files = MUSIC_FILES[layer];
     this.musicIdx[layer] = ((this.musicIdx[layer] ?? 0) + 1) % files.length;
-    if (this.musicLayer !== layer) return;
-    const t = this.tracks.get(files[this.musicIdx[layer]!])!;
-    t.el.currentTime = 0;
-    t.el.play().catch(() => {});
+    this.musicAt.delete(d.file!);
+    this.load1(d, files[this.musicIdx[layer]!], 0);
+    d.el.play().catch(() => {});
   }
 
-  private trackOf(layer: MusicLayer) {
-    return this.tracks.get(MUSIC_FILES[layer][this.musicIdx[layer] ?? 0])!;
+  /** put a layer's piece on: on the free player (fading in) unless it's already the one playing */
+  private musicTo(layer: MusicLayer) {
+    const file = MUSIC_FILES[layer][this.musicIdx[layer] ?? 0];
+    const cur = this.decks[this.deck];
+    if (cur.file === file && !cur.el.paused) return;
+    if (cur.file) this.musicAt.set(cur.file, cur.el.currentTime);
+    this.deck = 1 - this.deck;
+    const d = this.decks[this.deck];
+    if (d.file && !d.el.paused) this.musicAt.set(d.file, d.el.currentTime);
+    const restart = layer === "dead" || layer === "planted";
+    if (d.file !== file) this.load1(d, file, restart ? 0 : this.musicAt.get(file) ?? 0);
+    else if (restart) d.el.currentTime = 0;
+    d.quietSince = 0;
+    d.el.play().catch(() => {});
   }
 
   /** the music on its own, 0..1 (the pause menu) */
@@ -110,9 +135,9 @@ export class Audio {
   /** everything stops while the game's paused */
   pause(on: boolean) {
     if (!this.ctx) return;
-    const t = this.musicLayer ? this.trackOf(this.musicLayer) : null;
-    if (on) { this.ctx.suspend().catch(() => {}); t?.el.pause(); }
-    else { this.ctx.resume().catch(() => {}); t?.el.play().catch(() => {}); }
+    const d = this.musicLayer ? this.decks[this.deck] : null;
+    if (on) { this.ctx.suspend().catch(() => {}); d?.el.pause(); }
+    else { this.ctx.resume().catch(() => {}); d?.el.play().catch(() => {}); }
   }
 
   get running() { return !!this.ctx && this.ctx.state === "running"; }
@@ -121,11 +146,15 @@ export class Audio {
    *  Creates (or resumes) the context and plays one silent sample, which unlocks iOS. */
   unlock() {
     this.start();
-    // phones only let a media element start inside a tap: start and stop each one now, once
+    // phones only let a media element start inside a tap: start both players now (silent until the
+    // game fades one in); the second stops again once it's going
     if (!this.primed) {
       this.primed = true;
-      const active = this.musicLayer ? this.trackOf(this.musicLayer) : null;
-      for (const t of this.tracks.values()) if (t.el.paused && t !== active) { t.el.play().catch(() => {}); t.el.pause(); }
+      const [a, b] = this.decks;
+      a.el.play().catch(() => { this.primed = false; });
+      if (!b.file) this.load1(b, "street", 0);
+      b.el.addEventListener("playing", () => { if (b !== this.decks[this.deck] || !this.musicLayer) b.el.pause(); }, { once: true });
+      b.el.play().catch(() => { this.primed = false; });
     }
     const ctx = this.ctx!;
     if (ctx.state !== "running") ctx.resume().catch(() => {});
@@ -154,9 +183,9 @@ export class Audio {
     // the music sits on top (the city's noise buries strings), with its own volume apart from the sound's
     this.musicBus = ctx.createGain(); this.musicBus.gain.value = MUSIC_LEVEL * this.musicVolume;
     this.musicBus.connect(comp);
-    for (const t of this.tracks.values()) {
-      t.gain = ctx.createGain(); t.gain.gain.value = 0;
-      ctx.createMediaElementSource(t.el).connect(t.gain).connect(this.musicBus);
+    for (const d of this.decks) {
+      d.gain = ctx.createGain(); d.gain.gain.value = 0;
+      ctx.createMediaElementSource(d.el).connect(d.gain).connect(this.musicBus);
     }
     this.loading = this.load();
   }
@@ -274,23 +303,24 @@ export class Audio {
         : under ? "subway" : this.musicRoof ? "roof" : "street";
       if (layer !== this.musicLayer) {
         this.musicLayer = layer;
-        if (layer) {
-          const t = this.trackOf(layer);
-          if (layer === "dead" || layer === "planted") t.el.currentTime = 0;
-          t.el.preload = "auto";
-          t.el.play().catch(() => {});
-        }
+        if (layer) this.musicTo(layer);
+      } else if (layer && this.primed && this.decks[this.deck].el.paused && this.t - this.musicRetry > 2) {
+        // (a start the browser blocked: try the same player again now and then)
+        this.musicRetry = this.t;
+        this.decks[this.deck].el.play().catch(() => {});
       }
-      const active = layer ? this.trackOf(layer) : null;
       const fade = layer === "subway" || layer === "dead" ? 0.35 : 1.2; // dropping into the subway hits at once
-      for (const t of this.tracks.values()) {
-        if (!t.gain) continue;
-        const on = t === active;
-        t.gain.gain.setTargetAtTime(on ? 1 : 0, now, on ? fade : 0.9);
-        // a layer you've left stops once it's faded out (it carries on from there when you come back)
-        if (on) t.quietSince = 0;
-        else if (!t.el.paused) { if (!t.quietSince) t.quietSince = this.t; else if (this.t - t.quietSince > 4) t.el.pause(); }
-      }
+      this.decks.forEach((d, i) => {
+        if (!d.gain) return;
+        const on = !!layer && i === this.deck;
+        d.gain.gain.setTargetAtTime(on ? 1 : 0, now, on ? fade : 0.9);
+        // the piece you've left stops once it's faded out (and carries on from there when you come back)
+        if (on) d.quietSince = 0;
+        else if (!d.el.paused) {
+          if (!d.quietSince) d.quietSince = this.t;
+          else if (this.t - d.quietSince > 4) { if (d.file) this.musicAt.set(d.file, d.el.currentTime); d.el.pause(); }
+        }
+      });
     }
 
     // ---------------------------------------------------------------- wind and flutter

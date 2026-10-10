@@ -558,7 +558,7 @@ function tick(dt: number, render: boolean) {
   if (subwayArtReady) subwayArt.update(cam.position, underMix, flow.trainsAt(leaf.clock), focus);
   stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
   hud.update(dt, leaf, bestS);
-  touch?.show(leaf.state === "flying", leaf.state === "attached"); // controls once the run has started; restart after it ends
+  touch?.show(leaf.state === "flying" && !pause.open, leaf.state === "attached"); // controls once the run has started; restart after it ends
   subwaySigns.update(wall, leaf.pos, ns.s, leaf.state === "flying" && leaf.lane === "street" && !replay, cam, dt, leaf.state === "flying" && leaf.lane === "subway" && !replay ? city.subway.nearest(leaf.pos.x, leaf.pos.z).s : null);
   minimap.el.classList.toggle("away", leaf.state === "attached");
   if (leaf.state !== "attached") minimap.update(dt, leaf.pos.x, leaf.pos.y, leaf.pos.z, leaf.heading, leaf.lane === "subway", ns.s, subwaySigns.next);
@@ -601,14 +601,15 @@ function restartRun() {
   placeAt();
 }
 function setPaused(on: boolean) { pause.show(on); }
-const pause = new PauseMenu(hudEl, {
+// (on the page itself, not in the HUD: the HUD is a layer under the touch controls, which took its taps)
+const pause = new PauseMenu(document.body, {
   onRestart: () => restartRun(),
   onTitle: () => { restartRun(); showcase = true; pickShowcase(); },
   onShow: (on) => audio.pause(on),
   onStory: () => {
     restartRun();
     introPlaying = true;
-    playIntro(document.body, () => audio.start(), true).then(() => { introPlaying = false; input.endFrame(); });
+    playIntro(document.body, () => audio.unlock(), true).then(() => { introPlaying = false; input.endFrame(); });
   },
   setMusic: (v) => audio.setMusicVolume(v),
   setSound: (v) => audio.setVolume(v),
@@ -617,13 +618,13 @@ const pause = new PauseMenu(hudEl, {
 document.addEventListener("visibilitychange", () => { if (document.hidden && leaf.state === "flying" && !replay) setPaused(true); });
 // the story first (skippable); the game keeps drawing the leaf on its branch underneath
 let introPlaying = !replay && !freeCam && !params.get("at") && !params.get("sub") && !autopilot;
-if (introPlaying) playIntro(document.body, () => audio.start()).then(() => { introPlaying = false; input.endFrame(); });
+if (introPlaying) playIntro(document.body, () => audio.unlock()).then(() => { introPlaying = false; input.endFrame(); });
 // the title screen's "watch the story" button (caught before it can count as letting go)
 addEventListener("pointerdown", (e) => {
   if (!(e.target as HTMLElement | null)?.closest?.(".intro-again") || introPlaying || leaf.state !== "attached") return;
   e.stopPropagation(); e.preventDefault();
   introPlaying = true;
-  playIntro(document.body, () => audio.start(), true).then(() => { introPlaying = false; input.endFrame(); });
+  playIntro(document.body, () => audio.unlock(), true).then(() => { introPlaying = false; input.endFrame(); });
 }, true);
 
 /** Debug: run the game forward (works while the tab is hidden), then draw one frame. */
