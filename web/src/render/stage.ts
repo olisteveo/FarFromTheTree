@@ -133,7 +133,8 @@ function skyMaterial(sunDir: THREE.Vector3, octaves = 5) {
  * along the view ray, and everything is fully hazed by ~15 km (the horizon). Underground
  * (density > 0.004) it is the old exp2 murk in the fog colour.
  */
-function installFog(sun: THREE.Vector3) {
+/** far: the camera's far plane; the haze is total before it so the city never ends in a hard edge */
+function installFog(sun: THREE.Vector3, far: number) {
   const C = THREE.ShaderChunk as unknown as Record<string, string>;
   C.fog_pars_vertex = /* glsl */ `
     #ifdef USE_FOG
@@ -172,7 +173,7 @@ function installFog(sun: THREE.Vector3) {
           float dy = ( y1 - y0 ) * FH;
           float avg = abs( dy ) > 1e-3 ? ( exp( - y0 * FH ) - exp( - y1 * FH ) ) / dy : exp( - y0 * FH );
           float tau = fogDensity * max( fd - 40.0, 0.0 ) * avg;
-          fogFactor = max( 1.0 - exp( - tau ), smoothstep( 9000.0, 15000.0, fd ) );
+          fogFactor = max( 1.0 - exp( - tau ), smoothstep( ${(far * 0.56).toFixed(1)}, ${(far * 0.94).toFixed(1)}, fd ) );
           fogCol = skyHaze( vFogRay / max( fd, 1e-3 ) );
         }
       #else
@@ -188,7 +189,9 @@ const HAZE = 0.0002;
 export class Stage {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(72, 1, 0.05, 16000);
+  // near/far kept to a sane ratio: phones keep little depth precision, and 0.05 m to 16 km made
+  // nearby surfaces flicker against each other there
+  readonly camera = new THREE.PerspectiveCamera(72, 1, 0.15, 16000);
   readonly sun = new THREE.DirectionalLight(0xffd2a0, 3.4);
   readonly hemi = new THREE.HemisphereLight(0xa8b4c8, 0x4a4038, 0.6);
   readonly sunDir = new THREE.Vector3();
@@ -202,8 +205,11 @@ export class Stage {
 
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
     this.quality = quality;
+    this.camera.far = quality === "high" ? 16000 : quality === "medium" ? 9000 : 4500;
+    this.camera.updateProjectionMatrix();
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: "high-performance", stencil: false });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === "high" ? 1.5 : 1));
+    this.maxRatio = Math.min(window.devicePixelRatio, quality === "high" ? 1.5 : 1);
+    this.renderer.setPixelRatio(this.maxRatio);
     this.renderer.toneMapping = THREE.AgXToneMapping;
     this.renderer.toneMappingExposure = 0.95;
     this.renderer.shadowMap.enabled = quality !== "low";
@@ -213,7 +219,7 @@ export class Stage {
     // grid frame (avenues along +z) is behind and to the left of a player heading uptown
     const az = THREE.MathUtils.degToRad(247 - 28.9), el = THREE.MathUtils.degToRad(11);
     this.sunDir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize(); // east is -x
-    installFog(this.sunDir); // before any material compiles
+    installFog(this.sunDir, this.camera.far); // before any material compiles
 
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMaterial(this.sunDir, quality === "low" ? 4 : 5));
     this.sky.frustumCulled = false;
@@ -276,6 +282,26 @@ export class Stage {
     if (quality !== "low") this.composer.addPass(new SMAAPass());
 
     window.addEventListener("resize", () => this.resize());
+    this.resize();
+  }
+
+  /** Resolution governor: if frames run slow for a couple of seconds, render at a lower resolution
+   *  (down to half); when there's headroom again, step back up. Call once per real frame. */
+  private maxRatio = 1;
+  private resScale = 1;
+  private ema = 1 / 60;
+  private judge = 0;
+  adapt(dt: number) {
+    this.ema += (Math.min(dt, 0.2) - this.ema) * 0.05;
+    if ((this.judge += dt) < 2) return;
+    this.judge = 0;
+    let next = this.resScale;
+    if (this.ema > 1 / 38 && this.resScale > 0.5) next = Math.max(0.5, this.resScale - 0.15);
+    else if (this.ema < 1 / 56 && this.resScale < 1) next = Math.min(1, this.resScale + 0.1);
+    if (next === this.resScale) return;
+    this.resScale = next;
+    this.renderer.setPixelRatio(this.maxRatio * next);
+    this.composer.setPixelRatio(this.maxRatio * next);
     this.resize();
   }
 

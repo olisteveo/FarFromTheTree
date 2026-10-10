@@ -68,8 +68,10 @@ function pickQuality(): Quality {
   return "high";
 }
 
-const stage = new Stage(canvas, pickQuality());
-/** low quality (phones, small laptops): less simulated around you, fewer effects */
+const stage = new Stage(canvas, pickQuality());
+
+/** low quality (phones, small laptops): less simulated around you, fewer effects */
+
 const LOW = stage.quality === "low";
 const city = await CityData.load();
 // ---- architecture (render/architectureInfill.ts): infill buildings for the gaps in the open data (vacant lots,
@@ -348,6 +350,7 @@ function frame(now: number) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   tick(dt, true);
+  stage.adapt(dt); // drop the resolution if the frame rate sags (phones)
   requestAnimationFrame(frame);
 }
 

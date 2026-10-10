@@ -140,6 +140,44 @@ export class Airflow {
     return (gap - behind) / AIR.gustSpeed;
   }
 
+  /** The air along a way out by the stairs: inside the path's tube it streams along the path toward
+   *  the street and holds you to its middle; around its start it gathers you in. k is how much of
+   *  the local air it replaces (1 inside the tube). Null when you're nowhere near it. */
+  private ef = { x: 0, y: 0, z: 0, k: 0 };
+  private exitFlow(p: Float32Array, x: number, y: number, z: number, reach: number) {
+    const n = p.length / 3;
+    // a cheap bounds check against the path's start and end first
+    if (Math.hypot(p[0] - x, p[2] - z) > reach + 30 && Math.hypot(p[n * 3 - 3] - x, p[n * 3 - 1] - z) > reach + 30) return null;
+    let best = Infinity, bi = 0, bu = 0;
+    for (let i = 0; i < n - 1; i++) {
+      const ax = p[i * 3], ay = p[i * 3 + 1], az = p[i * 3 + 2];
+      const dx = p[i * 3 + 3] - ax, dy = p[i * 3 + 4] - ay, dz = p[i * 3 + 5] - az, L2 = dx * dx + dy * dy + dz * dz || 1e-9;
+      const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / L2));
+      const d2 = (ax + dx * u - x) ** 2 + (ay + dy * u - y) ** 2 + (az + dz * u - z) ** 2;
+      if (d2 < best) { best = d2; bi = i; bu = u; }
+    }
+    const d = Math.sqrt(best), f = this.ef;
+    const i = bi, ax = p[i * 3], ay = p[i * 3 + 1], az = p[i * 3 + 2];
+    const dx = p[i * 3 + 3] - ax, dy = p[i * 3 + 4] - ay, dz = p[i * 3 + 5] - az, L = Math.hypot(dx, dy, dz) || 1;
+    const cx = ax + dx * bu, cy = ay + dy * bu, cz = az + dz * bu;
+    const TUBE = 3.2;
+    if (d < TUBE) {
+      // stream along it at 10 m/s in the middle, fading toward the edge of the tube where the pull
+      // to the middle takes over (the tube is wider than the doorways it threads: at its edge you're
+      // beside the opening, and must be drawn into it, not pushed along into the wall)
+      const along = 10 * (1 - (d / TUBE) ** 2), hold = 3.5 + 3 * (d / TUBE);
+      f.x = (dx / L) * along + (cx - x) * hold; f.y = (dy / L) * along + (cy - y) * hold + 1; f.z = (dz / L) * along + (cz - z) * hold;
+      f.k = 1;
+      return f;
+    }
+    // outside the tube, near the way in from the platform: drawn toward the path's start
+    const sx = p[0] - x, sy = p[1] - y, sz = p[2] - z, sd = Math.hypot(sx, sy, sz);
+    if (sd > reach) return null;
+    f.k = Math.min(1, 1.3 * (1 - sd / reach));
+    f.x = (sx / (sd + 0.5)) * 11; f.y = (sy / (sd + 0.5)) * 11; f.z = (sz / (sd + 0.5)) * 11;
+    return f;
+  }
+
   sample(x: number, y: number, z: number, t: number, out: AirSample): AirSample {
     out.vehicle = false; out.train = false; out.jet = -1; out.devil = -1;
     const city = this.city;
@@ -232,21 +270,11 @@ export class Airflow {
           // the draught dies away under the vent (it's all going up the shaft), so you slow down there
           wx = wx * (1 - 0.92 * k) + ((g.ux * na + g.uz * nb) / nl) * 9 * k;
           wz = wz * (1 - 0.92 * k) + ((g.uz * na - g.ux * nb) / nl) * 9 * k;
-        } else if (g.kind === "stairs" && st) {
-          // where the exit passage meets the station: the point on it nearest the station wall
-          // the way in from the station: just outside the station wall, on the passage, or on the
-          // stairs themselves where the entrance is close enough that they come down into the station
-          const L = Math.hypot(g.tx, g.tz);
-          const am = Math.min(L - TUNNEL.stationHalfWidth - 0.8, STAIRS_FOOT + 1);
-          const ym = am < STAIRS_FOOT ? STAIRS.top - STAIRS.slope * (Math.max(-STAIRS.half, am) + STAIRS.half) + 1.4 : -4.3;
-          const mx = g.x + g.ux * am, mz = g.z + g.uz * am;
-          const dx = mx - x, dy = ym - y, dz = mz - z, d = Math.hypot(dx, dy, dz);
-          if (d > 24) continue;
-          // the station's air pours up the exit: the draught along the platform dies away near it
-          const k = Math.min(1, 1.3 * (1 - d / 24));
-          wx = wx * (1 - k) + (dx / (d + 0.5)) * 11 * k;
-          wy = wy * (1 - k) + (dy / (d + 0.5)) * 11 * k;
-          wz = wz * (1 - k) + (dz / (d + 0.5)) * 11 * k;
+        } else if (g.kind === "stairs" && g.exitPath) {
+          // the station's air pours out up the exit stairs: it gathers toward the start of the way
+          // out from across the platform, then carries you along it (see exitFlow)
+          const f = this.exitFlow(g.exitPath, x, y, z, 24);
+          if (f) { wx = wx * (1 - f.k) + f.x * f.k; wy = wy * (1 - f.k) + f.y * f.k; wz = wz * (1 - f.k) + f.z * f.k; }
         }
       }
       // vents overhead draw the tunnel air up into them: the relief vents always, the grates
@@ -268,6 +296,11 @@ export class Airflow {
       }
       // shafts: air leaks up the stairs, and the grates breathe out when a train passes
       const sh = this.uinfo.inShaft as Shaft | null;
+      if (sh && sh.kind === "stairs" && sh.out && sh.exitPath) {
+        // a way out: carried along the exit path, up the middle of the stairs and out
+        const f = this.exitFlow(sh.exitPath, x, y, z, 24);
+        if (f) { out.x = f.x; out.y = f.y; out.z = f.z; return out; }
+      }
       if (sh && sh.kind === "stairs") {
         // down the stairs (ways in) or up them and out (ways out), then along the passage
         const a = (x - sh.x) * sh.ux + (z - sh.z) * sh.uz, b = (x - sh.x) * sh.uz - (z - sh.z) * sh.ux;

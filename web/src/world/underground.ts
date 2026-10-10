@@ -41,7 +41,10 @@ export interface Shaft { x: number; z: number; r: number; tx: number; tz: number
   /** stairs/vents that breathe air up and out (ways out); the others draw air down (ways in) */
   out?: boolean;
   /** unit direction of the local +a axis (stairs: toward the tunnel; vents and grates: along it) */
-  ux: number; uz: number }
+  ux: number; uz: number;
+  /** ways out by the stairs: the line the air carries you along, from the platform out to the
+   *  street (x, y, z every metre or so), checked to be clear of every wall */
+  exitPath?: Float32Array }
 
 export interface Blocked { ss0: number; ss1: number; kind: "flood" | "end"; name: string }
 
@@ -115,7 +118,67 @@ export class Underground {
       const p = sub.at(s);
       this.addShaft({ x: p.x - p.tz * 4.5, z: p.z + p.tx * 4.5, r: 1.3, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "grate", ss: s, name: "" });
     }
+    for (const s of this.shafts) if (s.kind === "stairs" && s.out && !this.isBlocked(s.ss)) s.exitPath = this.buildExitPath(s);
     this.rats = makeRats(this);
+  }
+
+  /** The way out from a station by these stairs: in from the platform, through the doorway or the
+   *  opening in the station ceiling, up the middle of the stairs and out over the street. Points are
+   *  nudged up or down until they're well clear of the walls. */
+  private buildExitPath(s: Shaft): Float32Array | undefined {
+    const L = Math.hypot(s.tx, s.tz);
+    const st = this.stationAt(s.ss);
+    const hw = st ? TUNNEL.stationHalfWidth : TUNNEL.halfWidth;
+    const aWall = L - hw; // where the station (or tunnel) wall is, along the stairs' axis
+    const pts: [number, number][] = []; // (a, y) from the platform outwards
+    // where you get from the station into the stairs: through the doorway in the wall, or where the
+    // stairs come down through the station ceiling (they only dip below it a few metres along)
+    const ceilY = st ? TUNNEL.stationCeiling : TUNNEL.ceiling;
+    const aDip = -STAIRS.half + (STAIRS.top - (ceilY - 1.2)) / STAIRS.slope;
+    const aEntry = Math.min(STAIRS_FOOT, Math.max(aWall + 0.5, aDip));
+    const aIn = Math.max(aEntry, aWall);
+    pts.push([aIn + 4, -5.2], [aIn + 1.8, -4.6]);
+    // along the passage (if the stairs end before the wall) at mid-height
+    for (let a = Math.min(aWall + 0.5, L); a > STAIRS_FOOT; a -= 1) pts.push([a, (STAIRS.passageFloor + STAIRS.passageCeiling) / 2]);
+    // up the stairs, a little over halfway between the steps and the ceiling
+    for (let a = aEntry; a > -STAIRS.half + 0.6; a -= 0.8) {
+      const floor = STAIRS.top - STAIRS.slope * (Math.max(-STAIRS.half, a) + STAIRS.half);
+      const ceil = a < STAIRS.half ? floor + 4 : Math.min(STAIRS.roofUnder, floor + STAIRS.headroom);
+      pts.push([a, Math.min(floor + 1.3, (floor + ceil) / 2)]);
+    }
+    // and out: up past the railings into the street
+    pts.push([-STAIRS.half + 0.4, 1.6], [-STAIRS.half - 0.5, 3.2]);
+    // the clearest height near a planned one (above ground the street is open air)
+    const clearAt = (x: number, y0: number, z: number): [number, number] => {
+      if (y0 > 0.3) return [y0, 9];
+      let best = y0, bd = this.sdf(x, y0, z);
+      for (let dy = -1.6; dy <= 1.6; dy += 0.2) { const d = this.sdf(x, y0 + dy, z); if (d > bd + 0.05) { bd = d; best = y0 + dy; } }
+      return [best, bd];
+    };
+    const pts3: [number, number, number][] = [];
+    for (const [a, y0] of pts) {
+      const x = s.x + s.ux * a, z = s.z + s.uz * a;
+      const [y, d] = clearAt(x, y0, z);
+      if (d >= 0.3) pts3.push([x, y, z]);
+    }
+    // make every segment clear: walk it every half metre, lifting or lowering any sample that
+    // touches a wall into open air and keeping it as a waypoint (so the stream never runs you into
+    // a corner)
+    const out: number[] = [];
+    for (let i = 0; i < pts3.length; i++) {
+      const [x0, y0, z0] = pts3[i];
+      out.push(x0, y0, z0);
+      if (i === pts3.length - 1) break;
+      const [x1, y1, z1] = pts3[i + 1];
+      const L = Math.hypot(x1 - x0, y1 - y0, z1 - z0), n = Math.ceil(L / 0.5);
+      for (let k = 1; k < n; k++) {
+        const t = k / n, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, z = z0 + (z1 - z0) * t;
+        if (y > 0.3 || this.sdf(x, y, z) >= 0.3) continue;
+        const [cy, d] = clearAt(x, y, z);
+        if (d >= 0.3) out.push(x, cy, z);
+      }
+    }
+    return out.length >= 12 ? new Float32Array(out) : undefined;
   }
 
   /** Slide a stair opening (nudging it up to 3.5 m) until its whole square sits in one sidewalk. */
