@@ -226,10 +226,10 @@ def twig_card(d, w, h, kind):
     L = []
     dark, tip = (0.27, 0.23, 0.20), (0.46, 0.42, 0.39)
     balls = []
-    P = {"elm": dict(depth=5, spread=0.48, len0=66, shrink=0.78, kids=(2, 3), wid0=5.0, droop=0.10, jag=0.12),
-         "oak": dict(depth=5, spread=0.70, len0=62, shrink=0.74, kids=(2, 3), wid0=5.5, droop=-0.02, jag=0.45),
-         "plane": dict(depth=5, spread=0.62, len0=64, shrink=0.75, kids=(2, 2), wid0=5.0, droop=0.04, jag=0.22),
-         "brush": dict(depth=5, spread=0.62, len0=58, shrink=0.78, kids=(2, 3), wid0=5.5, droop=0.0, jag=0.25)}[kind]
+    P = {"elm": dict(depth=5, spread=0.48, len0=66, shrink=0.78, kids=(2, 3), wid0=3.8, droop=0.10, jag=0.12),
+         "oak": dict(depth=5, spread=0.70, len0=62, shrink=0.74, kids=(2, 3), wid0=4.0, droop=-0.02, jag=0.45),
+         "plane": dict(depth=5, spread=0.62, len0=64, shrink=0.75, kids=(2, 2), wid0=3.8, droop=0.04, jag=0.22),
+         "brush": dict(depth=5, spread=0.62, len0=58, shrink=0.78, kids=(2, 3), wid0=4.0, droop=0.0, jag=0.25)}[kind]
 
     def grow(x, y, ang, ln, wd, depth):
         pts = [(x, y)]
@@ -519,7 +519,35 @@ def ice_doc():
     return W, W, (0.85, 0.9, 0.95, 1), L, d
 
 
-DOCS = {"Trees": trees_doc, "Props": props_doc, "Schist": schist_doc, "Wall": wall_doc, "Rubble": rubble_doc, "Ice": ice_doc}
+def bridle_doc():
+    """The bridle path: packed tan stone dust and grit, hoof prints, wet dark ruts (5 m per tile, mirrored)."""
+    d = Doc(23)
+    r = d.rng
+    W = 512
+    L = [d.rect(0, 0, W, W, (0.56, 0.49, 0.40), name="dust"),
+         d.noise(W, W, op=45, scale=90, seed=3, contrast=40, name="patches"),
+         d.noise(W, W, op=40, scale=5, kind="turbulentSmooth", seed=6, contrast=80, name="grain")]
+    for _ in range(9):   # darker damp hollows
+        L.append(d.poly(d.blob(r.random() * W, r.random() * W, 30 + r.random() * 70, 18 + r.random() * 40), (0.36, 0.31, 0.25), op=35, smooth=True, effects=[d.blur(18)]))
+    for k in range(2):   # the trodden line down the middle, a little darker
+        x = W * (0.35 + 0.3 * k)
+        L.append(d.line([(x + (r.random() - 0.5) * 40, -10), (x + (r.random() - 0.5) * 40, W / 2), (x + (r.random() - 0.5) * 40, W + 10)], (0.45, 0.39, 0.31), 60, op=30, smooth=True, effects=[d.blur(16)]))
+    for _ in range(22):  # hoof prints: little crescents
+        x, y = r.random() * W, r.random() * W
+        rot = r.random() * 0.6 - 0.3
+        pts = [(x + math.sin(a) * 9, y - math.cos(a) * 11) for a in [(-1.2 + i * 0.3) for i in range(9)]]
+        L.append(d.line(pts, (0.33, 0.28, 0.22), 2.5, op=28, smooth=True, effects=[d.blur(1.5)]))
+    for _ in range(900):  # grit and pebbles
+        c = r.choice([(0.70, 0.66, 0.58), (0.42, 0.38, 0.33), (0.62, 0.55, 0.46), (0.80, 0.77, 0.70)])
+        sz = 1.5 + r.random() ** 3 * 7
+        L.append(d.ellipse(r.random() * W, r.random() * W, sz, sz * (0.6 + r.random() * 0.5), c, op=70, rot=r.random() * 3))
+    for _ in range(40):   # a few fallen leaves pressed in
+        L.append(d.poly(d.blob(r.random() * W, r.random() * W, 6, 4, n=6), r.choice([(0.45, 0.25, 0.12), (0.55, 0.38, 0.15), (0.32, 0.22, 0.14)]), op=80, smooth=True))
+    L.append(d.rect(0, 0, W, W, (0.5, 0.5, 0.5), op=8, effects=[d.grain(10)]))
+    return W, W, (0.56, 0.49, 0.40, 1), L, d
+
+
+DOCS = {"Trees": trees_doc, "Props": props_doc, "Schist": schist_doc, "Wall": wall_doc, "Rubble": rubble_doc, "Ice": ice_doc, "Bridle": bridle_doc}
 NEEDS_FONT = {"Props"}
 
 

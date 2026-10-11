@@ -88,10 +88,10 @@ function skyMaterial(sunDir: THREE.Vector3, octaves = 5) {
     side: THREE.BackSide,
     depthWrite: false,
     fog: false,
-    uniforms: { uSun: { value: sunDir }, uTime: { value: 0 } },
+    uniforms: { uSun: { value: sunDir }, uTime: { value: 0 }, uRain: { value: 0 } },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`,
     fragmentShader: `
-      uniform vec3 uSun; uniform float uTime; varying vec3 vDir;
+      uniform vec3 uSun; uniform float uTime, uRain; varying vec3 vDir;
       ${hazeGLSL(sunDir)}
       float h21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
       float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
@@ -122,6 +122,13 @@ function skyMaterial(sunDir: THREE.Vector3, octaves = 5) {
           // the disc shows through the thin parts only
         }
         if (h < 0.0) col = skyHaze(d); // below the horizon: the same haze the fog fades into
+        // rain: a low, heavy overcast, darker overhead, rolling slowly
+        if (uRain > 0.0) {
+          vec2 ruv = d.xz / (max(h, 0.0) + 0.1) * 0.9 + vec2(uTime * 0.02, uTime * 0.008);
+          float rc = fbm(ruv);
+          vec3 over = mix(vec3(0.40, 0.43, 0.47), vec3(0.24, 0.26, 0.29), smoothstep(0.0, 0.6, h)) * (0.8 + 0.35 * rc);
+          col = mix(col, over, uRain * 0.92);
+        }
         gl_FragColor = vec4(col, 1.0);
       }`,
   });
@@ -190,6 +197,8 @@ function installFog(sun: THREE.Vector3, far: number) {
           float tau = fogDensity * max( fd - 40.0, 0.0 ) * avg;
           fogFactor = max( 1.0 - exp( - tau ), smoothstep( ${(far * 0.56).toFixed(1)}, ${(far * 0.94).toFixed(1)}, fd ) );
           fogCol = skyHaze( vFogRay / max( fd, 1e-3 ) );
+          // (rain thickens the haze: past the clear-air density, it greys toward the fog colour)
+          fogCol = mix( fogCol, fogColor, clamp( ( fogDensity - 0.0002 ) / 0.0018, 0.0, 1.0 ) * 0.9 );
         }
       #else
         float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
@@ -197,6 +206,8 @@ function installFog(sun: THREE.Vector3, far: number) {
       gl_FragColor.rgb = mix( gl_FragColor.rgb, fogCol, fogFactor );
     #endif`;
 }
+
+const _rainFog = new THREE.Color(0x646a72);
 
 /** Ground-level haze density above ground (per metre; see installFog). */
 const HAZE = 0.0002;
@@ -217,6 +228,8 @@ export class Stage {
   private ao: N8AOPass | null = null;
   private sky: THREE.Mesh;
   quality: Quality;
+  /** 0..1: Central Park's rain (render/rain.ts): overcast sky, thick grey haze, dim light, a colder grade */
+  rain = 0;
 
   constructor(canvas: HTMLCanvasElement, quality: Quality) {
     this.quality = quality;
@@ -345,13 +358,23 @@ export class Stage {
     this.sky.visible = !underground; // no daylight leaking through anything down there
     this.scene.background = underground ? new THREE.Color(0x050403) : null;
     (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
-    this.fog.density = underground ? 0.045 : HAZE;
+    const r = underground ? 0 : this.rain;
+    (this.sky.material as THREE.ShaderMaterial).uniforms.uRain.value = r;
+    this.fog.density = underground ? 0.045 : HAZE + r * 0.0017;
     this.fog.color.set(underground ? 0x0d0b09 : 0xb9bcc4);
+    if (r > 0) {
+      this.fog.color.lerp(_rainFog, r);
+      // (main.ts sets the light each frame; the rain dims it after)
+      this.sun.intensity *= 1 - 0.72 * r;
+      this.hemi.intensity *= 1 - 0.2 * r;
+    }
     const ug = this.grade.uniforms;
     ug.uSpeed.value += (speed - ug.uSpeed.value) * 0.08;
     ug.uTime.value = t;
     ug.uHurt.value = hurt;
-    ug.uCold.value = 0.8;
+    ug.uCold.value = 0.8 + 0.4 * r;
+    ug.uSat.value = 1.08 - 0.3 * r;
+    ug.uGain.value.set(1 - 0.1 * r, 1 - 0.08 * r, 1 - 0.03 * r);
     this.bloom.strength = underground ? 0.32 : 0.3;
   }
 

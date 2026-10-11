@@ -4,13 +4,13 @@ Run by build_park.py:
   blender -b -t 8 --factory-startup --python park_blender.py -- MODELS TEXOUT TESSERACT_DIR PREVIEWS
 
 Writes
-  MODELS/park_trees.glb   tree_{elm,oak,plane}_lod{0,1,2}: bare winter trees, one material "bark"
+  MODELS/park_trees.glb   tree_{elm,oak,plane}[2]_lod{0,1,2}: bare winter trees (two of each species), one material "bark"
                           (UVs into textures/park/trees.png: bark strips repeat in v, twig cards in
                           the right-hand column). Origin at the base of the trunk, +Y up, 1 unit = 1 m.
   MODELS/park_props.glb   lamp_post, lamp_globe, bench, basket_wire, basket_bag, cart, cart_umbrella,
                           person_stand, person_sit, duck, rock_{big,ridge,mid,small,boulder},
-                          bridge, maine
-  TEXOUT/*.jpg|png        the Tesseract renders: trees.png + props.png (alpha), schist/wall/rubble/ice.jpg
+                          bridge, maine, wall_seg (+ _lod1), wall_pier, hoop_fence, bridle_rail
+  TEXOUT/*.jpg|png        the Tesseract renders: trees.png + props.png (alpha), schist/wall/rubble/ice/bridle.jpg
 Materials are exported by name only (no images): the game binds the textures itself.
 Mesh "front" is +Z in three.js (-Y here); long axes along X.
 """
@@ -91,7 +91,7 @@ class Geo:
 
 MATCOL = {"bark": (0.35, 0.3, 0.26), "props": (0.5, 0.5, 0.5), "wire": (0.1, 0.1, 0.1), "globe": (1, 0.9, 0.6),
           "schist": (0.42, 0.42, 0.4), "rubble": (0.4, 0.38, 0.35), "deck": (0.3, 0.3, 0.3), "person": (1, 1, 1),
-          "water": (0.1, 0.15, 0.15)}
+          "water": (0.1, 0.15, 0.15), "stone": (0.55, 0.53, 0.5), "coping": (0.7, 0.68, 0.64)}
 
 
 def material(name):
@@ -275,13 +275,25 @@ def card(g, base, d, size, kind, roll, crossed=False):
         g.quad(a, bb, bb + d * size, a + d * size, uv, "bark")
 
 
-def tree(sp, seed=7):
+def flare(g, r, xs, lobes, sides):
+    """the root flare: the trunk swells into buttresses where it meets the ground"""
+    prof = [(r * 1.85, -0.25), (r * 1.6, 0.0), (r * 1.3, 0.25), (r * 1.1, 0.6), (r * 0.98, 1.1)]
+    circ = math.tau * r
+    lathe(g, prof, sides, "bark", lambda u, v: (atlas(xs + 2 + u * 252, 0)[0], v * 1.4 / (circ * 4)),
+          flute=lambda i, a: (0.22 * max(0.0, math.cos(a * lobes)) ** 2) * (1 - i / 4))
+
+
+def tree(sp, seed=7, name=None):
+    name = name or sp
     br = skeleton(sp, seed)
     P = SPECIES[sp]
     xs = BARK_X[sp]
     rng = random.Random(seed + 1)
     for lod in (0, 1, 2):
         g = Geo()
+        r_trunk = br[0][1][0]
+        if lod < 2:
+            flare(g, r_trunk, xs, 5 if sp != "plane" else 4, (14, 7)[lod])
         maxd = {0: P["maxd"], 1: 2, 2: 1}[lod]
         for pts, rad, depth in br:
             if depth > maxd:
@@ -296,8 +308,16 @@ def tree(sp, seed=7):
             circ = math.tau * max(r0, 0.03)
             tube(g, pts, rad, sides, "bark", lambda u, dist, circ=circ: atlas(xs + 2 + u * 252, 0)[:1] + (dist / (circ * 4),))
             d = (pts[-1] - pts[-2]).normalized()
-            if lod == 0 and depth == P["maxd"] and rng.random() < 0.7:
-                card(g, pts[-1] - d * 0.4, d, P["card"] * 0.7 * rng.uniform(0.8, 1.2), sp, rng.random() * math.tau)
+            if lod == 0 and depth == P["maxd"]:
+                # the fine twigs: a card at every tip, and another part-way along most of them
+                card(g, pts[-1] - d * 0.4, d, P["card"] * 0.75 * rng.uniform(0.8, 1.2), sp, rng.random() * math.tau)
+                if rng.random() < 0.6 and len(pts) > 2:
+                    q = pts[len(pts) // 2]
+                    sd = (d + rnd_vec(rng) * 0.6).normalized()
+                    card(g, q, sd, P["card"] * 0.55 * rng.uniform(0.8, 1.2), sp, rng.random() * math.tau)
+            if lod == 0 and depth == P["maxd"] - 1 and rng.random() < 0.5:
+                q = pts[max(1, int(len(pts) * 0.7))]
+                card(g, q, (d + Vector((0, 0, 0.3))).normalized(), P["card"] * 0.8, "brush", rng.random() * math.tau)
             if lod == 1 and depth == 2:
                 ln = (pts[-1] - pts[0]).length
                 card(g, pts[len(pts) // 2], d, max(2.0, ln * 1.0), "brush", rng.random() * math.tau, crossed=True)
@@ -306,7 +326,7 @@ def tree(sp, seed=7):
                 for f in (0.5, 0.9):
                     q = pts[int(f * (len(pts) - 1))]
                     card(g, q - d * 0.5, (d + Vector((0, 0, 0.6))).normalized(), max(3.0, ln * 0.5), "brush", rng.random() * math.tau, crossed=True)
-        g.build("tree_%s_lod%d" % (sp, lod))
+        g.build("tree_%s_lod%d" % (name, lod))
 
 
 # ================================================================================ props
@@ -323,6 +343,14 @@ def lamp():
     lathe(g, prof, 16, "props", C("iron"), flute=lambda i, a: (0.12 * math.cos(a * 8)) if 6 <= i <= 7 else (0.06 * math.cos(a * 8) if i <= 3 else 0))
     # crown and finial above the globe
     lathe(g, [(0.0, 3.6), (0.15, 3.6), (0.16, 3.64), (0.09, 3.72), (0.04, 3.76), (0.05, 3.84), (0.0, 3.92)], 12, "props", C("iron"))
+    # the lamplighter's ladder bar under the luminaire, with ball ends
+    box(g, (0, 0, 2.66), (0.62, 0.035, 0.035), "props", lambda f, u, v: cell("iron", u, v))
+    for x in (-0.31, 0.31):
+        g.M = Matrix.Translation((x, 0, 2.66))
+        lathe(g, [(0.0, -0.035), (0.03, -0.02), (0.035, 0.0), (0.03, 0.02), (0.0, 0.035)], 8, "props", C("iron"))
+    g.M = Matrix.Identity(4)
+    # the post's number plate (every Central Park lamppost has one: it tells you the nearest street)
+    box(g, (0, -0.085, 1.55), (0.07, 0.012, 0.1), "props", lambda f, u, v: cell("sign", 0.5, 0.5))
     g.build("lamp_post")
     gl = Geo()
     lathe(gl, [(0.0, 3.08), (0.12, 3.1), (0.2, 3.22), (0.23, 3.36), (0.21, 3.5), (0.15, 3.6), (0.0, 3.61)], 16, "globe", C("globe"))
@@ -330,29 +358,46 @@ def lamp():
 
 
 def bench():
-    """World's Fair bench: cast-iron ends, curved wooden slats (1.8 m)"""
+    """The 1939 World's Fair bench, Central Park's standard: cast-iron ends with scrolled arms, wooden
+    slats running in one curve from the front of the seat round and up the back (1.8 m)."""
     g = Geo()
     L = 1.8
     wood = lambda f, u, v: cell("wood", u / L, v / 0.12 if f in ("+z", "-z", "+y", "-y") else 0.5)
-    # seat slats curving down at the front; back slats leaning back (front faces -Y)
-    seat = [(-0.24, 0.45), (-0.14, 0.455), (-0.04, 0.455), (0.06, 0.45), (0.16, 0.44)]
-    for y, z in seat:
-        box(g, (0, y, z), (L, 0.085, 0.03), "props", wood)
-    for i in range(4):
-        z = 0.56 + i * 0.1
-        y = 0.2 + i * 0.035
-        box(g, (0, y, z), (L, 0.03, 0.075), "props", wood)
     iron = lambda f, u, v: cell("iron", u * 2, v * 2)
-    for x in (-L / 2 + 0.12, 0, L / 2 - 0.12):
-        # end frame: front leg, rear leg, seat rail, back upright, arm on the ends
-        box(g, (x, -0.24, 0.21), (0.05, 0.05, 0.42), "props", iron)
-        box(g, (x, 0.16, 0.21), (0.05, 0.05, 0.42), "props", iron)
-        box(g, (x, -0.04, 0.42), (0.05, 0.48, 0.04), "props", iron)
-        for i in range(4):
-            box(g, (x, 0.19 + i * 0.035, 0.52 + i * 0.1), (0.05, 0.05, 0.12), "props", iron)
-        if x != 0:
-            box(g, (x, -0.06, 0.66), (0.05, 0.42, 0.04), "props", iron)
-            box(g, (x, -0.25, 0.55), (0.05, 0.04, 0.22), "props", iron)
+    # the slat curve (y back, z up): seat, a soft bend, the leaning back (front faces -Y)
+    curve = [(-0.27, 0.43), (-0.17, 0.455), (-0.06, 0.46), (0.05, 0.455), (0.15, 0.45), (0.21, 0.5),
+             (0.235, 0.6), (0.26, 0.7), (0.285, 0.8), (0.31, 0.9)]
+    for i, (y, z) in enumerate(curve):
+        a = curve[max(0, i - 1)]; b = curve[min(len(curve) - 1, i + 1)]
+        ang = math.atan2(b[1] - a[1], b[0] - a[0])
+        g.M = Matrix.Translation((0, y, z)) @ Matrix.Rotation(ang, 4, "X")
+        box(g, (0, 0, 0), (L, 0.085, 0.032), "props", wood)
+    g.M = Matrix.Identity(4)
+    for x in (-L / 2 + 0.1, 0.0, L / 2 - 0.1):
+        end_ = x != 0
+        # the iron frame under the slats: a rib following the curve
+        for i in range(len(curve) - 1):
+            (y0, z0), (y1, z1) = curve[i], curve[i + 1]
+            ang = math.atan2(z1 - z0, y1 - y0)
+            ln = math.hypot(y1 - y0, z1 - z0)
+            g.M = Matrix.Translation((x, (y0 + y1) / 2, (z0 + z1) / 2 - 0.035)) @ Matrix.Rotation(ang, 4, "X")
+            box(g, (0, 0, 0), (0.045, ln + 0.01, 0.04), "props", iron)
+        g.M = Matrix.Identity(4)
+        # splayed legs
+        g.M = Matrix.Translation((x, -0.22, 0.21)) @ Matrix.Rotation(-0.12, 4, "X")
+        box(g, (0, 0, 0), (0.05, 0.05, 0.44), "props", iron)
+        g.M = Matrix.Translation((x, 0.17, 0.21)) @ Matrix.Rotation(0.15, 4, "X")
+        box(g, (0, 0, 0), (0.05, 0.05, 0.44), "props", iron)
+        g.M = Matrix.Identity(4)
+        box(g, (x, -0.03, 0.06), (0.04, 0.4, 0.035), "props", iron)   # stretcher
+        if end_:
+            # the arm: up from the front leg, a scroll at its front end
+            box(g, (x, -0.29, 0.53), (0.05, 0.045, 0.2), "props", iron)
+            g.M = Matrix.Translation((x, -0.05, 0.64)) @ Matrix.Rotation(-0.08, 4, "X")
+            box(g, (0, 0, 0), (0.06, 0.52, 0.04), "props", iron)
+            g.M = Matrix.Translation((x, -0.31, 0.62)) @ Matrix.Rotation(math.pi / 2, 4, "Y")
+            lathe(g, [(0.0, -0.03), (0.05, -0.03), (0.055, 0.0), (0.05, 0.03), (0.0, 0.03)], 8, "props", C("iron"))
+            g.M = Matrix.Identity(4)
     g.build("bench")
 
 
@@ -623,6 +668,123 @@ def maine():
     w.build("maine_pool")
 
 
+# ================================================================================ edges: walls, fences
+
+def stone_block(g, x0, x1, z0, z1, y0, y1, rng, faces):
+    """one rock-faced block: a box whose outer faces bulge a little (the pitched face of the stone)"""
+    k = rng.uniform(0.82, 1.08)
+    g.cur_col = (k, k * rng.uniform(0.97, 1.02), k * rng.uniform(0.95, 1.03), 1)
+    ou, ov = rng.random() * 4, rng.random() * 4    # a different patch of the texture on every stone
+    uvf = lambda f, u, v: (ou + u * 0.9, ov + v * 0.9)
+    rest = tuple(f for f in faces if f not in ("+y", "-y"))
+    if rest:
+        box(g, ((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), (x1 - x0, y1 - y0, z1 - z0), "stone", uvf, rest)
+    # the pitched face: a low pyramid standing proud of the front and back
+    for side in (-1, 1):
+        if ("-y" if side < 0 else "+y") not in faces:
+            continue
+        y = y0 if side < 0 else y1
+        b = rng.uniform(0.012, 0.03) * side
+        cx, cz = (x0 + x1) / 2 + rng.uniform(-0.05, 0.05), (z0 + z1) / 2 + rng.uniform(-0.03, 0.03)
+        c = (cx, y + b, cz)
+        corners = [(x0, y, z0), (x1, y, z0), (x1, y, z1), (x0, y, z1)]
+        was, g.flat = g.flat, True
+        for i in range(4):
+            a, bb = corners[i], corners[(i + 1) % 4]
+            tri = [a, bb, c] if side < 0 else [bb, a, c]
+            ids = [g.vert(q) for q in tri]
+            g.face(ids, [(ou + q[0] * 0.9, ov + q[2] * 0.9) for q in tri], "stone")
+        g.flat = was
+    g.cur_col = (1, 1, 1, 1)
+
+
+def wall_seg():
+    """3 m of the low park wall along 59th St, CPW and Fifth: three courses of rock-faced stone with
+    recessed mortar joints and a dressed coping. Along X, centred, base at 0. (Same box as the collider:
+    0.85 m of stone, a 0.14 m coping 0.78 m wide.)"""
+    rng = random.Random(5)
+    g = Geo()
+    L, T, H = 3.0, 0.6, 0.85
+    # the mortar core behind the stones
+    box(g, (0, 0, H / 2), (L, T - 0.04, H), "coping", lambda f, u, v: (u * 0.3, v * 0.3 + 0.7), ("+y", "-y"))
+    z = 0.0
+    rows = [0.3, 0.28, 0.27]
+    for ri, rh in enumerate(rows):
+        x = -L / 2 - rng.uniform(0.0, 0.4) * (ri % 2)
+        while x < L / 2 - 0.01:
+            w = rng.uniform(0.45, 0.95)
+            xa, xb = max(-L / 2, x), min(L / 2, x + w)
+            if xb - xa > 0.08:
+                stone_block(g, xa + 0.008, xb - 0.008, z + 0.008, z + rh - 0.008, -T / 2, T / 2, rng,
+                            ("+y", "-y", "+z") if ri == len(rows) - 1 else ("+y", "-y"))
+            x += w
+        z += rh
+    # coping: long dressed stones with a slight wash
+    x = -L / 2
+    for w in (1.1, 0.9, 1.0):
+        box(g, (x + w / 2, 0, H + 0.07), (w - 0.012, T + 0.18, 0.14), "coping", lambda f, u, v: (u * 0.5, v * 0.5))
+        x += w
+    g.build("wall_seg")
+    # far away: a plain box with the same outline
+    f = Geo()
+    box(f, (0, 0, H / 2), (L, T, H), "stone", lambda fc, u, v: (u * 0.9, v * 0.9), ("+y", "-y", "+z"))
+    box(f, (0, 0, H + 0.07), (L, T + 0.18, 0.14), "coping", lambda fc, u, v: (u * 0.5, v * 0.5), ("+y", "-y", "+z", "+x", "-x"))
+    f.build("wall_seg_lod1")
+
+
+def wall_pier():
+    """a gate pier: a taller stack of stones, a moulded cap and a low pyramid on top (base at 0)"""
+    rng = random.Random(9)
+    g = Geo()
+    W = 0.9
+    z = 0.0
+    for rh in (0.34, 0.32, 0.36, 0.3):
+        stone_block(g, -W / 2, W / 2, z + 0.006, z + rh - 0.006, -W / 2, W / 2, rng, ("+y", "-y"))
+        # the sides as well
+        g.M = Matrix.Rotation(math.pi / 2, 4, "Z")
+        stone_block(g, -W / 2 + 0.01, W / 2 - 0.01, z + 0.006, z + rh - 0.006, -W / 2, W / 2, rng, ("+y", "-y"))
+        g.M = Matrix.Identity(4)
+        z += rh
+    cu = lambda f, u, v: (u * 0.5, v * 0.5)
+    box(g, (0, 0, z + 0.06), (W + 0.2, W + 0.2, 0.12), "coping", cu)
+    box(g, (0, 0, z + 0.16), (W + 0.06, W + 0.06, 0.08), "coping", cu)
+    top = z + 0.2
+    ids = [g.vert(p) for p in [(-0.5, -0.5, top), (0.5, -0.5, top), (0.5, 0.5, top), (-0.5, 0.5, top), (0, 0, top + 0.22)]]
+    for i in range(4):
+        g.face([ids[i], ids[(i + 1) % 4], ids[4]], [(0, 0), (1, 0), (0.5, 0.5)], "coping")
+    g.build("wall_pier")
+
+
+def hoop_fence():
+    """2 m of the low hoop fence round the lawns: overlapping arches of bent steel pipe (0.45 m high)"""
+    g = Geo()
+    iron = lambda u, dist: cell("iron", u, dist)
+    for k in range(3):
+        cx = -1.0 + k * 0.667 + 0.333
+        pts, rad = [], []
+        for i in range(13):
+            a = math.pi * i / 12
+            pts.append(Vector((cx + math.cos(a) * 0.5, 0, -0.08 + math.sin(a) * 0.53)))
+            rad.append(0.011)
+        tube(g, pts, rad, 4, "props", iron)
+    g.build("hoop_fence")
+
+
+def bridle_rail():
+    """3 m of the bridle path's post-and-rail fence: weathered oak posts and two rails (1.05 m)"""
+    g = Geo()
+    wood = lambda f, u, v: cell("wood", u / 3.0, v / 0.12 if f in ("+z", "-z", "+y", "-y") else 0.5)
+    for x in (-1.5, 1.5):
+        box(g, (x, 0, 0.5), (0.13, 0.13, 1.0), "props", lambda f, u, v: cell("wood", 0.2 + v * 0.3, u))
+        box(g, (x, 0, 1.02), (0.15, 0.15, 0.04), "props", lambda f, u, v: cell("wood", u, v))
+    g.M = Matrix.Rotation(0.03, 4, "Y")
+    box(g, (0, 0.08, 0.92), (3.1, 0.06, 0.12), "props", wood)
+    g.M = Matrix.Rotation(-0.02, 4, "Y")
+    box(g, (0, 0.08, 0.5), (3.1, 0.06, 0.12), "props", wood)
+    g.M = Matrix.Identity(4)
+    g.build("bridle_rail")
+
+
 # ================================================================================ export
 
 def export(path, names):
@@ -640,7 +802,7 @@ def textures():
     sc.render.image_settings.file_format = "JPEG"
     sc.render.image_settings.color_mode = "RGB"
     sc.render.image_settings.quality = 82
-    for name in ("Schist", "Wall", "Rubble", "Ice"):
+    for name in ("Schist", "Wall", "Rubble", "Ice", "Bridle"):
         src = os.path.join(TS, name, name + ".png")
         im = bpy.data.images.load(src)
         im.save_render(os.path.join(TEXOUT, name.lower() + ".jpg"), scene=sc)
@@ -654,6 +816,7 @@ def main():
     textures()
     for sp in ("elm", "oak", "plane"):
         tree(sp, {"elm": 11, "oak": 23, "plane": 37}[sp])
+        tree(sp, {"elm": 59, "oak": 71, "plane": 83}[sp], sp + "2")   # a second of each, so no two neighbours match
     export(os.path.join(MODELS, "park_trees.glb"), [n for n in TRIS if n.startswith("tree_")])
     lamp(); bench(); basket(); cart(); person("stand"); person("sit"); duck()
     rock("rock_big", 30, 19, 4.2, 46, 30, 3)
@@ -662,6 +825,7 @@ def main():
     rock("rock_small", 4.5, 3.2, 1.5, 10, 8, 12)
     rock("rock_boulder", 2.2, 1.7, 1.2, 7, 6, 15, step=1.0)
     bridge(); maine()
+    wall_seg(); wall_pier(); hoop_fence(); bridle_rail()
     export(os.path.join(MODELS, "park_props.glb"), [n for n in TRIS if not n.startswith("tree_")])
     for k, v in TRIS.items():
         print("TRIS %-16s %6d" % (k, v))

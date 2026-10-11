@@ -113,5 +113,12 @@ export class LeafView {
     this.uniforms.uFlutter.value = 0.25 + Math.min(1.5, airspeed / 8) + (1 - integrity) * 0.8;
     this.uniforms.uTear.value = 1 - integrity;
   }
+
+  /** Soaked by Central Park's rain (0..1): darker, and glossy with water */
+  set wet(v: number) {
+    const k = Math.max(0, Math.min(1, v));
+    this.mat.color.setScalar(1 - 0.45 * k);
+    this.mat.roughness = 0.65 - 0.45 * k;
+  }
 }
 

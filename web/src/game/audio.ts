@@ -15,12 +15,14 @@ import { TRAIN } from "../world/underground";
 
 interface Entry { file: string; loop: boolean; gain: number; category: string; duration: number }
 type Bank = Record<string, AudioBuffer>;
-type MusicLayer = "title" | "street" | "roof" | "subway" | "dead" | "planted";
+type MusicLayer = "title" | "street" | "roof" | "subway" | "park" | "dead" | "planted";
 /** The soundtrack (made with Suno, levelled and trimmed into public/music): a piece per layer, the subway
  *  two that take turns. They stream (no decoding into memory: phones) and crossfade as you change layer;
  *  each picks up where it left off when you come back to it, except dying and planting, which start over. */
 const MUSIC_FILES: Record<MusicLayer, string[]> = {
-  title: ["title"], street: ["street"], roof: ["roof"], subway: ["subway_a", "subway_b"], dead: ["dead"], planted: ["planted"],
+  title: ["title"], street: ["street"], roof: ["roof"], subway: ["subway_a", "subway_b", "subway_c"],
+  // Central Park: "The Rain", from the top as the rain comes in, held (looping) to the end
+  park: ["rain"], dead: ["dead"], planted: ["planted"],
 };
 /** A player the soundtrack runs on: two of them, so one can fade in while the other fades out. Both are
  *  started inside the first tap (an iPhone only lets a media element start in one; after that the game
@@ -112,7 +114,7 @@ export class Audio {
     this.deck = 1 - this.deck;
     const d = this.decks[this.deck];
     if (d.file && !d.el.paused) this.musicAt.set(d.file, d.el.currentTime);
-    const restart = layer === "dead" || layer === "planted";
+    const restart = layer === "dead" || layer === "planted" || layer === "park";
     if (d.file !== file) this.load1(d, file, restart ? 0 : this.musicAt.get(file) ?? 0);
     else if (restart) d.el.currentTime = 0;
     d.quietSince = 0;
@@ -122,7 +124,7 @@ export class Audio {
   /** the music on its own, 0..1 (the pause menu) */
   setMusicVolume(v: number) {
     this.musicVolume = v;
-    if (this.musicBus) this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * v, this.ctx!.currentTime, 0.05);
+    if (this.musicBus) this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * v * this.duck, this.ctx!.currentTime, 0.05);
   }
 
   /** Call on the first user gesture (browsers only allow sound after one). */
@@ -256,7 +258,82 @@ export class Audio {
     return { src, panner };
   }
 
-  reset() { this.lastIntegrity = 1; this.lastState = ""; }
+  reset() { this.lastIntegrity = 1; this.lastState = ""; this.lastDrops = 0; }
+
+  // ---------------------------------------------------------------- Central Park's rain
+  /** the music ducks a little under the downpour (x this) */
+  private duck = 1;
+  private lastDrops = 0;
+  private rainLoop: { gain: GainNode; level: number } | null = null;
+  private plips: AudioBuffer[] = [];
+
+  /** The downpour, made on the spot: a few seconds of hiss with thousands of tiny drop ticks in it (looped
+   *  seamlessly), and a handful of close "plips" for drops hitting the leaf. */
+  private makeRain() {
+    const ctx = this.ctx!, sr = ctx.sampleRate, len = Math.floor(sr * 4), fade = Math.floor(sr * 0.25);
+    const buf = ctx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const raw = new Float32Array(len + fade);
+      let lp = 0, lp2 = 0;
+      for (let i = 0; i < raw.length; i++) {
+        const w = Math.random() * 2 - 1;
+        lp += (w - lp) * 0.35; lp2 += (lp - lp2) * 0.08;
+        raw[i] = (lp - lp2 * 0.9) * 0.55; // a hiss with the rumble taken out
+      }
+      // drops: short bright ticks, a few hundred a second, all levels
+      for (let k = 0; k < 1700; k++) {
+        const at = Math.floor(Math.random() * (raw.length - 400)), amp = Math.pow(Math.random(), 3) * 0.6, f = 1800 + Math.random() * 4500;
+        for (let i = 0; i < 300; i++) raw[at + i] += Math.sin((i / sr) * f * 6.283) * amp * Math.exp(-i / 40);
+      }
+      const d = buf.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = raw[i];
+      for (let i = 0; i < fade; i++) { const k = i / fade; d[i] = raw[i] * k + raw[len + i] * (1 - k); }
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 260;
+    const gain = ctx.createGain(); gain.gain.value = 0;
+    src.connect(hp).connect(gain).connect(this.ambBus);
+    src.start();
+    this.rainLoop = { gain, level: 0 };
+    for (let v = 0; v < 4; v++) {
+      const n = Math.floor(sr * 0.09), b = ctx.createBuffer(1, n, sr), c = b.getChannelData(0);
+      const f0 = 2600 + v * 500, f1 = 700 + v * 120;
+      let ph = 0;
+      for (let i = 0; i < n; i++) {
+        const k = i / n;
+        ph += ((f0 + (f1 - f0) * Math.sqrt(k)) / sr) * 6.283;
+        c[i] = (Math.sin(ph) * 0.7 * Math.exp(-i / (sr * 0.018)) + (Math.random() * 2 - 1) * 0.6 * Math.exp(-i / (sr * 0.003)));
+      }
+      this.plips.push(b);
+    }
+  }
+
+  private rainSound(dt: number, leaf: Glider, under: boolean) {
+    const ctx = this.ctx!, now = ctx.currentTime;
+    if (!this.rainLoop) this.makeRain();
+    const rain = leaf.state === "attached" ? 0 : leaf.rain * (under ? 0.15 : 1);
+    if (Math.abs(rain - this.rainLoop!.level) > 0.01) {
+      this.rainLoop!.level = rain;
+      this.rainLoop!.gain.gain.setTargetAtTime(rain * 1.25, now, 0.6);
+    }
+    const duck = 1 - 0.32 * rain;
+    if (Math.abs(duck - this.duck) > 0.01) {
+      this.duck = duck;
+      this.musicBus.gain.setTargetAtTime(MUSIC_LEVEL * this.musicVolume * duck, now, 0.5);
+    }
+    // a drop hitting the leaf, right on it
+    if (leaf.drops > this.lastDrops && leaf.state === "flying") {
+      const src = ctx.createBufferSource();
+      src.buffer = this.plips[leaf.drops % this.plips.length];
+      src.playbackRate.value = 0.85 + Math.random() * 0.35;
+      const g = ctx.createGain(); g.gain.value = 0.45 + Math.random() * 0.25 + leaf.wet * 0.2;
+      src.connect(g).connect(this.sfxBus);
+      src.start();
+    }
+    this.lastDrops = leaf.drops;
+    void dt;
+  }
 
   update(dt: number, leaf: Glider, cam: { position: { x: number; y: number; z: number }; matrixWorld: { elements: number[] } }, district: string) {
     const ctx = this.ctx;
@@ -289,7 +366,10 @@ export class Audio {
       else { want[street] = 1; want.amb_rooftop = Math.min(0.4, lp.y / 40); }
       if (nearSite) want.amb_construction = roof ? 0.25 : 0.6;
     }
+    // (in the downpour the park's kids and birds go quiet under it)
+    want.amb_park *= 1 - 0.6 * leaf.rain;
     for (const a of AMBIENCES) { this.ensureLoop(a); this.setLoop(a, want[a] * 0.9, 1.5); }
+    this.rainSound(dt, leaf, under);
 
     // ---------------------------------------------------------------- the score
     {
@@ -300,7 +380,7 @@ export class Audio {
       else if (this.musicRoof && lp.y < roofline - 3) this.musicRoof = false;
       const layer: MusicLayer | null = this.musicHold ? null
         : leaf.state === "attached" ? "title" : leaf.state === "planted" ? "planted" : leaf.state === "dead" ? "dead"
-        : under ? "subway" : this.musicRoof ? "roof" : "street";
+        : under ? "subway" : leaf.rainFor > 0.5 ? "park" : this.musicRoof ? "roof" : "street";
       if (layer !== this.musicLayer) {
         this.musicLayer = layer;
         if (layer) this.musicTo(layer);
@@ -309,7 +389,7 @@ export class Audio {
         this.musicRetry = this.t;
         this.decks[this.deck].el.play().catch(() => {});
       }
-      const fade = layer === "subway" || layer === "dead" ? 0.35 : 1.2; // dropping into the subway hits at once
+      const fade = layer === "subway" || layer === "dead" ? 0.35 : layer === "park" ? 1.8 : 1.2; // dropping into the subway hits at once
       this.decks.forEach((d, i) => {
         if (!d.gain) return;
         const on = !!layer && i === this.deck;
@@ -409,7 +489,7 @@ export class Audio {
     if (leaf.state !== this.lastState) {
       if (leaf.state === "dead") {
         const f = leaf.failure;
-        if (/puddle/.test(f)) this.play("puddle_splash");
+        if (/puddle|Soaked through/.test(f)) this.play("puddle_splash");
         else if (/manhole/.test(f)) this.play("manhole_fall");
         else if (/train/.test(f)) this.play("train_hit");
         else if (/rat/.test(f)) this.play("cat_hiss", { rate: 1.6 });

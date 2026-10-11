@@ -18,7 +18,6 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { Grid, inRing, type CityData } from "../world/data";
 
 // ================================================================== layout (pure data)
@@ -43,7 +42,8 @@ export type ParkCollider =
 
 export type TreeSpecies = "elm" | "oak" | "plane";
 export const TREE_SPECIES: TreeSpecies[] = ["elm", "oak", "plane"];
-export interface ParkTree { x: number; z: number; sp: TreeSpecies; s: number; rot: number }
+/** v: which of the species' models (0 or 1), so neighbours don't match */
+export interface ParkTree { x: number; z: number; sp: TreeSpecies; s: number; rot: number; v?: number }
 
 export type PropKind = "lamp" | "bench" | "basket" | "cart" | "sitter" | "vendor";
 export type RockKind = "rock_big" | "rock_ridge" | "rock_mid" | "rock_small" | "rock_boulder";
@@ -68,6 +68,10 @@ export interface ParkLayout {
   walls: [number, number, number, number][];
   /** gate piers */
   piers: Placed[];
+  /** the low hoop fence round Sheep Meadow's lawn, and the post-and-rail along the bridle path (2 m / 3 m pieces) */
+  fences: { hoop: Placed[]; rail: Placed[] };
+  /** the bridle path's segments [ax, az, bx, bz, width]: stone dust, not asphalt */
+  bridle: [number, number, number, number, number][];
   colliders: ParkCollider[];
   /** Is this spot taken by a park feature (or the open meadow)? For other scatterers (ground.ts trees). */
   keepClear: (x: number, z: number) => boolean;
@@ -228,7 +232,7 @@ export function parkLayout(city: CityData): ParkLayout {
   const addTree = (x: number, z: number, sp: TreeSpecies, s: number, clear = 2.5) => {
     if (blocked(x, z, 1.2) || pathClear(x, z) < clear) return false;
     if (trees.some((t) => Math.abs(t.x - x) < 5 && Math.abs(t.z - z) < 5)) return false;
-    trees.push({ x, z, sp, s, rot: tr() * 6.28 });
+    trees.push({ x, z, sp, s, rot: tr() * 6.28, v: h01(Math.round(x * 7) * 131 + Math.round(z * 3)) < 0.5 ? 0 : 1 });
     return true;
   };
   const pick = (pElm: number, pOak: number): TreeSpecies => { const r = tr(); return r < pElm ? "elm" : r < pElm + pOak ? "oak" : "plane"; };
@@ -276,7 +280,7 @@ export function parkLayout(city: CityData): ParkLayout {
     if (!free(x, z, 1.0)) return false;
     props.bench.push({ x, z, rot });
     taken.push({ x, z, r: 1.0 });
-    box("a bench", x, PARK_Y + 0.42, z, 0.92, 0.42, 0.35, rot);
+    box("a bench", x, PARK_Y + 0.45, z, 0.93, 0.45, 0.36, rot);
     if (h01(seed) < 0.16) props.sitter.push({ x: x + Math.sin(rot) * 0.0, z: z + Math.cos(rot) * 0.0, rot, v: seed, y: 0 });
     return true;
   };
@@ -377,11 +381,47 @@ export function parkLayout(city: CityData): ParkLayout {
     colliders.push({ kind: "sphere", name: "the Maine monument", x: x - fx * 1.2, y: PARK_Y + 1.5 + 13 + 2.2, z: z - fz * 1.2, r: 1.9 });
   }
 
+  // ---- the lawn edge round Sheep Meadow: the low hoop fence, open where the paths come up to it
+  const fences: ParkLayout["fences"] = { hoop: [], rail: [] };
+  {
+    const o = 2.5, X0m = 430 - o, X1m = 730 + o, Z0m = 8290 - o, Z1m = 8565 + o;
+    const edges: [number, number, number, number][] = [[X0m, Z0m, X1m, Z0m], [X1m, Z0m, X1m, Z1m], [X1m, Z1m, X0m, Z1m], [X0m, Z1m, X0m, Z0m]];
+    for (const [ax, az, bx, bz] of edges) {
+      const L = Math.hypot(bx - ax, bz - az), n = Math.round(L / 2), tx = (bx - ax) / L, tz = (bz - az) / L;
+      for (let i = 0; i < n; i++) {
+        const x = ax + tx * (i + 0.5) * (L / n), z = az + tz * (i + 0.5) * (L / n);
+        if (!inPark(x, z) || city.buildingAt(x, z) || pathClear(x, z) < 1.5) continue;
+        if (trees.some((t) => Math.abs(t.x - x) < 1.6 && Math.abs(t.z - z) < 1.6)) continue;
+        fences.hoop.push({ x, z, rot: Math.atan2(-tz, tx), s: L / n / 2 });
+      }
+    }
+  }
+  // ---- the bridle path: stone dust between post-and-rail fences
+  const bridle: ParkLayout["bridle"] = [];
+  for (const st of raw.streets) {
+    if (!/BRIDLE/.test(st.n)) continue;
+    const p = st.p, w = Math.max(3, Math.min(st.w, 8));
+    for (let i = 0; i + 3 < p.length; i += 2) {
+      const ax = p[i], az = p[i + 1], bx = p[i + 2], bz = p[i + 3], L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.5 || (!inPark(ax, az) && !inPark(bx, bz)) || inMeadow(ax, az) || inMeadow(bx, bz)) continue;
+      bridle.push([ax, az, bx, bz, w]);
+      const tx = (bx - ax) / L, tz = (bz - az) / L, n = Math.max(1, Math.round(L / 3));
+      for (const side of [-1, 1]) for (let k = 0; k < n; k++) {
+        const d = (k + 0.5) * (L / n), o = w / 2 + 0.45;
+        const x = ax + tx * d - tz * o * side, z = az + tz * d + tx * o * side;
+        // (not across another path, nor into the trees, lamps and benches)
+        if (!inPark(x, z) || inMeadow(x, z) || pathClear(x, z) < 0.25 || city.buildingAt(x, z)) continue;
+        if (trees.some((t) => Math.abs(t.x - x) < 1.8 && Math.abs(t.z - z) < 1.8) || taken.some((b) => Math.hypot(b.x - x, b.z - z) < b.r + 1.6)) continue;
+        fences.rail.push({ x, z, rot: Math.atan2(-tz, tx), s: L / n / 3 });
+      }
+    }
+  }
+
   const keepClear = (x: number, z: number) => inMeadow(x, z) || !!city.buildingAt(x, z) || inPond(x, z, 2) || inRink(x, z, 2) ||
     Math.hypot(x - maine.x, z - maine.z) < 14 || Math.hypot(x - bridge.x, z - bridge.z) < 15 ||
     rocks.some((r) => Math.hypot(r.x - x, r.z - z) < Math.max(ROCKS[r.kind].rx, ROCKS[r.kind].rz) * (r.s ?? 1) + 1.5);
 
-  return { bounds: bb, trees, props, rocks, pond: POND, bridge, rink, maine, walls, piers, colliders, keepClear, inMeadow };
+  return { bounds: bb, trees, props, rocks, pond: POND, bridge, rink, maine, walls, piers, fences, bridle, colliders, keepClear, inMeadow };
 }
 
 function bbox(r: number[]) {
@@ -501,8 +541,9 @@ export function loadParkAssets(base = "./"): Promise<ParkAssets> {
       t.needsUpdate = true;
       return t;
     };
-    const [trees, props, schist, wall, rubble, ice, gTrees, gProps] = await Promise.all([
+    const [trees, props, schist, wall, rubble, ice, bridle, gTrees, gProps] = await Promise.all([
       load("trees.png"), load("props.png"), load("schist.jpg", true, true), load("wall.jpg", true, true), load("rubble.jpg", true, true), load("ice.jpg", true, true),
+      load("bridle.jpg", true, true).catch(() => new THREE.Texture()),
       new GLTFLoader().loadAsync(url("models/park_trees.glb")), new GLTFLoader().loadAsync(url("models/park_props.glb")),
     ]);
     trees.wrapS = THREE.ClampToEdgeWrapping;
@@ -517,6 +558,21 @@ export function loadParkAssets(base = "./"): Promise<ParkAssets> {
       deck: new THREE.MeshStandardMaterial({ color: 0x4f4c49, roughness: 0.95 }),
       water: new THREE.MeshStandardMaterial({ color: 0x24302e, roughness: 0.08, metalness: 0.1 }),
       person: personMaterial(),
+      // the park wall's rock-faced stones (each its own patch of the rubble texture, tinted per stone) and its coping
+      stone: new THREE.MeshStandardMaterial({ map: rubble, bumpMap: rubble, bumpScale: 2, roughness: 0.9, color: 0xc4beb4, vertexColors: true }),
+      coping: new THREE.MeshStandardMaterial({ map: wall, roughness: 0.85, color: 0xd6d0c4 }),
+    };
+    // twig cards (the atlas' right-hand column): keep the thin twigs crisp at a distance instead of letting the
+    // mips smear them into dark clumps that read as leaves, and light them as a haze of twigs (from above),
+    // not as flat cards turned away from the sun
+    mats.bark.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <alphatest_fragment>", `
+          bool twigCard = vMapUv.x > 0.75;
+          if (twigCard) { float a = diffuseColor.a; diffuseColor.a = (a - 0.45) / max(fwidth(a) * 1.5, 1e-4) + 0.5; diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.39, 0.36), 0.2); }
+          #include <alphatest_fragment>`)
+        .replace("#include <normal_fragment_maps>", `#include <normal_fragment_maps>
+          if (twigCard) normal = normalize(mix(normal, (viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz, 0.75));`);
     };
     const lib = new Map<string, Part[]>();
     for (const g of [gTrees, gProps]) {
@@ -541,7 +597,7 @@ export function loadParkAssets(base = "./"): Promise<ParkAssets> {
     for (const p of lib.get("cart_umbrella") ?? []) p.mat = both;
     return {
       parts: (n: string) => { const p = lib.get(n); if (!p) throw new Error("park asset missing: " + n); return p; },
-      mats, tex: { trees, props, schist, wall, rubble, ice },
+      mats, tex: { trees, props, schist, wall, rubble, ice, bridle },
     };
   })();
   return assetsPromise;
@@ -626,18 +682,26 @@ export class TreeField {
   ranges = [110, 300, 950];
   private batches: Batch[][] = [];
   private mats: THREE.Matrix4[];
+  /** per tree: its model (species x 2 + variant) */
   private sp: number[];
   private last = new THREE.Vector2(1e9, 1e9);
 
   constructor(readonly trees: ParkTree[], assets: ParkAssets) {
     this.root.name = "park-trees";
-    const count = TREE_SPECIES.map((s) => trees.filter((t) => t.sp === s).length);
+    // two models of each species (the second is optional: older exports have one)
+    const model = (t: ParkTree) => TREE_SPECIES.indexOf(t.sp) * 2 + (t.v ? 1 : 0);
+    this.sp = trees.map(model);
     TREE_SPECIES.forEach((s, si) => {
-      this.batches.push([0, 1, 2].map((l) => new Batch(assets.parts(`tree_${s}_lod${l}`), count[si], l < 2)));
-      for (const b of this.batches[si]) this.root.add(...b.meshes);
+      for (const v of [0, 1]) {
+        let name = `${s}${v ? "2" : ""}`;
+        try { assets.parts(`tree_${name}_lod0`); } catch { name = s; }
+        const n = this.sp.filter((k) => k === si * 2 + v).length;
+        const b = [0, 1, 2].map((l) => new Batch(assets.parts(`tree_${name}_lod${l}`), n, l < 2));
+        this.batches.push(b);
+        for (const x of b) this.root.add(...x.meshes);
+      }
     });
     this.mats = trees.map((t) => compose(t.x, PARK_Y - 0.05, t.z, t.rot, t.s).clone());
-    this.sp = trees.map((t) => TREE_SPECIES.indexOf(t.sp));
   }
 
   update(focus: THREE.Vector3) {
@@ -658,7 +722,8 @@ export class TreeField {
 
 interface Skater { cx: number; cz: number; ax: number; az: number; speed: number; a: number; phase: number; stride: number; coat: THREE.Color; h: number; mode: number }
 
-export interface CentralParkOptions { base?: string; layout?: ParkLayout }
+/** quality "low" (phones): shorter LOD distances and draw ranges */
+export interface CentralParkOptions { base?: string; layout?: ParkLayout; quality?: "low" | "medium" | "high" }
 
 export class CentralPark {
   readonly root = new THREE.Group();
@@ -674,8 +739,9 @@ export class CentralPark {
   get glow() { return this._glow; }
 
   private _glow = 1;
+  private low = false;
   private trees?: TreeField;
-  private sets: { batch: Batch; items: Placed[]; y: number; range: number; mats: THREE.Matrix4[] }[] = [];
+  private sets: { batch: Batch; items: Placed[]; y: number; range: number; near?: number; mats: THREE.Matrix4[] }[] = [];
   private statics: { o: THREE.Object3D; x: number; z: number; r: number }[] = [];
   private skaters: Skater[] = [];
   private skaterBatch?: Batch;
@@ -692,6 +758,8 @@ export class CentralPark {
     this.layout = opts.layout ?? parkLayout(city);
     this.colliders = this.layout.colliders;
     this.grid = colliderGrid(this.colliders);
+    this.low = opts.quality === "low";
+    if (this.low) this.propRange = 220;
     this.ready = loadParkAssets(opts.base).then((a) => this.build(a));
   }
 
@@ -704,6 +772,7 @@ export class CentralPark {
   private build(A: ParkAssets) {
     const L = this.layout;
     this.trees = new TreeField(L.trees, A);
+    if (this.low) this.trees.ranges = [45, 170, 560];
     this.root.add(this.trees.root);
 
     // furniture and still people
@@ -717,9 +786,17 @@ export class CentralPark {
     };
     set("lamp_post", L.props.lamp, PARK_Y, this.propRange);
     set("lamp_globe", L.props.lamp, PARK_Y, this.propRange, false);
-    set("bench", L.props.bench, PARK_Y, 260);
-    set("basket_wire", L.props.basket, PARK_Y, 200);
-    set("basket_bag", L.props.basket, PARK_Y, 200);
+    const lowR = (r: number) => (this.low ? Math.min(r, r * 0.55) : r);
+    set("bench", L.props.bench, PARK_Y, lowR(260));
+    set("basket_wire", L.props.basket, PARK_Y, lowR(200));
+    set("basket_bag", L.props.basket, PARK_Y, lowR(200));
+    // the lawn edge and the bridle path's rails (stretched to fit their runs)
+    const stretched = (name: string, items: Placed[], range: number, shadow: boolean) => {
+      const b = set(name, items, PARK_Y, range, shadow);
+      if (b) this.sets[this.sets.length - 1].mats = items.map((p) => _m.compose(_p.set(p.x, PARK_Y - 0.02, p.z), _q.setFromAxisAngle(_Y, p.rot), _s.set(p.s ?? 1, 1, 1)).clone());
+    };
+    stretched("hoop_fence", L.fences.hoop, lowR(170), false);
+    stretched("bridle_rail", L.fences.rail, lowR(220), !this.low);
     set("cart", L.props.cart, PARK_Y, this.propRange);
     set("cart_umbrella", L.props.cart, PARK_Y, this.propRange);
     const people = (list: Placed[]) => (ms: THREE.InstancedMesh[]) => personAttrs(ms, list.map((p) => p.v ?? 0), 0);
@@ -750,6 +827,8 @@ export class CentralPark {
     }
     // the wall and its gateposts
     this.walls(A);
+    // the bridle path's stone dust
+    this.bridle(A);
     // lamp glow: halos and pools of light
     this.lampGlow();
     this.applyGlow();
@@ -920,45 +999,62 @@ export class CentralPark {
     this.root.add(...this.skaterBatch.meshes);
   }
 
+  /** The low wall along 59th St, CPW and Fifth, in modelled 3 m pieces of rock-faced stone (a plain box
+   *  stand-in further off), and its gate piers. */
   private walls(A: ParkAssets) {
     const L = this.layout;
-    const chunks = new Map<string, { body: THREE.BufferGeometry[]; cap: THREE.BufferGeometry[]; x: number; z: number }>();
-    const get = (x: number, z: number) => {
-      const k = `${Math.floor(x / 300)},${Math.floor(z / 300)}`;
-      let c = chunks.get(k);
-      if (!c) chunks.set(k, (c = { body: [], cap: [], x: (Math.floor(x / 300) + 0.5) * 300, z: (Math.floor(z / 300) + 0.5) * 300 }));
-      return c;
-    };
-    const H = 0.85, T = 0.6;
+    const items: Placed[] = [], mats: THREE.Matrix4[] = [];
     for (const [ax, az, bx, bz] of L.walls) {
-      // split long runs into 30 m pieces so each lands in its chunk
-      const len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(len / 30));
+      const len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(len / 3)), rot = Math.atan2(-(bz - az), bx - ax);
       for (let i = 0; i < n; i++) {
-        const x0 = ax + ((bx - ax) * i) / n, z0 = az + ((bz - az) * i) / n, x1 = ax + ((bx - ax) * (i + 1)) / n, z1 = az + ((bz - az) * (i + 1)) / n;
-        const l = Math.hypot(x1 - x0, z1 - z0), rot = Math.atan2(-(z1 - z0), x1 - x0);
-        const body = wallBox(l, H, T, ax === bx ? z0 : x0).applyMatrix4(compose((x0 + x1) / 2, PARK_Y - 0.1, (z0 + z1) / 2, rot));
-        const cap = wallBox(l + 0.02, 0.14, T + 0.18, ax === bx ? z0 : x0).applyMatrix4(compose((x0 + x1) / 2, PARK_Y - 0.1 + H, (z0 + z1) / 2, rot));
-        const c = get((x0 + x1) / 2, (z0 + z1) / 2);
-        c.body.push(body); c.cap.push(cap);
+        const x = ax + ((bx - ax) * (i + 0.5)) / n, z = az + ((bz - az) * (i + 0.5)) / n;
+        items.push({ x, z, rot });
+        // (every other piece turned end for end, so the stones don't repeat every 3 m)
+        mats.push(_m.compose(_p.set(x, PARK_Y - 0.1, z), _q.setFromAxisAngle(_Y, rot + (i % 2) * Math.PI), _s.set(len / n / 3, 1, 1)).clone());
       }
     }
-    for (const p of L.piers) {
-      const c = get(p.x, p.z);
-      c.body.push(wallBox(0.9, 1.35, 0.9, 0).applyMatrix4(compose(p.x, PARK_Y - 0.1, p.z, p.rot)));
-      c.cap.push(wallBox(1.1, 0.2, 1.1, 0).applyMatrix4(compose(p.x, PARK_Y + 1.25, p.z, p.rot)));
+    const near = this.low ? 70 : 170;
+    const add = (name: string, list: Placed[], m: THREE.Matrix4[], from: number, to: number, shadow: boolean) => {
+      if (!list.length) return;
+      const batch = new Batch(A.parts(name), list.length, shadow);
+      for (const im of batch.meshes) im.name = name;
+      this.root.add(...batch.meshes);
+      this.sets.push({ batch, items: list, y: 0, range: to, near: from, mats: m });
+    };
+    add("wall_seg", items, mats, 0, near, true);
+    add("wall_seg_lod1", items, mats, near, 750, !this.low);
+    add("wall_pier", L.piers, L.piers.map((p) => compose(p.x, PARK_Y - 0.1, p.z, p.rot).clone()), 0, 750, true);
+  }
+
+  /** The bridle path: packed tan stone dust laid over the path (render/ground.ts draws it as a footpath). */
+  private bridle(A: ParkAssets) {
+    const segs = this.layout.bridle;
+    if (!segs.length) return;
+    const pos: number[] = [], uv: number[] = [], idx: number[] = [];
+    let u = 0;
+    for (const [ax, az, bx, bz, w] of segs) {
+      const L = Math.hypot(bx - ax, bz - az), tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx, h = w / 2 + 0.05;
+      // (a little past each end so the joints overlap)
+      const x0 = ax - tx * h * 0.5, z0 = az - tz * h * 0.5, x1 = bx + tx * h * 0.5, z1 = bz + tz * h * 0.5;
+      const v = pos.length / 3;
+      pos.push(x0 + nx * h, 0, z0 + nz * h, x0 - nx * h, 0, z0 - nz * h, x1 - nx * h, 0, z1 - nz * h, x1 + nx * h, 0, z1 + nz * h);
+      const u1 = u + (L + h) / 5;
+      uv.push(u, 0, u, w / 5, u1, w / 5, u1, 0);
+      u = u1 % 20;
+      idx.push(v, v + 2, v + 1, v, v + 3, v + 2);
     }
-    const tex = A.tex.wall.clone();
-    tex.repeat.set(1, 1);
-    tex.needsUpdate = true;
-    const bodyMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.92 });
-    const capMat = new THREE.MeshStandardMaterial({ map: tex, color: 0xcfc8ba, roughness: 0.85 });
-    for (const c of chunks.values()) {
-      const g = new THREE.Group();
-      const b = new THREE.Mesh(mergeGeometries(c.body)!, bodyMat), k = new THREE.Mesh(mergeGeometries(c.cap)!, capMat);
-      b.castShadow = b.receiveShadow = k.castShadow = k.receiveShadow = true;
-      g.add(b, k);
-      this.addStatic(g, c.x, c.z, 700);
-    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    if (g.getAttribute("normal").getY(0) < 0) { g.setIndex(idx.map((_, i) => idx[i - (i % 3) + [0, 2, 1][i % 3]])); g.computeVertexNormals(); }
+    const m = new THREE.MeshStandardMaterial({ map: A.tex.bridle, roughness: 0.97, color: 0xe2d8c8, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.position.y = 0.134;
+    mesh.receiveShadow = true;
+    const c = segs.reduce((a, q) => [a[0] + q[0] / segs.length, a[1] + q[1] / segs.length], [0, 0]);
+    this.addStatic(mesh, c[0], c[1], 1400);
   }
 
   private lampGlow() {
@@ -1002,7 +1098,9 @@ export class CentralPark {
         s.batch.begin();
         for (let i = 0; i < s.items.length; i++) {
           const p = s.items[i];
-          if (Math.abs(p.x - fx) < s.range && Math.abs(p.z - fz) < s.range && Math.hypot(p.x - fx, p.z - fz) < s.range) s.batch.push(s.mats[i]);
+          if (Math.abs(p.x - fx) > s.range || Math.abs(p.z - fz) > s.range) continue;
+          const d = Math.hypot(p.x - fx, p.z - fz);
+          if (d < s.range && d >= (s.near ?? 0)) s.batch.push(s.mats[i]);
         }
         s.batch.end();
       }
@@ -1060,20 +1158,6 @@ function personAttrs(ms: THREE.InstancedMesh[], seeds: number[], mode: number, p
     m.geometry.setAttribute("aPhase", new THREE.InstancedBufferAttribute(phase, 1).setUsage(THREE.DynamicDrawUsage));
     m.geometry.setAttribute("aMode", new THREE.InstancedBufferAttribute(md, 1));
   }
-}
-
-/** a box for the wall: centred on x/z, bottom at y 0, u along it in metres from u0, v up in metres */
-function wallBox(len: number, h: number, t: number, u0: number): THREE.BufferGeometry {
-  const g = new THREE.BoxGeometry(len, h, t).translate(0, h / 2, 0);
-  const pos = g.getAttribute("position"), nor = g.getAttribute("normal"), uv = g.getAttribute("uv");
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    const ax = Math.abs(nor.getX(i)), ay = Math.abs(nor.getY(i));
-    if (ay > 0.5) uv.setXY(i, x + u0, z);
-    else if (ax > 0.5) uv.setXY(i, z, 1 - y);
-    else uv.setXY(i, x + u0, 1 - y);
-  }
-  return g;
 }
 
 /** push a ring outward (or inward for negative d) by d metres */

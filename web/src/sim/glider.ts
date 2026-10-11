@@ -22,6 +22,7 @@ import { Facades } from "../world/facades";
 import { BARRIER_NAME } from "../world/blockers";
 import { PARK } from "../world/park";
 import { collideParkColliders, type ParkCollider } from "../render/centralPark";
+import { RAIN, rainField, rainHash, type RainField } from "../world/rain";
 
 const PROP_NAME: Record<string, string> = { ac: "an AC unit", balcony: "a balcony", solid: "a monument", cat: "a cat", line: "a washing line" };
 
@@ -94,6 +95,16 @@ export class Glider {
   /** recent damage, for debugging and the death screen */
   events: string[] = [];
   readonly air: AirSample = { x: 0, y: 0, z: 0, lane: "street", vehicle: false, train: false };
+  /** Central Park's rain (world/rain.ts): how soaked the leaf is (0..1, it's done at 1), how hard it's
+   *  raining where it is (0..1), and how many seconds of rain have fallen this run (the puddles grow with it) */
+  wet = 0;
+  rain = 0;
+  rainFor = 0;
+  /** raindrops that have hit the leaf this run (for the sound) */
+  drops = 0;
+  private dropBucket = -1;
+  private wetSaid = 0;
+  private rf: RainField | null = null;
   private dropFromRoofAt = -99;
   private lastHop = -99;
   private lastSnag = -99;
@@ -121,6 +132,7 @@ export class Glider {
     this.failure = "";
     this.boost = { t: -99, amount: 0, kind: "" };
     this.events = [];
+    this.wet = 0; this.rain = 0; this.rainFor = 0; this.drops = 0; this.dropBucket = -1; this.wetSaid = 0;
     this.updateQuat(0);
   }
 
@@ -149,6 +161,8 @@ export class Glider {
     }
     if (this.state !== "flying") return;
     this.time += dt;
+    this.weather(dt, input);
+    if (this.state !== "flying") return;
 
     // ---- the stick, with flutter that grows as the leaf tears
     const torn = 1 - this.integrity;
@@ -221,13 +235,14 @@ export class Glider {
     side.crossVectors(e, lift).normalize();
     lift.multiplyScalar(Math.cos(this.bank)).addScaledVector(side, Math.sin(this.bank));
 
-    let load = T.wingLoad * (0.7 + 0.3 * this.integrity), cd0 = T.cd0 + torn * 0.08, clMax = 9;
+    // (a soaked leaf is heavier for its size, and its sodden surface lifts less)
+    let load = T.wingLoad * (0.7 + 0.3 * this.integrity) / (1 + RAIN.weight * this.wet), cd0 = T.cd0 + torn * 0.08, clMax = 9;
     if (input.spread) { load *= T.spreadLoad; cd0 = T.spreadCd; }
     if (input.curl) { load *= T.curlLoad; cd0 = T.curlCd; clMax = T.curlCl; }
     const al = this.alpha;
     let cl = T.clAlpha * al;
     if (al > T.stall) cl = T.clAlpha * T.stall * Math.max(0.35, 1 - (al - T.stall) * 3);
-    cl = Math.min(cl, clMax) * (0.75 + 0.25 * this.integrity);
+    cl = Math.min(cl, clMax) * (0.75 + 0.25 * this.integrity) * (1 - RAIN.lift * this.wet);
     const cd = cd0 + T.kInduced * cl * cl + (al > T.stall ? (al - T.stall) * 1.5 : 0);
     const qa = 0.5 * T.rho * V * V * load; // per unit mass
     // a leaf can't pull hard turns: lift is capped at a couple of g, while drag (what carries
@@ -313,10 +328,43 @@ export class Glider {
         if (this.integrity <= 0) this.fail("Caught by a kid in Central Park");
       }
     }
-    if (this.clock - this.lastHit > T.healDelay && this.integrity < this.maxIntegrity) this.integrity = Math.min(this.maxIntegrity, this.integrity + T.heal * dt);
+    // (a leaf doesn't mend in the rain)
+    if (this.clock - this.lastHit > T.healDelay && this.integrity < this.maxIntegrity && this.rain < 0.2) this.integrity = Math.min(this.maxIntegrity, this.integrity + T.heal * dt);
     if (this.air.train) this.fail(this.air.trainDir! > 0 ? "Caught by the uptown train" : "Hit head-on by a downtown train");
     this.fate();
     this.updateQuat(0);
+  }
+
+  /** Central Park's rain: it builds as you come into the park and stops when you leave; the leaf soaks it up
+   *  (spread more, curled less) and seeded raindrops hit it, each tearing a little (more once it's sodden).
+   *  Out of the rain it slowly dries. */
+  private weather(dt: number, input: LeafInput) {
+    const R = RAIN, f = this.rf ?? (this.rf = rainField(this.city, this.flow.parkLayout));
+    const inside = this.pos.y > -0.4 && f.inRain(this.pos.x, this.pos.z);
+    this.rain = inside ? Math.min(1, this.rain + dt / R.rampIn) : Math.max(0, this.rain - dt / R.rampOut);
+    this.rainFor += this.rain * dt;
+    if (this.rain <= 0) {
+      this.dropBucket = -1;
+      if (this.wet > 0) this.wet = Math.max(0, this.wet - (input.spread ? R.drySpread : R.dry) * dt);
+      return;
+    }
+    this.wet += (input.spread ? R.soakSpread : input.curl ? R.soakCurl : R.soak) * this.rain * dt;
+    // raindrops: one chance per twentieth of a second of the leaf's clock (the same drops whatever the step)
+    const rate = (input.spread ? R.dropsSpread : input.curl ? R.dropsCurl : R.drops) * this.rain / 20;
+    const b = Math.floor(this.clock * 20);
+    if (this.dropBucket < 0) this.dropBucket = b;
+    for (; this.dropBucket < b && this.state === "flying"; this.dropBucket++) {
+      if (rainHash((this.dropBucket ^ 0x5bd1e995) | 0) >= rate) continue;
+      this.wet += R.dropWet;
+      this.drops++;
+      const dmg = R.dropDamage * (1 + R.accel * Math.max(0, (this.wet - R.heavy) / (1 - R.heavy)));
+      this.integrity -= dmg;
+      this.maxIntegrity -= dmg * FLIGHT.scar;
+      if (this.integrity <= 0) { this.events.push(`t${this.time.toFixed(1)} beaten down by the rain (wet ${this.wet.toFixed(2)})`); this.fail("Beaten down by the rain"); }
+    }
+    const said = Math.floor(this.wet * 4);
+    if (said > this.wetSaid) { this.wetSaid = said; this.events.push(`t${this.time.toFixed(1)} soaked ${(this.wet * 100).toFixed(0)}% -> ${this.integrity.toFixed(2)}`); }
+    if (this.wet >= 1) { this.wet = 1; this.fail("Soaked through"); }
   }
 
   private finishTrick(kind: "corkscrew" | "loop") {
@@ -488,6 +536,8 @@ export class Glider {
       if (this.grounded && life.puddleAt(p.x, p.z)) this.fail("Soaked in a puddle");
       else if (life.manholeAt(p.x, p.z)) this.fail("Lost down a manhole");
     }
+    // Central Park's puddles, once the rain has been falling a while: come down in one and you drown
+    if (this.rainFor > RAIN.puddleAfter && p.y < 0.12 + RAIN.puddleDepth && p.y > -0.2 && this.rf?.puddleAt(p.x, p.z, this.rainFor)) this.fail("Drowned in a puddle");
     if (p.y < -1.2 && p.y > -3 && !this.flow.under.openingAt(p.x, p.z) && !this.city.onLand(p.x, p.z)) this.fail("Swallowed by the harbour");
     if (p.y < -12) this.fail("Lost in the dark");
     // down on the track bed the rats find you

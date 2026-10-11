@@ -13,6 +13,7 @@ import GUI from "lil-gui";
 import { Leaderboard, durabilityPct } from "./game/leaderboard";
 import { SubwayArt } from "./render/subwayArt";
 import { CentralPark } from "./render/centralPark";
+import { RainView } from "./render/rain";
 import { StreetFurniture } from "./render/streetFurniture";
 import { SubwaySigns } from "./render/subwaySigns";
 import { WindDebris } from "./render/windDebris";
@@ -120,7 +121,10 @@ const trains = new TrainsView(flow);
 // the modelled subway: trains, track, stations, fare control (the simple versions show until it loads)
 const subwayArt = new SubwayArt(flow.under);
 // Central Park: the Pond, Gapstow Bridge, Wollman Rink, rocks, lamps, benches, bare elms and planes
-const centralPark = new CentralPark(city, { layout: flow.parkLayout });
+const centralPark = new CentralPark(city, { layout: flow.parkLayout, quality: stage.quality });
+// its rain (render/rain.ts; the leaf soaks it up in sim/glider.ts), the puddles, and the green ring where to land
+const rainView = new RainView(city, flow.parkLayout, stage.quality);
+stage.scene.add(rainView.root);
 let subwayArtReady = false;
 subwayArt.load().then(() => { subwayArtReady = true; subwayArt.retexture(subway.root); subway.legacy.visible = false; trains.root.visible = false; })
   .catch((e) => console.warn("subway art didn't load", e));
@@ -552,6 +556,7 @@ function tick(dt: number, render: boolean) {
   pigeons.update(dt, leaf.pos, wall);
   blockerView.userData.update(wall);
   centralPark.update(cam.position, wall);
+  rainView.update(dt, wall, leaf, cam, stage, leafView);
   chinatown.update(cam.position, wall);
   edgeWall.update(wall, cam.position);
   streetFurniture.update(cam.position, focus, wall); // street furniture: refill near the focus, signal clock
@@ -579,7 +584,7 @@ function tick(dt: number, render: boolean) {
   if (leaf.state !== "planted") endingSeen = false;
   if (leaf.state === "planted" && !replay && !endingPlaying) leaderboard.showWon(leaf.time, durabilityPct(leaf.integrity));
   leaderboard.showMini(leaf.state === "attached" && !introPlaying);
-  leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);
+  leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall, leaf.wet);
   // the leaf meter only once you're off the tree (it sat over the title screen's text)
   leafMeter.el.classList.toggle("away", leaf.state === "attached");
   audio.musicHold = introPlaying || (endingPlaying && endingSound); // (the films carry their own music)
@@ -684,5 +689,5 @@ function shrinkTextures(max: number) {
 if (LOW) for (const ms of [6000, 15000, 30000]) setTimeout(() => shrinkTextures(512), ms);
 
 // the views, for timing and debugging from the console
-Object.assign(window, { ffttViews: { chinatown, traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
+Object.assign(window, { ffttViews: { rainView, chinatown, traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
 Object.assign(window, { fftt: { THREE, tex, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances } });

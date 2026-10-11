@@ -56,10 +56,11 @@ export class LeafMeter {
     return p;
   }
 
-  update(dt: number, integrity: number, maxIntegrity: number, t: number) {
+  /** wet: 0..1, soaked by Central Park's rain (the leaf darkens, glistens and drips) */
+  update(dt: number, integrity: number, maxIntegrity: number, t: number, wet = 0) {
     this.shown += (integrity - this.shown) * Math.min(1, dt * 6);
     const v = Math.max(0, this.shown);
-    const key = `${v.toFixed(3)}|${maxIntegrity.toFixed(2)}|${v < 0.3 ? Math.floor(t * 8) : 0}`;
+    const key = `${v.toFixed(3)}|${maxIntegrity.toFixed(2)}|${v < 0.3 ? Math.floor(t * 8) : 0}|${wet.toFixed(2)}|${wet > 0.05 ? Math.floor(t * 12) : 0}`;
     if (key === this.last) return;
     this.last = key;
     const x = this.x, S = 2;
@@ -91,6 +92,20 @@ export class LeafMeter {
       if (scar <= i * 0.07) break;
       x.fillStyle = "rgba(60,30,15,0.45)";
       x.beginPath(); x.arc(cx + h.x * R, cy + h.y * R, h.r * R * 1.8, 0, 7); x.fill();
+    }
+    // soaked: darker, cold, beaded with water
+    if (wet > 0.01) {
+      x.fillStyle = `rgba(16,24,40,${Math.min(0.55, wet * 0.55)})`;
+      x.fill(shape);
+      for (let i = 0; i < 9; i++) {
+        const h = this.holes[i];
+        if (wet < i * 0.1) break;
+        const bx = cx + h.x * R * 0.9 + 10, by = cy + h.y * R * 0.9 - 6;
+        x.fillStyle = `rgba(200,225,255,${0.25 + wet * 0.35})`;
+        x.beginPath(); x.ellipse(bx, by, 3.2, 4.2, 0, 0, 7); x.fill();
+        x.fillStyle = `rgba(255,255,255,${0.5 + wet * 0.4})`;
+        x.beginPath(); x.arc(bx - 1, by - 1.5, 1.2, 0, 7); x.fill();
+      }
     }
     // veins
     x.strokeStyle = `rgba(255,210,170,${0.55 - wear * 0.35})`;
@@ -124,6 +139,16 @@ export class LeafMeter {
     // the seed at the stem: always there, it's the point
     x.fillStyle = "#6a4422";
     x.beginPath(); x.ellipse(cx + 2, cy + R * 0.2, 7, 10, 0.3, 0, 7); x.fill();
+    // drips off the tip and the lobes once it's properly wet
+    if (wet > 0.25) {
+      for (let k = 0; k < 3; k++) {
+        const ph = (t * (0.7 + k * 0.23) + k * 0.37) % 1;
+        if (ph * 3 > wet * 3 + 0.2) continue;
+        const dx = [cx - R * 0.55, cx + R * 0.5, cx + 4][k], dy0 = [cy - R * 0.05, cy - R * 0.1, cy + R * 0.55][k];
+        x.fillStyle = `rgba(190,220,255,${(1 - ph) * 0.8})`;
+        x.beginPath(); x.ellipse(dx, dy0 + ph * ph * 60, 2.4, 3.6, 0, 0, 7); x.fill();
+      }
+    }
     const label = this.el.querySelector(".leafmeter-label") as HTMLElement;
     label.textContent = `${Math.round(v * 100)}%`;
     label.classList.toggle("low", v < 0.3);

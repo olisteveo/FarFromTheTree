@@ -64,6 +64,10 @@ export interface SurfaceOpts {
   polygonOffset?: number;
 }
 
+/** Rain on the ground (render/rain.ts sets these): the box it falls in (x0, z0, x1, z1) and how soaked the
+ *  ground there is, 0..1. Shared by every ground surface. */
+export const GROUND_RAIN = { box: { value: new THREE.Vector4(0, 0, 0, 0) }, amount: { value: 0 } };
+
 export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, color: o.tint ?? 0xffffff });
   if (o.polygonOffset) { m.polygonOffset = true; m.polygonOffsetFactor = o.polygonOffset; m.polygonOffsetUnits = o.polygonOffset; }
@@ -76,6 +80,7 @@ export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
     gMaskRange: { value: new THREE.Vector2(...(o.maskRange ?? [0.4, 0.6])) },
     gWet: { value: o.wet ?? 1 },
     gNS: { value: o.normalScale ?? 1 },
+    gRainBox: GROUND_RAIN.box, gRain: GROUND_RAIN.amount,
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
@@ -86,6 +91,7 @@ export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
       .replace("#include <common>", `#include <common>
         uniform sampler2D gA, gAn, gB, gBn, gMacro;
         uniform vec2 gScale, gMaskRange; uniform vec3 gMask; uniform float gShareB, gWet, gNS;
+        uniform vec4 gRainBox; uniform float gRain;
         varying vec2 vGW;
         vec3 gNW = vec3(0.0, 1.0, 0.0); float gR = 0.9;
         float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
@@ -123,6 +129,12 @@ export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
         vec3 mac2 = texture2D(gMacro, vGW.yx / 23.0 + 0.37).rgb;
         float grime = mix(0.88, 1.08, mac.g) * mix(0.94, 1.05, mac2.b);
         float wet = smoothstep(0.64, 0.78, mac.r * 0.7 + mac2.r * 0.3) * gWet;
+        // rain: the whole surface darkens and goes glossy, the low spots first
+        if (gRain > 0.0) {
+          vec2 rb = min(vGW - gRainBox.xy, gRainBox.zw - vGW);
+          float inBox = smoothstep(-20.0, 10.0, min(rb.x, rb.y));
+          wet = max(wet, gRain * inBox * mix(0.55, 1.0, smoothstep(0.35, 0.7, mac.r * 0.6 + mac2.r * 0.4)));
+        }
         diffuseColor.rgb *= alb.rgb * grime * mix(1.0, 0.5, wet);
         gR = mix(nr.a, 0.36, wet);
         nw *= gNS * (1.0 - 0.7 * wet);
