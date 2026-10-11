@@ -170,6 +170,7 @@ export class AchievementGallery {
       if (this.lift.classList.contains("on")) { this.unlift(); return; }
       if (t.closest(".alb-x")) { this.show(false); return; }
       if (t.closest(".alb-arrow")) { void this.turn(t.closest(".alb-arrow.next") ? 1 : -1); return; }
+      if (this.covered && t.closest(".alb-book")) { void this.turn(1); return; }
       const photo = t.closest<HTMLElement>(".alb-photo");
       if (photo?.dataset.id) { this.liftUp(photo.dataset.id); return; }
       if (!t.closest(".alb-book, .alb-nav")) this.show(false);   // a tap outside the album
@@ -241,7 +242,8 @@ export class AchievementGallery {
     this.single = innerWidth < 700 && innerHeight > innerWidth * 1.05;
     this.el.classList.toggle("single", this.single);
     if (!this.single) this.page -= this.page % 2;
-    if (!this.turning && !this.book.classList.contains("closed")) this.render();
+    if (this.covered && !this.turning) void this.openCover(); // (re-laid for the new shape, still shut)
+    else if (!this.turning && !this.book.classList.contains("closed")) this.render();
   }
 
   private pageHtml(i: number): string {
@@ -280,7 +282,7 @@ export class AchievementGallery {
       this.fill(this.right, this.page + 1);
     }
     const step = this.single ? 1 : 2;
-    this.prev.disabled = this.page <= 0;
+    this.prev.disabled = false; // (from the first pages it shuts the album again)
     this.next.disabled = this.page + step >= this.pageCount;
     const n = this.single ? `page ${this.page + 1} of ${this.pageCount}` : `pages ${this.page + 1}–${Math.min(this.page + 2, this.pageCount)} of ${this.pageCount}`;
     this.label.textContent = this.page === 0 ? "My Journey" : n;
@@ -299,29 +301,45 @@ export class AchievementGallery {
     return f;
   }
 
-  /** the closed album, then the cover swings open onto the inside cover and the first page */
+  /** the closed album: it waits on its cover until you open it (next, a swipe, a tap on the cover) */
+  private covered = false;
+  private coverFlip: HTMLElement | null = null;
   private async openCover() {
     this.turning = true;
     this.page = 0;
+    this.covered = true;
     this.book.classList.add("closed");
+    this.coverFlip?.remove();
     if (this.single) {
       this.left.style.display = "none";
       this.fill(this.right, 0);
-      const f = this.flipper("fwd", "", "", "alb-cover");
+      this.coverFlip = this.flipper("fwd", "", "", "alb-cover");
+    } else {
+      this.left.style.display = "";
+      this.fill(this.left, -1);
+      this.fill(this.right, 1);
+      this.coverFlip = this.flipper("fwd", "", this.pageHtml(0), "alb-cover");
+    }
+    this.prev.disabled = true;
+    this.next.disabled = false;
+    this.label.textContent = "Open the album";
+    this.turning = false;
+  }
+
+  /** the cover swings open onto the inside cover and the first page */
+  private async swingOpen() {
+    const f = this.coverFlip;
+    if (!f) return;
+    this.turning = true;
+    this.covered = false;
+    this.coverFlip = null;
+    if (this.single) {
       this.render();
-      await wait(380);
-      if (!this.open) return;
       f.style.transform = "rotateY(-100deg)"; f.style.opacity = "0";
       this.book.classList.remove("closed");
       await wait(520);
       f.remove();
     } else {
-      this.left.style.display = "";
-      this.fill(this.left, -1);
-      this.fill(this.right, 1);
-      const f = this.flipper("fwd", "", this.pageHtml(0), "alb-cover");
-      await wait(380);
-      if (!this.open) return;
       f.style.transform = "rotateY(-180deg)";
       this.book.classList.remove("closed");
       await wait(680);
@@ -333,9 +351,11 @@ export class AchievementGallery {
 
   private async turn(dir: 1 | -1) {
     if (this.turning || this.lift.classList.contains("on")) return;
+    if (this.covered) { if (dir > 0) await this.swingOpen(); return; }
     const step = this.single ? 1 : 2;
     const to = this.page + dir * step;
-    if (to < 0 || to >= this.pageCount) return;
+    if (to < 0) { await this.openCover(); return; } // (back from the first pages: shut it again)
+    if (to >= this.pageCount) return;
     this.turning = true;
     if (this.single) {
       const old = this.pageHtml(this.page);
