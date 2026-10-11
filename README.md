@@ -105,3 +105,6 @@ contributors. Buildings are styled, not copied. Orchestral samples: VSCO 2 Commu
 
 The first prototype was an s&box (C#) project; its files (`Assets/`, `Code/`, `Editor/`,
 `farfromthetree.sbproj`) are still in the repo but the game is now the web version in `web/`.
+The game will be rebuilt in s&box for Steam: see [docs/SBOX_MIGRATION.md](docs/SBOX_MIGRATION.md)
+for the plan, the portability rules the web code follows, and the exported data (`web/export/sbox/`)
+the port is tested against.

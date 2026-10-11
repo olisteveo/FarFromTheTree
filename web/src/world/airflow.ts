@@ -290,7 +290,10 @@ export class Airflow {
    *  either side). Costly, not a trap: you can always claw your way back to a way. */
   private wrongTurn(x: number, z: number) {
     const a = Math.floor(x / 260), b = Math.floor(z / 260);
-    const h = Math.abs(Math.sin(a * 127.1 + b * 311.7) * 43758.5453) % 1;
+    // (an integer hash: a float sin-hash differs between engines in its last bits, and the port must match)
+    let n = (Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca77)) >>> 0;
+    n ^= n >>> 15; n = Math.imul(n, 0x2c1b3c6d) >>> 0; n ^= n >>> 12;
+    const h = (n >>> 0) / 4294967296;
     return (h < 0.5 ? 1 : -1) * Math.PI * (0.39 + 0.78 * Math.abs(h - 0.5));
   }
 
