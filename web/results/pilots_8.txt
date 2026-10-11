@@ -1,0 +1,30 @@
+
+== west: 0/3 planted
+  dead     0.69 km in 1.3 min - Hit head-on by a downtown train
+     40s s381 (-157,8,351) roof | 50s s511 (-145,11,487) roof | 60s s610 (-157,-1,585) roof | 70s s692 (-157,-4,667) roof
+  flying   0.75 km in 3.2 min - 
+     160s s749 (-187,6,723) roof | 170s s748 (-185,1,722) roof | 180s s750 (-187,3,724) roof | 190s s750 (-179,5,724) roof  ::  t179.9 a wall at 5.0 m/s (wind 2.1 street, y 2.6) -> 0.87 | t188.3 a wall at 4.5 m/s (wind 2.1 street, y 4.2) -> 0.88
+  dead     4.46 km in 6.8 min - Hit by a cab
+     370s s4257 (-351,12,4107) roof | 380s s4336 (-305,6,4177) roof | 390s s4368 (-291,1,4206) roof | 400s s4460 (-279,10,4302) roof  ::  t401.9 hit by a cab (y 2.5) -> 0.08 | t407.3 hit by a cab (y 2.8) -> -0.02
+
+== east: 0/3 planted
+  flying   0.87 km in 3.2 min - 
+     160s s864 (14,5,853) roof | 170s s864 (20,2,853) roof | 180s s864 (24,3,853) roof | 190s s864 (25,1,854) roof  ::  t90.2 a wall at 10.3 m/s (wind 6.5 street, y 16.5) -> 0.74 | t150.3 a wall at 5.6 m/s (wind 7.8 street, y 5.8) -> 0.83
+  dead     1.90 km in 15.1 min - Torn apart on a wall
+     870s s1884 (-290,7,1852) roof | 880s s1876 (-285,1,1850) roof | 890s s1875 (-285,2,1850) roof | 900s s1898 (-307,9,1860) roof  ::  t900.2 a wall at 10.4 m/s (wind 17.3 street, y 9.6) -> 0.34 | t903.1 a wall at 22.7 m/s (wind 6.5 street, y 4.6) -> -0.19
+  flying   1.88 km in 21.8 min - 
+     1280s s1824 (-261,1,1853) roof | 1290s s1824 (-262,1,1852) roof | 1300s s1824 (-256,1,1854) roof | 1310s s1824 (-253,1,1852) roof  ::  t1191.7 hit by a cab (y 2.4) -> 0.29 | t1255.8 hit by a cab (y 3.3) -> 0.25
+
+== roofs: 2/3 planted, best 12.2 min
+  flying   3.83 km in 9.7 min - 
+     550s s3823 (-411,2,3663) roof | 560s s3825 (-409,17,3665) roof | 570s s3822 (-415,3,3662) roof | 580s s3824 (-404,2,3663) roof  ::  t550.4 a wall at 8.8 m/s (wind 9.3 street, y 3.7) -> 0.46 | t568.6 a wall at 7.1 m/s (wind 2.9 street, y 4.2) -> 0.47
+  planted  8.76 km in 12.2 min 
+  planted  8.70 km in 12.6 min 
+
+== subway: 0/3 planted
+  dead     0.67 km in 1.1 min (used the subway) - Hit head-on by a downtown train
+     30s s304 (-146,-4,272) roof | 40s s407 (-137,-8,383) roof | 50s s560 (-143,-6,536) roof | 60s s669 (-148,-7,645) roof  ::  t24.3 the tunnel wall at 7.4 m/s (wind 6.0 subway, y -0.6) -> 1.00
+  dead     3.20 km in 5.3 min (used the subway) - Torn apart on a wall
+     280s s2950 (-571,18,2809) roof | 290s s3035 (-547,5,2894) roof | 300s s3061 (-536,19,2919) roof | 310s s3198 (-522,16,3057) roof  ::  t310.1 a wall at 17.3 m/s (wind 5.9 street, y 16.5) -> 0.10 | t315.5 a wall at 20.0 m/s (wind 7.3 street, y 18.7) -> -0.31
+  dead     7.78 km in 11.1 min (used the subway) - Hit by a cab
+     630s s7315 (684,5,6967) roof | 640s s7500 (690,9,7151) roof | 650s s7647 (705,4,7298) roof | 660s s7776 (737,1,7424) roof  ::  t662.2 hit by a cab (y 1.5) -> 0.12 | t665.6 hit by a cab (y 1.8) -> -0.02

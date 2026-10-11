@@ -19,6 +19,8 @@
 import type { CityData } from "./data";
 import { Grid } from "./data";
 import { project } from "./landmarks";
+import { makeCourse, streetPath } from "./course";
+import { nearestEdge, type Polyline } from "./data";
 import type { Barrier } from "./blockers";
 
 export type JetKind = "canyon" | "sky" | "plunge" | "gutter";
@@ -35,6 +37,8 @@ export interface Jet {
   speed: number;
   /** 0 breeze, 1 stream, 2 gale (see JET_GRADE) */
   grade: number;
+  /** one of the ways through (see ROUTES), if it's a link in one */
+  route?: string;
   /** route position of its start and end (for the minimap and the pilots) */
   s0: number;
   s1: number;
@@ -80,6 +84,7 @@ export class WindFeatures {
     this.buildSky();
     this.buildPlunges();
     this.buildGutters();
+    this.buildRoutes();
     for (const j of this.jets) {
       const p = j.pts, n = p.length / 3;
       let cut = n;
@@ -98,7 +103,8 @@ export class WindFeatures {
       // into the wall and holds you there)
       for (let k = 2; k < cut - 2; k++) {
         const b = this.city.buildingAt(p[k * 3], p[k * 3 + 2]);
-        if (b && p[k * 3 + 1] < b.h + 2) { cut = Math.max(2, k - 2); break; }
+        // (a way-through link along the streets only clips a corner at a junction: that doesn't count)
+        if (b && p[k * 3 + 1] < b.h + 2 && !(j.route && nearestEdge(b.poly, p[k * 3], p[k * 3 + 2]).d < 3)) { cut = Math.max(2, k - 2); break; }
       }
       if (cut < n) { j.pts = p.slice(0, cut * 3); j.length = (cut - 1) * STEP; }
     }
@@ -107,7 +113,7 @@ export class WindFeatures {
       j.id = i;
       // a spread of grades: about a third gales, the sky currents mostly gales, gutter runs never
       const h = h01(i * 7919 + 13);
-      j.grade = j.kind === "gutter" ? (h < 0.5 ? 0 : 1) : j.kind === "sky" ? (h < 0.25 ? 1 : 2) : h < 0.3 ? 0 : h < 0.65 ? 1 : 2;
+      if (!j.route) j.grade = j.kind === "gutter" ? (h < 0.5 ? 0 : 1) : j.kind === "sky" ? (h < 0.25 ? 1 : 2) : h < 0.3 ? 0 : h < 0.65 ? 1 : 2;
       j.speed *= JET_GRADE[j.grade].speed;
       for (let k = 0; k < j.pts.length / 3 - 1; k++) {
         const ax = j.pts[k * 3], az = j.pts[k * 3 + 2], bx = j.pts[k * 3 + 3], bz = j.pts[k * 3 + 5];
@@ -236,6 +242,54 @@ export class WindFeatures {
   }
 
   /** Fast and low along the kerb: gutter runs. */
+  /** The ways through: chains of currents from Battery Park to the park, each a different line, with
+   *  gaps between the links you have to fly yourself (and the closed streets to climb), so they help a
+   *  lot but never carry you all the way. Mostly streams, now and then a gale, the odd breeze.
+   *    west    down the avenues west of Broadway, at about 12 m (over the traffic, under the roofs)
+   *    east    the same east of Broadway
+   *    roofs   along Broadway over the rooftops (up to 70 m: between the towers it stays at 70)
+   *  (the fourth way is the subway: the tunnel's own draught, the ways in and out and the vents) */
+  readonly routes: { id: string; name: string; line: Polyline; y: (s: number) => number }[] = [];
+  private buildRoutes() {
+    const city = this.city, course = makeCourse(city), end = { x: 580, z: 8420 };
+    const roofY = (line: Polyline) => (s: number) => {
+      let h = 0;
+      for (let d = -40; d <= 40; d += 10) { const a = line.at(s + d); h = Math.max(h, city.canopy(a.x, a.z, 20)); }
+      return Math.max(28, Math.min(70, h + 14));
+    };
+    const defs = [
+      { id: "west", name: "the West Side", line: streetPath(city, course.tree, end, -170), y: () => 12, kind: "canyon" as JetKind },
+      { id: "east", name: "the East Side", line: streetPath(city, course.tree, end, 170), y: () => 12, kind: "canyon" as JetKind },
+      { id: "roofs", name: "the Rooftops", line: course.path, y: null as unknown as (s: number) => number, kind: "sky" as JetKind },
+    ];
+    defs[2].y = roofY(course.path);
+    let seed = 0;
+    for (const d of defs) {
+      this.routes.push({ id: d.id, name: d.name, line: d.line, y: d.y });
+      let s = 60; // a run out of the tree first
+      let link = 0;
+      while (s < d.line.length - 80) {
+        const h1 = h01(++seed * 7919 + d.id.length), h2 = h01(seed * 104729 + 3);
+        const len = 220 + h1 * 160, gap = 40 + h2 * 50;
+        const path: [number, number, number][] = [];
+        for (let t = s; t <= Math.min(s + len, d.line.length - 40); t += STEP) { const a = d.line.at(t); path.push([a.x, d.y(t), a.z]); }
+        if (path.length > 6) {
+          const before = this.jets.length;
+          this.addJet(d.kind, `${d.name}, link ${++link}`, path);
+          const j = this.jets[before];
+          if (j) {
+            j.route = d.id;
+            j.r = d.kind === "sky" ? 6 : 4;
+            j.speed = d.kind === "sky" ? 15 : 13;
+            const g = h01(seed * 31 + 17);
+            j.grade = g < 0.22 ? 0 : g < 0.75 ? 1 : 2;
+          }
+        }
+        s += len + gap;
+      }
+    }
+  }
+
   private buildGutters() {
     const city = this.city, route = city.route;
     for (let s = 420; s < route.length - 500; s += 1350 + h01(s * 3) * 400) {

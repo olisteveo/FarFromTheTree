@@ -15,7 +15,8 @@ export interface Course {
 
 /** Shortest way along the street centrelines from the street nearest the route's start to the one nearest its
  *  end, kept close to the route (each metre costs more the further it strays from it). */
-function streetPath(city: CityData, from: { x: number; z: number }, to: { x: number; z: number }): Polyline {
+/** shift: keep to the route's left (negative, metres) or right instead of on it (alternative ways through) */
+export function streetPath(city: CityData, from: { x: number; z: number }, to: { x: number; z: number }, shift = 0): Polyline {
   const key = (x: number, z: number) => `${Math.round(x * 2)},${Math.round(z * 2)}`;
   const nodes = new Map<string, number>(), xs: number[] = [], zs: number[] = [];
   const adj: { to: number; cost: number; pts: number[] }[][] = [];
@@ -33,7 +34,9 @@ function streetPath(city: CityData, from: { x: number; z: number }, to: { x: num
     for (let i = 0; i < n - 1; i++) {
       const mx = (p[i * 2] + p[i * 2 + 2]) / 2, mz = (p[i * 2 + 1] + p[i * 2 + 3]) / 2;
       const L = Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]);
-      cost += L * (1 + (city.route.nearest(mx, mz).d / 60) ** 2);
+      const n = city.route.nearest(mx, mz);
+      const away = shift ? Math.abs(n.off - shift) : n.d;
+      cost += L * (1 + (away / 60) ** 2);
     }
     adj[a].push({ to: b, cost, pts: p });
     const rev: number[] = [];

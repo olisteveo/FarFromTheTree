@@ -189,10 +189,10 @@ export class Underground {
           ex = p[i * 3]; ez = p[i * 3 + 2];
           if (p[i * 3 + 1] < -3.8 && this.hallAt(ex, ez)) break;
         }
-        // and on down over the track on this side, turning uptown into the tunnel's draught (toward the
-        // nearer track, never back on itself)
-        const q = sub.nearest(ex, ez), lane = Math.max(-TRAIN.track, Math.min(TRAIN.track, q.off));
-        for (const [ds, y] of [[4, -5.8], [10, -6.2], [18, -6.2]] as const) {
+        // and on down over the uptown track, easing across as it turns uptown into the tunnel's draught
+        // (onto the downtown track, it delivered you to the trains coming the other way)
+        const q = sub.nearest(ex, ez), lane = TRAIN.track;
+        for (const [ds, y] of [[6, -5.8], [14, -6.0], [24, -6.2]] as const) {
           const a = sub.at(q.s + ds);
           rev.push(a.x + a.tz * lane, y, a.z - a.tx * lane);
         }

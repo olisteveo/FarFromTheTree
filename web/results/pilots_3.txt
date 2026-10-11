@@ -1,0 +1,23 @@
+
+== roof: 0/3 planted
+  dead     0.50 km in 0.9 min - Caught by the uptown train
+     20s s251 (-89,13,234) roof | 30s s270 (-121,-5,244) roof | 40s s356 (-139,-6,329) roof | 50s s504 (-140,-6,480) roof
+  flying   0.76 km in 3.0 min - 
+     150s s762 (-146,1,738) roof | 160s s762 (-146,1,738) roof | 170s s762 (-146,1,738) roof | 180s s762 (-146,1,738) roof  ::  t79.5 a wall at 9.2 m/s (wind 9.9 street, y 0.0) -> 0.86
+  flying   3.57 km in 7.7 min - 
+     430s s3572 (-398,22,3413) roof | 440s s3572 (-398,22,3413) roof | 450s s3572 (-398,22,3413) roof | 460s s3572 (-398,22,3413) roof  ::  t304.9 lamppost at 9.2 m/s (wind 14.2 street, y 7.7) -> 0.60 | t335.5 a wall at 9.4 m/s (wind 9.7 street, y 12.5) -> 0.47
+
+== mixed: 0/3 planted
+  dead     2.05 km in 3.5 min (used the subway) - Torn apart on an AC unit
+     170s s1893 (-536,1,1767) roof | 180s s1893 (-538,1,1766) roof | 190s s1915 (-605,17,1764) roof | 200s s2050 (-599,5,1911) roof  ::  t207.6 a wall at 13.9 m/s (wind 2.8 street, y 15.9) -> 0.16 | t210.0 an AC unit at 11.6 m/s (wind 14.0 street, y 14.9) -> -0.05
+  dead     7.73 km in 11.1 min (used the subway) - Hit by a cab
+     630s s7214 (675,2,6867) roof | 640s s7417 (685,7,7069) roof | 650s s7577 (696,8,7229) roof | 660s s7731 (723,1,7380) roof  ::  t662.9 hit by a cab (y 1.5) -> 0.05 | t664.2 hit by a cab (y 1.5) -> -0.09
+  flying   3.09 km in 6.3 min (used the subway) - 
+     350s s3088 (-495,12,2940) roof | 360s s3088 (-495,15,2940) roof | 370s s3088 (-495,12,2940) roof | 380s s3088 (-495,12,2940) roof  ::  t271.7 a wall at 7.4 m/s (wind 3.2 street, y 14.6) -> 0.46 | t273.1 a wall at 6.6 m/s (wind 2.4 street, y 12.2) -> 0.40
+
+== subway: 1/3 planted, best 13.4 min
+  dead     8.13 km in 11.5 min (used the subway) - Hit by a cab
+     650s s7766 (731,3,7414) roof | 660s s7885 (770,13,7527) roof | 670s s7987 (807,6,7622) roof | 680s s8131 (863,3,7743) roof  ::  t688.8 a tree at 14.7 m/s (wind 17.5 street, y 0.2) -> 0.08 | t689.5 hit by a cab (y 1.8) -> -0.06
+  planted  8.70 km in 13.4 min (used the subway) 
+  dead     7.75 km in 11.5 min (used the subway) - Hit by a cab
+     650s s7302 (684,6,6954) roof | 660s s7470 (689,3,7121) roof | 670s s7620 (701,5,7271) roof | 680s s7748 (725,11,7397) roof  ::  t684.8 hit by a cab (y 3.2) -> 0.05 | t687.7 hit by a cab (y 3.1) -> -0.09

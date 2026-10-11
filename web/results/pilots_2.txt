@@ -1,0 +1,15 @@
+
+== roof: 0/3 planted
+  flying   3.83 km in 7.8 min - 
+     440s s3827 y12 roof | 450s s3827 y1 roof | 460s s3828 y1 roof | 470s s3828 y9 roof  ::  t316.3 a wall at 5.8 m/s (wind 4.5 street, y 9.8) -> 0.11 | t367.7 a wall at 5.7 m/s (wind 2.5 street, y 0.9) -> 0.34
+  dead     3.11 km in 4.4 min - Torn apart on a wall
+     230s s2678 y33 roof | 240s s2836 y32 roof | 250s s2976 y17 roof | 260s s3115 y4 roof  ::  t259.1 a wall at 4.8 m/s (wind 10.3 street, y 2.9) -> 0.11 | t264.0 a wall at 14.0 m/s (wind 7.6 street, y 6.1) -> -0.14
+  flying   3.83 km in 7.5 min - 
+     420s s3827 y11 roof | 430s s3828 y2 roof | 440s s3828 y4 roof | 450s s3831 y9 roof  ::  t340.8 a wall at 5.7 m/s (wind 6.2 street, y 9.9) -> 0.59 | t341.9 a wall at 6.0 m/s (wind 5.7 street, y 5.8) -> 0.55
+
+== mixed: 1/3 planted, best 11.3 min
+  dead     3.05 km in 4.4 min (used the subway) - Swatted by a cat
+     230s s2714 y22 roof | 240s s2814 y25 roof | 250s s2922 y26 roof | 260s s3050 y17 roof  ::  t258.7 a wall at 4.8 m/s (wind 7.7 street, y 9.7) -> 0.21 | t261.8 hit by a cat (y 18.1) -> -0.09
+  flying   3.83 km in 7.0 min (used the subway) - 
+     390s s3827 y3 roof | 400s s3828 y9 roof | 410s s3828 y5 roof | 420s s3827 y2 roof  ::  t314.9 a wall at 6.1 m/s (wind 4.1 street, y 7.0) -> 0.46 | t360.3 an AC unit at 7.8 m/s (wind 5.8 street, y 8.0) -> 0.39
+  planted  8.65 km in 11.3 min (used the subway) 

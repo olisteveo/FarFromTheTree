@@ -1,0 +1,32 @@
+
+== roof: 0/3 planted
+  dead     0.50 km in 0.9 min - Caught by the uptown train
+     20s s251 (-89,13,234) roof | 30s s270 (-121,-5,244) roof | 40s s356 (-139,-6,329) roof | 50s s504 (-140,-6,480) roof
+  flying   0.76 km in 3.0 min - 
+     150s s762 (-146,1,738) roof | 160s s762 (-146,1,738) roof | 170s s762 (-146,1,738) roof | 180s s762 (-146,1,738) roof  ::  t79.5 a wall at 9.2 m/s (wind 9.9 street, y 0.0) -> 0.86
+  flying   3.31 km in 7.0 min - 
+     390s s3313 (-470,6,3164) roof | 400s s3313 (-470,6,3164) roof | 410s s3313 (-470,6,3164) roof | 420s s3313 (-470,6,3164) roof  ::  t292.3 a wall at 7.8 m/s (wind 2.5 street, y 19.2) -> 0.15 | t317.6 a wall at 10.7 m/s (wind 25.4 street, y 3.5) -> 0.30
+
+== street: 0/3 planted
+  dead     0.66 km in 1.1 min - Hit head-on by a downtown train
+     30s s307 (-142,7,277) street | 40s s442 (-141,5,418) street | 50s s579 (-148,4,555) street | 60s s657 (-148,-6,633) street  ::  t38.4 hit by a cab (y 0.8) -> 0.72 | t48.9 hit by a cab (y 1.5) -> 0.78
+  dead     2.79 km in 4.4 min - Hit by a cab
+     230s s2335 (-616,3,2198) street | 240s s2478 (-602,3,2339) street | 250s s2627 (-570,7,2485) street | 260s s2787 (-536,4,2643) street  ::  t260.4 hit by a cab (y 1.5) -> 0.11 | t265.3 hit by a cab (y 1.4) -> -0.01
+  flying   1.43 km in 4.3 min - 
+     230s s1431 (-327,1,1355) street | 240s s1432 (-327,1,1355) street | 250s s1431 (-327,1,1355) street | 260s s1432 (-327,0,1355) street  ::  t121.9 hit by a cab (y 1.5) -> 0.42 | t152.0 a wall at 6.7 m/s (wind 9.7 street, y 5.9) -> 0.55
+
+== subway: 0/3 planted
+  dead     8.16 km in 10.8 min (used the subway) - Caught by a kid in Central Park
+     610s s7806 (743,3,7452) roof | 620s s7928 (788,1,7565) roof | 630s s8061 (838,1,7690) roof | 640s s8159 (848,1,7765) roof  ::  t643.9 hit by a cab (y 1.5) -> 0.10 | t647.1 caught by a kid in Central Park -> -0.02
+  flying   3.31 km in 7.0 min (used the subway) - 
+     390s s3313 (-470,6,3164) roof | 400s s3313 (-470,6,3164) roof | 410s s3313 (-470,6,3164) roof | 420s s3313 (-470,6,3164) roof  ::  t291.5 a wall at 5.4 m/s (wind 14.5 street, y 7.5) -> 0.14 | t313.9 a wall at 12.3 m/s (wind 16.9 street, y 4.2) -> 0.26
+  dead     3.82 km in 6.4 min (used the subway) - Hit by a cab
+     350s s3540 (-377,1,3375) roof | 360s s3548 (-352,4,3379) roof | 370s s3668 (-344,4,3499) roof | 380s s3818 (-348,1,3654) roof  ::  t376.9 hit by a cab (y 1.1) -> 0.05 | t383.2 hit by a cab (y 0.6) -> -0.02
+
+== mixed: 0/3 planted
+  flying   3.77 km in 7.7 min (used the subway) - 
+     430s s3771 (-410,16,3620) roof | 440s s3772 (-402,2,3618) roof | 450s s3772 (-402,1,3618) roof | 460s s3772 (-401,12,3618) roof  ::  t320.6 a wall at 8.2 m/s (wind 12.0 street, y 12.0) -> 0.57 | t434.6 a wall at 5.8 m/s (wind 2.5 street, y 5.1) -> 0.60
+  dead     3.15 km in 5.1 min (used the subway) - Torn apart on a wall
+     270s s2879 (-543,23,2736) roof | 280s s2962 (-521,33,2817) roof | 290s s3052 (-555,8,2914) roof | 300s s3155 (-520,5,3012) roof  ::  t306.1 lamp arm at 14.4 m/s (wind 14.1 street, y 9.1) -> 0.03 | t307.6 a wall at 16.4 m/s (wind 1.0 street, y 14.0) -> -0.32
+  dead     2.95 km in 4.5 min (used the subway) - Torn apart on a wall
+     230s s2625 (-584,36,2485) roof | 240s s2724 (-569,19,2583) roof | 250s s2805 (-543,11,2662) roof | 260s s2949 (-537,29,2806) roof  ::  t263.1 a wall at 15.6 m/s (wind 8.0 roof, y 21.9) -> 0.18 | t269.9 a wall at 23.8 m/s (wind 7.2 street, y 6.3) -> -0.30

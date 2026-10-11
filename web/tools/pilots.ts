@@ -17,7 +17,7 @@ import { TUNNEL, type Shaft } from "../src/world/underground";
 
 try { os.setPriority(os.constants.priority.PRIORITY_BELOW_NORMAL); } catch { /* ignore */ }
 const runs = Number(process.argv[2] ?? 3), minutes = Number(process.argv[3] ?? 25);
-const layers = (process.argv[4] ?? "roof,street,subway,mixed").split(",");
+const layers = (process.argv[4] ?? "west,east,roofs,subway").split(",");
 const city = new CityData(JSON.parse(fs.readFileSync("public/city.json", "utf8")));
 const flow = new Airflow(city);
 const course = makeCourse(city);
@@ -35,12 +35,14 @@ function fly(layer: string, run: number) {
   g.detach();
   g.clock = run * 41 + layer.length * 7;
   const dt = 1 / 120;
-  let mode: Mode = layer === "street" ? "street" : layer === "roof" ? "roof" : "toEntry";
+  // following one of the ways through (world/windFeatures.ts routes): its line, at its height
+  const way = flow.features.routes.find((q) => q.id === layer) ?? null;
+  let mode: Mode = layer === "street" ? "street" : layer === "roof" || way ? "roof" : "toEntry";
   let target: Shaft | null = null, maxS = 0, lastS = -1, stuck = 0, subwayUsed = false;
   const log: string[] = [];
   for (let i = 0; i < (minutes * 60) / dt && g.state === "flying"; i++) {
     if (i % 6 === 0) flow.traffic.update(g.clock);
-    const p = g.pos, n = city.route.nearest(p.x, p.z), endNear = course.path.nearest(p.x, p.z).s > course.path.length - 150;
+    const p = g.pos, n = city.route.nearest(p.x, p.z), endNear = course.path.nearest(p.x, p.z).s > course.path.length - 150 || course.inMeadow(p.x, p.z);
     // where to steer, and at what height
     let tx: number, tz: number, want: number;
     if (mode === "toEntry") {
@@ -58,11 +60,19 @@ function fly(layer: string, run: number) {
       const m = target.entryPath!;
       tx = m[0]; tz = m[2]; want = Math.hypot(m[0] - p.x, m[2] - p.z) < 14 ? 0 : 6;
     } else if (mode === "tunnel") {
-      const q = sub.nearest(p.x, p.z), a = sub.at(q.s + 25), side = q.off >= 0 ? 1 : -1;
-      tx = a.x + a.tz * 3.3 * side; tz = a.z - a.tx * 3.3 * side; want = TUNNEL.ceiling - 1.4;
+      // over the uptown track (the downtown trains come at you on the other)
+      const q = sub.nearest(p.x, p.z), a = sub.at(q.s + 25);
+      tx = a.x + a.tz * 3.3; tz = a.z - a.tx * 3.3; want = TUNNEL.ceiling - 1.4;
     } else if (mode === "toExit" && target) {
       const e = target.exitPath;
       tx = e ? e[0] : target.x; tz = e ? e[2] : target.z; want = 5; // climb at it: the way out's air does the rest
+    } else if (way) {
+      const wn = way.line.nearest(p.x, p.z);
+      const a = way.line.at(Math.min(way.line.length, wn.s + (wn.d > 10 ? 6 : 30)));
+      tx = a.x; tz = a.z;
+      want = way.line.length - wn.s < 150 ? 0 : way.y(wn.s);
+      const closed = flow.blockers.barriers.some((b) => Math.hypot(b.x - a.x, b.z - a.z) < b.half + 25);
+      if (closed) want = Math.max(want, 14);
     } else {
       const pn = course.path.nearest(p.x, p.z);
       // drifted off down a side street: back to the path first (aiming far ahead steers you into the corner)

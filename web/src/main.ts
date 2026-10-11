@@ -50,7 +50,7 @@ import { Hud } from "./game/hud";
 import { Audio } from "./game/audio";
 import { Recorder, sampleAt, type RunLog } from "./game/recorder";
 import { Tutorial } from "./game/tutorial";
-import { playIntro } from "./game/intro";
+import { playIntro, playEnding } from "./game/intro";
 import { LeafMeter } from "./game/leafmeter";
 import { clamp } from "./core/rng";
 
@@ -563,12 +563,18 @@ function tick(dt: number, render: boolean) {
   subwaySigns.update(wall, leaf.pos, ns.s, leaf.state === "flying" && leaf.lane === "street" && !replay, cam, dt, leaf.state === "flying" && leaf.lane === "subway" && !replay ? city.subway.nearest(leaf.pos.x, leaf.pos.z).s : null);
   minimap.el.classList.toggle("away", leaf.state === "attached");
   if (leaf.state !== "attached") minimap.update(dt, leaf.pos.x, leaf.pos.y, leaf.pos.z, leaf.heading, leaf.lane === "subway", ns.s, subwaySigns.next);
-  if (leaf.state === "planted" && !replay) leaderboard.showWon(leaf.time);
+  // the seed's in: the ending film (skippable), then the planted screen's leaderboard entry
+  if (leaf.state === "planted" && !replay && !autopilot && !endingSeen) {
+    endingSeen = endingPlaying = endingSound = true;
+    playEnding(document.body, () => leaf.state === "planted", 1600, () => { endingSound = false; }).then(() => { endingPlaying = false; input.endFrame(); });
+  }
+  if (leaf.state !== "planted") endingSeen = false;
+  if (leaf.state === "planted" && !replay && !endingPlaying) leaderboard.showWon(leaf.time);
   leaderboard.showMini(leaf.state === "attached" && !introPlaying);
   leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);
   // the leaf meter only once you're off the tree (it sat over the title screen's text)
   leafMeter.el.classList.toggle("away", leaf.state === "attached");
-  audio.musicHold = introPlaying;
+  audio.musicHold = introPlaying || (endingPlaying && endingSound); // (the films carry their own music)
   audio.update(dt, leaf, cam, city.district(ns.s).name);
   recorder.update(dt, leaf, input.state, ns.s, city.district(ns.s).name);
   tutorial.update(dt, leaf, input.state);
@@ -618,8 +624,11 @@ const pause = new PauseMenu(document.body, {
 // away from the game (another tab, the phone locked): pause the run
 document.addEventListener("visibilitychange", () => { if (document.hidden && leaf.state === "flying" && !replay) setPaused(true); });
 // the story first (skippable); the game keeps drawing the leaf on its branch underneath
-let introPlaying = !replay && !freeCam && !params.get("at") && !params.get("sub") && !autopilot;
+let introPlaying = !replay && !freeCam && !params.get("at") && !params.get("sub") && !autopilot && params.get("ending") !== "1";
 if (introPlaying) playIntro(document.body, () => audio.unlock()).then(() => { introPlaying = false; input.endFrame(); });
+// the ending film once the seed's planted; ?ending=1 plays it at load (to look at it)
+let endingPlaying = false, endingSeen = false, endingSound = true;
+if (params.get("ending") === "1") { endingPlaying = true; playEnding(document.body, undefined, 0, () => { endingSound = false; }, true).then(() => { endingPlaying = false; input.endFrame(); }); }
 // the title screen's leaderboard button (caught before it can count as letting go)
 addEventListener("pointerdown", (e) => {
   if (!(e.target as HTMLElement | null)?.closest?.(".board-open") || leaf.state !== "attached") return;
