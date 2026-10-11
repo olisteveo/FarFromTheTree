@@ -105,6 +105,30 @@ export class Leaderboard {
     this.panel.innerHTML = `<div class="h">You're number ${rank}</div>${rows}`;
   }
 
+  /** The whole board, from the title screen's button: the fastest twenty, your best picked out. */
+  fullOpen = false;
+  private full: HTMLElement | null = null;
+  async showFull() {
+    if (!this.full) {
+      this.full = document.createElement("div");
+      this.full.className = "board-full";
+      document.body.appendChild(this.full);
+      this.full.addEventListener("pointerdown", (e) => { e.stopPropagation(); if (e.target === this.full || (e.target as HTMLElement).closest(".close")) this.closeFull(); });
+      addEventListener("keydown", (e) => { if (this.fullOpen && (e.code === "Escape" || e.code === "Enter")) { e.stopPropagation(); this.closeFull(); } }, true);
+    }
+    this.fullOpen = true;
+    this.full.innerHTML = `<div class="lb-card"><div class="h">Fastest seeds</div><div class="rows">Loading…</div><button class="close">Close</button></div>`;
+    this.full.classList.add("on");
+    await this.refresh();
+    let me = "";
+    try { me = (localStorage.getItem("fftt.name") ?? "").toLowerCase(); } catch { /* ignore */ }
+    const rows = this.full.querySelector(".rows")!;
+    rows.innerHTML = this.top.length
+      ? this.top.slice(0, 20).map((e, i) => `<div class="row${me && e.name.toLowerCase() === me ? " me" : ""}"><span class="rk">${i + 1}</span><span class="nm">${esc(e.name)}</span><span class="tm">${fmt(e.ms)}</span></div>`).join("")
+      : `<div class="note">No seeds planted yet. Be the first to reach Central Park.</div>`;
+  }
+  closeFull() { this.fullOpen = false; this.full?.classList.remove("on"); }
+
   hide() {
     this.shown = false;
     this.panel.classList.remove("show");

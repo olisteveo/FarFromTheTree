@@ -437,7 +437,7 @@ function tick(dt: number, render: boolean) {
     if (input.hit("BracketLeft")) replaySpeed /= 2;
   }
   if (input.hit("KeyR") && !replay) restartRun();
-  if (input.anyKey) {
+  if (input.anyKey && !leaderboard.fullOpen) {
     audio.start();
     if (leaf.state === "attached" && !input.hit("KeyG") && !freeCam) { showcase = false; leaf.detach(); recorder.start(leaf); leaderboard.startRun(); }
   }
@@ -620,6 +620,12 @@ document.addEventListener("visibilitychange", () => { if (document.hidden && lea
 // the story first (skippable); the game keeps drawing the leaf on its branch underneath
 let introPlaying = !replay && !freeCam && !params.get("at") && !params.get("sub") && !autopilot;
 if (introPlaying) playIntro(document.body, () => audio.unlock()).then(() => { introPlaying = false; input.endFrame(); });
+// the title screen's leaderboard button (caught before it can count as letting go)
+addEventListener("pointerdown", (e) => {
+  if (!(e.target as HTMLElement | null)?.closest?.(".board-open") || leaf.state !== "attached") return;
+  e.stopPropagation(); e.preventDefault();
+  leaderboard.showFull();
+}, true);
 // the title screen's "watch the story" button (caught before it can count as letting go)
 addEventListener("pointerdown", (e) => {
   if (!(e.target as HTMLElement | null)?.closest?.(".intro-again") || introPlaying || leaf.state !== "attached") return;
