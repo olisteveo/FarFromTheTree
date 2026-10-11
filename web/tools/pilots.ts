@@ -9,7 +9,7 @@
 //   npx tsx tools/pilots.ts [runs=3] [minutes=25] [layers=roof,street,subway,mixed]
 import fs from "node:fs";
 import os from "node:os";
-import { CityData } from "../src/world/data";
+import { CityData, nearestEdge } from "../src/world/data";
 import { Airflow } from "../src/world/airflow";
 import { Glider } from "../src/sim/glider";
 import { makeCourse } from "../src/world/course";
@@ -73,6 +73,19 @@ function fly(layer: string, run: number) {
       const closed = flow.blockers.barriers.some((b) => Math.hypot(b.x - a.x, b.z - a.z) < b.half + 25);
       // over the roofs where they're low; between tall towers, down the street canyon at ~16 m (like a player)
       want = endNear ? 0 : mode === "street" && !closed ? 5 : H > 42 ? 16 : H + 12;
+    }
+    // a building in the way (above ground): over it if it's low, else round it, along its wall toward the target
+    if (p.y > -0.4) {
+      const L = Math.hypot(tx - p.x, tz - p.z) || 1, ux = (tx - p.x) / L, uz = (tz - p.z) / L;
+      for (let r = 2; r < Math.min(14, L); r += 2) {
+        const b = city.buildingAt(p.x + ux * r, p.z + uz * r);
+        if (!b || b.h < p.y - 1) continue;
+        if (b.h < 32) { want = Math.max(want, b.h + 6); break; }
+        const e = nearestEdge(b.poly, p.x + ux * r, p.z + uz * r);
+        const t1x = -e.nz, t1z = e.nx, side = t1x * ux + t1z * uz >= 0 ? 1 : -1;
+        tx = p.x + (t1x * side + e.nx * 0.4) * 20; tz = p.z + (t1z * side + e.nz * 0.4) * 20;
+        break;
+      }
     }
     let d = Math.atan2(tx - p.x, tz - p.z) - g.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
     // sitting on something (a roof, a ledge) away from the meadow: flare and hop off it, as a player would

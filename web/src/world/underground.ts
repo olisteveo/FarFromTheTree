@@ -181,9 +181,17 @@ export class Underground {
         const ax = s.x - s.ux * (STAIRS.half + 5), az = s.z - s.uz * (STAIRS.half + 5);
         const open = !this.city.buildingAt(ax, az) && !this.city.buildingAt(s.x - s.ux * (STAIRS.half + 2.5), s.z - s.uz * (STAIRS.half + 2.5));
         const n = p.length / 3, rev: number[] = open ? [ax, 2.4, az] : [];
-        for (let i = n - 1; i >= 0; i--) rev.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
-        // and on down over the tracks on this side, turning uptown into the tunnel's draught
-        const q = sub.nearest(p[0], p[2]), side = q.off >= 0 ? 1 : -1, lane = side * TRAIN.track;
+        // (only as far as where it comes out under the station's ceiling: not on across the station, where
+        // the streams of ways in facing each other met and held leaves between them)
+        let ex = p[0], ez = p[2];
+        for (let i = n - 1; i >= 0; i--) {
+          rev.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+          ex = p[i * 3]; ez = p[i * 3 + 2];
+          if (p[i * 3 + 1] < -3.8 && this.hallAt(ex, ez)) break;
+        }
+        // and on down over the track on this side, turning uptown into the tunnel's draught (toward the
+        // nearer track, never back on itself)
+        const q = sub.nearest(ex, ez), lane = Math.max(-TRAIN.track, Math.min(TRAIN.track, q.off));
         for (const [ds, y] of [[4, -5.8], [10, -6.2], [18, -6.2]] as const) {
           const a = sub.at(q.s + ds);
           rev.push(a.x + a.tz * lane, y, a.z - a.tx * lane);
