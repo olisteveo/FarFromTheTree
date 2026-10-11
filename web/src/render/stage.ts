@@ -14,6 +14,30 @@ import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { N8AOPass } from "n8ao";
 import { Warmup } from "./warmup";
 
+/** Contrast-adaptive sharpening (after AMD FidelityFX CAS): sharpens edges in proportion to how much local
+ *  headroom there is, so flat areas don't get grainy and bright edges don't ring. It's the last pass on PC;
+ *  it sharpens more as the resolution governor renders smaller, so a lower resolution stays crisp. */
+const CasShader = {
+  uniforms: { tDiffuse: { value: null as THREE.Texture | null }, texel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) }, sharpness: { value: 0.4 } },
+  vertexShader: /* glsl */ `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse; uniform vec2 texel; uniform float sharpness; varying vec2 vUv;
+    void main() {
+      vec4 c4 = texture2D(tDiffuse, vUv);
+      vec3 c = c4.rgb;
+      vec3 n = texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).rgb;
+      vec3 s = texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).rgb;
+      vec3 e = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).rgb;
+      vec3 w = texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).rgb;
+      vec3 mn = min(c, min(min(n, s), min(e, w)));
+      vec3 mx = max(c, max(max(n, s), max(e, w)));
+      vec3 amp = sqrt(clamp(min(mn, 1.0 - mx) / max(mx, 1e-4), 0.0, 1.0));
+      vec3 wt = -amp * mix(0.05, 0.15, sharpness);
+      vec3 o = (c + wt * (n + s + e + w)) / (1.0 + 4.0 * wt);
+      gl_FragColor = vec4(clamp(o, 0.0, 1.0), c4.a);
+    }`,
+};
+
 export type Quality = "low" | "medium" | "high";
 
 const GradeShader = {
@@ -229,6 +253,7 @@ export class Stage {
   readonly fog: THREE.FogExp2;
   private composer: EffectComposer;
   private grade: ShaderPass;
+  private cas: ShaderPass | null = null;
   private bloom: UnrealBloomPass;
   private ao: N8AOPass | null = null;
   private sky: THREE.Mesh;
@@ -324,6 +349,11 @@ export class Stage {
     this.composer.addPass(this.grade);
     this.composer.addPass(new OutputPass());
     if (quality !== "low") this.composer.addPass(new SMAAPass());
+    // (PC: sharpen last; phones keep the soft look and the frame time)
+    if (quality !== "low" && new URLSearchParams(location.search).get("sharpen") !== "0") {
+      this.cas = new ShaderPass(CasShader);
+      this.composer.addPass(this.cas);
+    }
 
     this.warmup = new Warmup(this.renderer, this.scene, this.camera, { budgetMs: quality === "low" ? 2 : 3, maxTexture: quality === "low" ? 512 : 0 });
     if (new URLSearchParams(location.search).get("warm") === "0") this.warmup.enabled = false; // (to compare)
@@ -376,6 +406,12 @@ export class Stage {
     this.ao?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this.cas) {
+      const pr = this.renderer.getPixelRatio();
+      (this.cas.uniforms.texel.value as THREE.Vector2).set(1 / (w * pr), 1 / (h * pr));
+      // more as the governor renders smaller (0.25 at full resolution, 0.85 at half)
+      this.cas.uniforms.sharpness.value = 0.25 + (1 - this.resScale) * 1.2;
+    }
   }
 
   /** Follow the player: the shadow box, the sky, and the underground mood.

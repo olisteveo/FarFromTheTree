@@ -81,7 +81,8 @@ It runs on PC and phones (touch controls), with a global leaderboard.
   minimap, run recording and replays.
 - **Quality tiers:** phones get a leaner city.
 - **Performance:** shaders and textures are warmed up before they're drawn, and uploads are spread
-  across frames to avoid hitches.
+  across frames to avoid hitches. On PC, resolution scales with the frame rate and contrast-adaptive
+  sharpening (`?sharpen=0` turns it off) keeps a lower resolution crisp.
 
 ## Running it locally
 
