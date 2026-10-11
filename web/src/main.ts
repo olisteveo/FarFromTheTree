@@ -170,7 +170,7 @@ stage.scene.add(chinatown.root);
 const edgeWall = new EdgeWall(city);
 stage.scene.add(edgeWall.root);
 // ----
-stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks), crowdView.root, people.root, facadeProps.root, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks, city), crowdView.root, people.root, facadeProps.root, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 // ---- street furniture (render/streetFurniture.ts): lamps, live signals, street name blades, hydrants,
 // mailboxes, baskets, newsstands, carts, bike docks, bus stops, kiosks, sheds, plaza bollards, steam
 // stacks, parked cars. Its colliders are streetFurniture.layout.colliders (not wired into the sim here).

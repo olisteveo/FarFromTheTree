@@ -6,6 +6,28 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Landmarks } from "../world/landmarks";
 import type { Facades } from "../world/facades";
+import { nearestEdge, type CityData } from "../world/data";
+
+/** Made-up ads for the Times Square screens (never real brands): bold colour blocks and a word or two. */
+function adTexture(i: number): THREE.CanvasTexture {
+  const ADS: [string, string, string, string][] = [
+    ["BROADWAY", "TONIGHT", "#e8203a", "#ffd23a"], ["THE LAST", "LEAF", "#1a1a2e", "#ff8a2a"], ["NYC", "♥", "#ffffff", "#e8203a"],
+    ["FIZZ", "COLA", "#c81414", "#ffffff"], ["NOW", "SHOWING", "#2a1a6a", "#7af0ff"], ["SALE", "70% OFF", "#ffe02b", "#1a1a1a"],
+    ["PHONE 17", "PRO", "#0a0a0a", "#e0e0e0"], ["★★★★★", "A HIT!", "#6a1aa0", "#ffd23a"], ["LIVE", "ON ICE", "#0a6ac8", "#ffffff"],
+  ];
+  const [a, b, bg, fg] = ADS[i % ADS.length];
+  const c = document.createElement("canvas");
+  c.width = 256; c.height = 160;
+  const x = c.getContext("2d")!;
+  x.fillStyle = bg; x.fillRect(0, 0, 256, 160);
+  x.fillStyle = fg; x.globalAlpha = 0.18; x.fillRect(0, 118, 256, 42); x.fillRect(196, 0, 60, 160); x.globalAlpha = 1;
+  x.textAlign = "center"; x.textBaseline = "middle"; x.fillStyle = fg;
+  x.font = "900 54px Impact, Arial Black, sans-serif"; x.fillText(a, 128, 62, 236);
+  x.font = "700 30px Arial, sans-serif"; x.fillText(b, 128, 124, 236);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 
 export function landmarkSolids(l: Landmarks, f: Facades) {
   // simple solid boxes so the leaf can land on (and bump into) them
@@ -24,7 +46,7 @@ export function landmarkSolids(l: Landmarks, f: Facades) {
   for (let i = 0; i < 6; i++) add(sx, 0.4 + i * 0.8, sz - 5 + i * 1.6, 5, 0.4 + i * 0.8, 0.8);
 }
 
-export function landmarkMeshes(l: Landmarks): THREE.Group {
+export function landmarkMeshes(l: Landmarks, city?: CityData): THREE.Group {
   const g = new THREE.Group();
   const bronze = new THREE.MeshStandardMaterial({ color: 0x6a4a2a, metalness: 0.8, roughness: 0.35 });
   const stone = new THREE.MeshStandardMaterial({ color: 0xd8d0c0, roughness: 0.8 });
@@ -84,16 +106,31 @@ export function landmarkMeshes(l: Landmarks): THREE.Group {
     m.position.set(x, 0, z);
     m.castShadow = true;
     g.add(m);
+    // the screens: on the walls of the buildings round the square, facing in (looking out from the steps
+    // in each direction, the first wall), stacked up their faces; never floating in the air
     const screens = new THREE.Group();
-    const cols = [0xff2bd6, 0x2bf0ff, 0xffe02b, 0x7a5bff, 0xff5a2b, 0x2bff8a];
-    for (let i = 0; i < 18; i++) {
-      const a = (i / 18) * Math.PI * 2, r = 45 + (i % 3) * 10;
-      const mat = new THREE.MeshBasicMaterial({ color: cols[i % cols.length], toneMapped: false });
-      mat.color.multiplyScalar(1.6);
-      const s = new THREE.Mesh(new THREE.PlaneGeometry(12 + (i % 4) * 4, 8 + (i % 3) * 4), mat);
-      s.position.set(x + Math.cos(a) * r, 18 + (i % 5) * 9, z + Math.sin(a) * r);
-      s.lookAt(x, s.position.y, z);
-      screens.add(s);
+    const mats = Array.from({ length: 9 }, (_, i) => { const m = new THREE.MeshBasicMaterial({ map: adTexture(i), toneMapped: false }); m.color.setScalar(1.5); return m; });
+    let k = 0;
+    if (city) for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+      let hit: { px: number; pz: number; nx: number; nz: number; h: number } | null = null;
+      for (let r = 12; r < 150 && !hit; r += 1) {
+        const b = city.buildingAt(x + dx * r, z + dz * r);
+        if (!b) continue;
+        if (b.h < 16) break;
+        const e = nearestEdge(b.poly, x + dx * r, z + dz * r);
+        hit = { px: e.px, pz: e.pz, nx: e.nx, nz: e.nz, h: b.h };
+      }
+      if (!hit) continue;
+      const top = Math.min(hit.h - 2, 52);
+      for (let y = 12 + (i % 3) * 3; y + 5 < top; y += 13 + (i % 2) * 5) {
+        const w = 10 + ((i + k) % 3) * 4, h = w * 0.62;
+        if (y + h / 2 > top) break;
+        const s = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mats[k++ % mats.length]);
+        s.position.set(hit.px + hit.nx * 0.35, y + h / 2, hit.pz + hit.nz * 0.35);
+        s.lookAt(s.position.x + hit.nx, s.position.y, s.position.z + hit.nz);
+        screens.add(s);
+      }
     }
     g.add(screens);
   }
