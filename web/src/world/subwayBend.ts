@@ -89,18 +89,33 @@ export function subwayPlan(stations: { ss: number; name: string }[], length: num
   const end = Math.min(length, end57 + stationHalfLength - 5);
   const blocked = [{ ss0: prince - 150, ss1: prince + 140 }, { ss0: end, ss1: length + 1000 }];
   const isBlocked = (ss: number) => blocked.some((b) => ss > b.ss0 && ss < b.ss1);
-  // massive vents over the tunnel between stations: alternately ways in and ways out
+  // massive vents over the tunnel between stations, every 110-160 m (seeded by the line), two ways in for every
+  // way out; clear of the stations (their stairs do that job) and the closed stretches
   const vents: { ss: number; out: boolean }[] = [];
-  let flip = 0;
-  for (let s = 150; s < end - 60; s += ventEvery) {
-    let ss = s;
-    // keep clear of the stations (their stairs do that job) and the closed stretches
-    const st = stations.find((q) => Math.abs(q.ss - ss) < stationHalfLength + 40);
-    if (st) ss = st.ss + Math.sign(ss - st.ss || 1) * (stationHalfLength + 45);
-    if (isBlocked(ss) || isBlocked(ss + 10) || isBlocked(ss - 10) || ss > end - 60) continue;
-    if (stations.some((q) => Math.abs(q.ss - ss) < stationHalfLength + 30)) continue;
-    vents.push({ ss, out: flip % 2 === 1 });
-    flip++;
+  const h = (k: number) => { let x = Math.imul((k * 7919 + 13) | 0, 0x9e3779b1) >>> 0; x ^= x >>> 15; x = Math.imul(x, 0x2c1b3c6d) >>> 0; return (x >>> 0) / 4294967296; };
+  let k = 0;
+  // (tools: globalThis.__fftt_oldVents = true lays them out as before: every 260 m, alternating)
+  if ((globalThis as { __fftt_oldVents?: boolean }).__fftt_oldVents) {
+    let flip = 0;
+    for (let s = 150; s < end - 60; s += ventEvery) {
+      let ss = s;
+      const st = stations.find((q) => Math.abs(q.ss - ss) < stationHalfLength + 40);
+      if (st) ss = st.ss + Math.sign(ss - st.ss || 1) * (stationHalfLength + 45);
+      if (isBlocked(ss) || isBlocked(ss + 10) || isBlocked(ss - 10) || ss > end - 60) continue;
+      if (stations.some((q) => Math.abs(q.ss - ss) < stationHalfLength + 30)) continue;
+      vents.push({ ss, out: flip % 2 === 1 });
+      flip++;
+    }
+    return { end, blocked, vents };
   }
+  for (let ss = 140; ss < end - 60;) {
+    const st = stations.find((q) => Math.abs(q.ss - ss) < stationHalfLength + 30);
+    if (st) { ss = st.ss + stationHalfLength + 35; continue; }
+    if (isBlocked(ss) || isBlocked(ss + 12) || isBlocked(ss - 12)) { ss += 20; continue; }
+    vents.push({ ss, out: k % 3 === 2 });
+    k++;
+    ss += 110 + 50 * h(k);
+  }
+  void ventEvery;
   return { end, blocked, vents };
 }

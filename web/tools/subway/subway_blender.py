@@ -812,26 +812,38 @@ def build_plaque():
     return B
 
 
-def build_platform_stair():
-    """stairs from the platform up to the mezzanine passage: 2.2 m wide (X), rising 3.0 m over 5.1 m (+Z)"""
+# the platform stairs: up from the platform to the landing in front of the doorway where a street entrance's
+# passage comes through the station wall (world/underground.ts FareArea: 2.0 m up, the passage floor). Same
+# numbers as there: 12 risers over 3.42 m, a 4.8 m landing, 2.2 m wide; the station wall on one side (no wall of
+# its own there: the doorway is in it), a tiled wall with a maroon band on the other.
+PS_RISE, PS_N, PS_RUN, PS_LAND, PS_W = 2.0, 12, 0.285, 4.8, 2.2
+
+
+def build_platform_stair(outer):
+    """outer: the side (+1 = +X) of the tiled wall; the station wall is on the other side. Origin: the platform
+    at the foot of the flight, mid-width; the flight rises along +Z, then the landing"""
     B = Builder()
-    W, rise, n = 2.2, 3.0, 17
-    rh, run = rise / n, 0.3
+    W, rise, n, run = PS_W, PS_RISE, PS_N, PS_RUN
+    rh = rise / n
+    L = n * run
+    E = L + PS_LAND
     for i in range(n):
         y0, y1 = i * rh, (i + 1) * rh
         z0, z1 = i * run, (i + 1) * run
         B.quad((-W / 2, y0, z0), (W / 2, y0, z0), (W / 2, y1, z0), (-W / 2, y1, z0), "atlas", "concrete_light", out=(0, 0, -1))
         B.quad((-W / 2, y1, z0), (W / 2, y1, z0), (W / 2, y1, z1), (-W / 2, y1, z1), "atlas", "stair_tread",
                ((0, 1), (1, 1), (1, 0.1), (0, 0.1)), out=(0, 1, 0))
-    L = n * run
-    # landing and the side walls (white tile) with their capping
-    B.quad((-W / 2, rise, L), (W / 2, rise, L), (W / 2, rise, L + 1.2), (-W / 2, rise, L + 1.2), "atlas", "concrete_light", out=(0, 1, 0))
-    # the side walls: real 3x6 inch subway tile (the tile_white rect is 4 x 8 tiles: 0.6 m square), laid in
+    # the landing (its floor is the passage floor), and its end face down to the platform
+    B.quad((-W / 2, rise, L), (W / 2, rise, L), (W / 2, rise, E), (-W / 2, rise, E), "atlas", "concrete_light", out=(0, 1, 0))
+    B.quad((-W / 2, 0, E), (W / 2, 0, E), (W / 2, rise, E), (-W / 2, rise, E), "atlas", "tile_white", ((0, 0), (3.6, 0), (3.6, 1), (0, 1)), out=(0, 0, 1))
+    B.quad((-W / 2, rise - 0.12, E + 0.005), (W / 2, rise - 0.12, E + 0.005), (W / 2, rise, E + 0.005), (-W / 2, rise, E + 0.005), "atlas", "paint_red", out=(0, 0, 1))
+    # the outer wall: real 3x6 inch subway tile (the tile_white rect is 4 x 8 tiles: 0.6 m square), laid in
     # 0.6 m cells under the sloping top, with a maroon band under the cap
     top = lambda z: 0.9 if z <= 0 else (rise + 0.9 if z >= L else 0.9 + rise * z / L)
     TS = 0.6
+
     def tiled(x, outx):
-        zs = [-0.05] + [k * TS for k in range(1, int((L + 1.2) / TS) + 1) if k * TS < L + 1.2] + [L, L + 1.2]
+        zs = [-0.05] + [k * TS for k in range(1, int(E / TS) + 1) if k * TS < E] + [L, E]
         zs = sorted(set(round(z, 4) for z in zs))
         for z0, z1 in zip(zs, zs[1:]):
             t0, t1 = top(z0) - 0.14, top(z1) - 0.14
@@ -846,42 +858,46 @@ def build_platform_stair():
                     B.face([(x, y, z0), (x, y, z1), (x, a1, z1), (x, a0, z0)], "atlas", "tile_white",
                            [(s0, 0), (s1, 0), (s1, (a1 - y) / TS), (s0, (a0 - y) / TS)], out=(outx, 0, 0))
                 y = y1
-            # the band
             B.face([(x, t0, z0), (x, t1, z1), (x, t1 + 0.14, z1), (x, t0 + 0.14, z0)], "atlas", "paint_red", out=(outx, 0, 0))
-    for sx in (-1, 1):
-        x = sx * (W / 2 + 0.1)
-        tiled(x, sx)
-        tiled(x - sx * 0.2, -sx)
-        # sloped cap
-        B.quad((x - sx * 0.2, 0.9, 0), (x, 0.9, 0), (x, rise + 0.9, L), (x - sx * 0.2, rise + 0.9, L), "atlas", "concrete_light", out=(0, 1, -0.5))
-        B.quad((x - sx * 0.2, rise + 0.9, L), (x, rise + 0.9, L), (x, rise + 0.9, L + 1.2), (x - sx * 0.2, rise + 0.9, L + 1.2), "atlas", "concrete_light", out=(0, 1, 0))
-        B.quad((x - sx * 0.2, 0, -0.05), (x, 0, -0.05), (x, 0.9, -0.05), (x - sx * 0.2, 0.9, -0.05), "atlas", "concrete_light", out=(0, 0, -1))
-        # handrail on brackets
-        hx = sx * (W / 2 - 0.12)
+
+    sx = outer
+    x = sx * (W / 2 + 0.2)
+    tiled(x, sx)
+    tiled(x - sx * 0.2, -sx)
+    B.quad((x - sx * 0.2, 0.9, 0), (x, 0.9, 0), (x, rise + 0.9, L), (x - sx * 0.2, rise + 0.9, L), "atlas", "concrete_light", out=(0, 1, -0.5))
+    B.quad((x - sx * 0.2, rise + 0.9, L), (x, rise + 0.9, L), (x, rise + 0.9, E), (x - sx * 0.2, rise + 0.9, E), "atlas", "concrete_light", out=(0, 1, 0))
+    B.quad((x - sx * 0.2, 0, -0.05), (x, 0, -0.05), (x, 0.9, -0.05), (x - sx * 0.2, 0.9, -0.05), "atlas", "concrete_light", out=(0, 0, -1))
+    B.quad((x - sx * 0.2, 0, E), (x, 0, E), (x, rise + 0.9, E), (x - sx * 0.2, rise + 0.9, E), "atlas", "concrete_light", out=(0, 0, 1))
+    # handrails: on the tiled wall and on the station wall, on brackets
+    for hs in (-1, 1):
+        hx = hs * (W / 2 - 0.08)
         tube(B, (hx, 0.95, -0.2), (hx, rise + 0.95, L), 0.025, "metal", "steel_plain", 6)
-        tube(B, (hx, rise + 0.95, L), (hx, rise + 0.95, L + 1.0), 0.025, "metal", "steel_plain", 6)
+        tube(B, (hx, rise + 0.95, L), (hx, rise + 0.95, L + 0.6), 0.025, "metal", "steel_plain", 6)
         for t in (0.1, 0.5, 0.9):
             p = V(hx, t * rise + 0.95, t * L)
-            tube(B, tuple(p), tuple(p + V(sx * 0.12, -0.05, 0)), 0.012, "metal", "steel_plain", 4)
-    # the middle handrail
-    for y0 in (0.0,):
-        tube(B, (0, 0, 0.05), (0, 0.95, 0.05), 0.03, "metal", "steel_plain", 6)
-        tube(B, (0, 0.95, 0.05), (0, rise + 0.95, L), 0.025, "metal", "steel_plain", 6)
-    # mosaic stair nosing number? no: a yellow edge on the first and last steps
+            tube(B, tuple(p), tuple(p + V(hs * 0.12, -0.05, 0)), 0.012, "metal", "steel_plain", 4)
+    # a railing across the landing's far end, over the drop to the platform
+    tube(B, (-W / 2, rise + 1.0, E - 0.05), (W / 2, rise + 1.0, E - 0.05), 0.025, "metal", "steel_plain", 6)
+    for xx in (-W / 2 + 0.05, 0, W / 2 - 0.05):
+        tube(B, (xx, rise, E - 0.05), (xx, rise + 1.0, E - 0.05), 0.02, "metal", "steel_plain", 5)
     return B
 
 
-def build_portal():
-    """the mouth of the passage at the top of the platform stairs: a dark doorway in a concrete
-    surround with an exit sign over it. origin: wall at the landing floor; +X out of the wall"""
+def build_barrier():
+    """a steel crowd-control barrier (the grey interlocking kind): 2.3 m along X, 1.1 m high, on two flat feet"""
     B = Builder()
-    W, H = 2.3, 2.45
-    # the passage beyond, lit (painted in perspective: the station wall has no hole here)
-    plane(B, (0.01, H / 2, 0), (0, 0, -1), (0, 1, 0), W, H, "glow", "passage_view", out=(1, 0, 0))
-    for z in (-W / 2 - 0.08, W / 2 + 0.08):
-        box(B, (0.05, H / 2, z), (0.1, H, 0.16), "atlas", "concrete_light")
-    box(B, (0.05, H + 0.08, 0), (0.1, 0.16, W + 0.32), "atlas", "concrete_light")
-    plane(B, (0.11, H + 0.08, 0), (0, 0, -1), (0, 1, 0), 0.6, 0.15, "glow", "sign_exit", out=(1, 0, 0))
+    Lb, H = 2.3, 1.1
+    for y in (0.22, H - 0.04):
+        tube(B, (-Lb / 2, y, 0), (Lb / 2, y, 0), 0.024, "metal", "heet_grey", 6)
+    for x in (-Lb / 2, Lb / 2):
+        tube(B, (x, 0.12, 0), (x, H, 0), 0.024, "metal", "heet_grey", 6)
+    for i in range(1, 15):
+        x = -Lb / 2 + i * Lb / 15
+        tube(B, (x, 0.22, 0), (x, H - 0.04, 0), 0.01, "metal", "heet_grey", 4)
+    for x in (-Lb / 2 + 0.25, Lb / 2 - 0.25):
+        box(B, (x, 0.015, 0), (0.06, 0.03, 0.7), "metal", "heet_grey")
+        tube(B, (x, 0.03, 0), (x, 0.22, 0), 0.02, "metal", "heet_grey", 5)
+    box(B, (0, 0.66, 0.012), (0.5, 0.18, 0.012), "atlas", "white")   # a blank plate
     return B
 
 
@@ -1098,7 +1114,8 @@ BUILDERS = [
     ("turnstile", build_turnstile), ("exit_gate", build_exit_gate), ("emergency_gate", build_emergency_gate),
     ("fare_rail", build_fare_rail), ("booth", build_booth), ("bench", build_bench), ("trash", build_trash),
     ("sign_hang", build_sign_hang), ("ad_frame", build_ad_frame), ("map_frame", build_map_frame), ("plaque", build_plaque),
-    ("platform_stair", build_platform_stair), ("portal", build_portal), ("street_entrance", build_street_entrance),
+    ("platform_stair_a", lambda: build_platform_stair(-1)), ("platform_stair_b", lambda: build_platform_stair(1)),
+    ("barrier", build_barrier), ("street_entrance", build_street_entrance),
     ("fare_machine", build_fare_machine), ("sleeper", build_sleeper), ("busker", build_busker),
     ("commuter_a", build_commuter_a), ("commuter_b", build_commuter_b),
 ]
@@ -1202,11 +1219,11 @@ def previews(objs, imgs, only=None):
         s.objects[n].hide_render = True
 
     # station props lineup
-    line = ["turnstile", "exit_gate", "emergency_gate", "fare_rail", "booth", "bench", "trash", "platform_stair", "street_entrance"]
+    line = ["turnstile", "exit_gate", "emergency_gate", "fare_rail", "booth", "bench", "trash", "platform_stair_a", "barrier", "street_entrance"]
     x = 0.0
     for n in line:
-        place(by[n], x, 0, 0, math.radians(180) if n == "platform_stair" else 0)
-        x += {"booth": 3.2, "platform_stair": 3.5, "street_entrance": 5.5, "exit_gate": 2.2}.get(n, 1.6)
+        place(by[n], x, 0, 0, math.radians(180) if n == "platform_stair_a" else 0)
+        x += {"booth": 3.2, "platform_stair_a": 3.5, "barrier": 2.6, "street_entrance": 5.5, "exit_gate": 2.2}.get(n, 1.6)
     show(line + ["ground"])
     shoot("station_props", (x / 2 - 1, 1.2, 0), x * 0.95, 0, 14, res=(1800, 700))
     shoot("fare_line", (2, 1.0, 0), 5.5, 25, 18)

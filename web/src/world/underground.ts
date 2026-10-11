@@ -63,7 +63,19 @@ export interface Blocked { ss0: number; ss1: number; kind: "flood" | "end"; name
 
 /** A station's fare control on one side: the stairs up from the platform, the turnstile line and the
  *  token booth (drawn by render/subwayArt.ts, solid here). s along the line, side +1/-1. */
-export interface FareArea { s: number; side: number; station: string; hw: number }
+export interface FareArea {
+  s: number; side: number; station: string; hw: number;
+  /** the stairs' flight runs from the landing toward -dir (its foot at s - dir * 5.82), so it rises toward +dir */
+  dir: 1 | -1;
+  /** a fare control (turnstiles, exit gates, booth) with it; the others are just the stairs and their landing */
+  fare: boolean;
+}
+/** The platform stairs (render: platform_stair_a/b, subway_blender.py): up 2.0 m from the platform to the
+ *  passage floor, over 3.42 m, to a 4.8 m landing in front of the doorway, 2.2 m wide from 0.2 m off the wall;
+ *  the tiled outer wall 0.2 m thick, 0.9 m over the steps. In (ds' = (s - fa.s) * dir, o = out from the wall). */
+export const PLATFORM_STAIR = { rise: 2.0, run: 3.42, land: 2.4, o0: 0.2, o1: 2.4, wall: 2.6, foot: -2.4 - 3.42 };
+/** the fare control round them, in the same frame: the turnstile line (o = 4.2) from ds' -8.6 to 4.6 */
+export const FARE = { line: 4.2, s0: -8.6, s1: 4.6, gates: [-0.1, 1.6], turnstiles: [-4.75, -3.8, -2.85, -1.9], emergency: -5.85, booth: 6.6, barrier: -6.25 };
 
 /** Furniture on the platforms that the leaf can hit (render/subwayArt.ts draws it here): benches, trash
  *  cans, the fare-card machines by each fare control, someone asleep on a bench, a busker. s along the
@@ -72,7 +84,7 @@ export interface StationProp { s: number; off: number; side: number; kind: "benc
   /** commuters: which of the two, and which way they face (0 the tracks, +-1 along the line) */
   variant?: number; turn?: number }
 /** Flat on a station wall (render/subwayArt.ts): a poster, the map, a mosaic plaque. j: its slot (picks the poster). */
-export interface WallProp { s: number; side: number; kind: "ad" | "map" | "plaque"; j: number }
+export interface WallProp { s: number; side: number; kind: "ad" | "map" | "plaque" | "tablet"; j: number }
 /** where a prop is solid, in (along s, out from the wall o = hw - |off|, up from the platform top): boxes */
 const PROP_BOXES: Record<StationProp["kind"], [number, number, number, number, number][]> = {
   //            s0     s1    o0    o1   height  (o measured from the prop's origin, + toward the tracks)
@@ -176,7 +188,13 @@ export class Underground {
     for (const { ss, out } of plan.vents) {
       const p = sub.at(ss), side = out ? 1 : -1;
       const base = (TUNNEL.halfWidth - VENT.halfWidth - 0.6) * side;
-      const off = [base, -base, 0].find((o) => !underBuilding(p.x + p.tz * o, p.z - p.tx * o, p.tx, p.tz, VENT.halfLength, VENT.halfWidth)) ?? base;
+      const off = [base, -base].find((o) => !underBuilding(p.x + p.tz * o, p.z - p.tx * o, p.tx, p.tz, VENT.halfLength, VENT.halfWidth));
+      if (off === undefined) continue;
+      const vx = p.x + p.tz * off, vz = p.z - p.tx * off;
+      // (not within 25 m of a station's stair openings)
+      if (this.shafts.some((o) => o.kind === "stairs" && Math.hypot(o.x - vx, o.z - vz) < 25)) continue;
+      // (nor where a stair's passage comes into the tunnel: its own air arrives there)
+      if (this.shafts.some((o) => o.kind === "stairs" && Math.abs(o.ss - ss) < 25 && Math.hypot(o.x + o.tx - vx, o.z + o.tz - vz) < 25)) continue;
       this.addShaft({ x: p.x + p.tz * off, z: p.z - p.tx * off, r: VENT.halfLength, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "vent", ss, name: out ? "air vent (out)" : "air vent (in)", out });
       vents.push(ss);
     }
@@ -237,20 +255,53 @@ export class Underground {
         s.entryPath = new Float32Array(rev);
       }
     }
-    // fare control at the foot of each entrance's passage, one per platform side within 30 m
+    // the ways in by the big vents: their air takes you straight down the shaft and, under the roof, across
+    // onto the uptown track and on uptown above the trains' roofs (the same height the stairs deliver you at),
+    // crossing the column row between two columns
+    for (const v of this.shafts) {
+      if (v.kind !== "vent" || v.out || this.isBlocked(v.ss) || (globalThis as { __fftt_noVentStream?: boolean }).__fftt_noVentStream) continue;
+      const q = sub.nearest(v.x, v.z), dy = (s: number) => this.city.subwayDip(s);
+      const P = (s: number, off: number, y: number) => { const a = sub.at(s); return [a.x + a.tz * off, y + dy(s), a.z - a.tx * off]; };
+      const lane = TRAIN.track, s0 = q.s;
+      let sc = Math.ceil((s0 + 6 - 4) / TUNNEL.columnEvery) * TUNNEL.columnEvery + 4; // between two columns
+      const pts: number[] = [v.x, 2.4, v.z, v.x, 0.3, v.z, v.x, TUNNEL.ceiling - 0.2 + dy(s0), v.z];
+      pts.push(...P(s0 + 2.5, q.off * 0.8, TUNNEL.ceiling - 1.0));
+      if (Math.sign(q.off) !== Math.sign(lane)) pts.push(...P(sc, 0, -4.1)); else sc = s0 + 4;
+      pts.push(...P(sc + 6, lane, -4.5), ...P(sc + 14, lane, -4.5), ...P(sc + 22, lane, -4.4));
+      v.entryPath = new Float32Array(pts);
+    }
+    // the platform stairs: wherever a street entrance's passage (or the foot of its stairs) comes through a
+    // station's side wall over a platform, stairs come up from the platform to a landing in front of that
+    // doorway, at the passage floor; the first such on each side of a station gets the fare control
     for (const st of this.stations) {
       if (this.isBlocked(st.ss)) continue;
-      const near = this.shafts.filter((sh) => sh.kind === "stairs" && Math.abs(sh.ss - st.ss) < TUNNEL.stationHalfLength + 40)
-        .sort((a, b) => Math.abs(a.ss - st.ss) - Math.abs(b.ss - st.ss));
+      const arrivals: { s: number; side: number; d: number }[] = [];
+      for (const sh of this.shafts) {
+        if (sh.kind !== "stairs" || sh.aCut !== undefined || !isFinite(sh.aw!) || this.isBlocked(sh.ss)) continue;
+        const q = sub.nearest(sh.x + sh.ux * sh.aw!, sh.z + sh.uz * sh.aw!);
+        if (this.stationAt(q.s) !== st || this.shape(q.s).k < 0.95 || Math.abs(q.off) < this.shape(q.s).hw - 0.6) continue;
+        arrivals.push({ s: q.s, side: q.off >= 0 ? 1 : -1, d: Math.abs(q.s - st.ss) });
+      }
+      arrivals.sort((a, b) => a.d - b.d);
       const mine: FareArea[] = [];
-      for (const sh of near) {
-        const q = sub.nearest(sh.x, sh.z), side = q.off >= 0 ? 1 : -1;
-        // (and clear of the ends of the line: Bowling Green's platform runs on past where the tunnel starts)
-        const s = Math.max(st.ss - 58, this.start + 10, Math.min(st.ss + 58, this.end - 12, q.s));
-        if (mine.some((a) => a.side === side && Math.abs(a.s - s) < 30)) continue;
-        mine.push({ s, side, station: st.name, hw: this.shape(s).hw });
+      const fits = (s0: number, s1: number) => s0 > this.start + 2 && s1 < this.end - 2 && this.shape(s0).k >= 0.95 && this.shape(s1).k >= 0.95;
+      const zone = (a: FareArea) => (a.fare ? [-8.8, 8.0] : [PLATFORM_STAIR.foot - 0.8, PLATFORM_STAIR.land + 0.2]).map((d) => a.s + d * a.dir).sort((x, y) => x - y);
+      for (const ar of arrivals) {
+        // side-by-side doorways share a landing
+        const same = mine.find((a) => a.side === ar.side && Math.abs(a.s - ar.s) < 5.5);
+        if (same) { same.s = (same.s + ar.s) / 2; continue; }
+        let made: FareArea | null = null;
+        for (const dir of [1, -1] as const) for (const fare of [true, false]) {
+          if (made || (fare && mine.some((a) => a.side === ar.side && a.fare))) continue;
+          const a: FareArea = { s: ar.s, side: ar.side, station: st.name, hw: this.shape(ar.s).hw, dir, fare };
+          const [z0, z1] = zone(a);
+          if (!fits(z0, z1) || mine.some((o) => o.side === a.side && (([p0, p1]) => z0 < p1 + 1 && z1 > p0 - 1)(zone(o)))) continue;
+          made = a;
+        }
+        if (made) mine.push(made);
       }
       for (const a of mine) {
+        a.hw = this.shape(a.s).hw;
         this.fareAreas.push(a);
         const p = sub.at(a.s), o = a.hw * a.side;
         this.fareGrid.add(a, p.x + p.tz * o - 16, p.z - p.tx * o - 16, p.x + p.tz * o + 16, p.z - p.tx * o + 16);
@@ -287,14 +338,39 @@ export class Underground {
         // the fixed things: each fare control (its stairs and their clear foot, turnstiles, gates, the booth,
         // the paid side behind them, the booth's trash can) and the columns
         for (const a of areas) if (a.side === side) {
-          taken.push([a.s - 8.2, a.s + 9.9, 0, 5.1]);
-          taken.push([a.s + 6.6, a.s + 7.8, 3.6, 5.6]);
+          // (the stairs keep a clear 1.5 m in front of their foot)
+          const [d0, d1, o1] = a.fare ? [-8.8, 8.0, 5.1] : [PLATFORM_STAIR.foot - 1.6, PLATFORM_STAIR.land + 0.2, 2.9];
+          taken.push([Math.min(a.s + d0 * a.dir, a.s + d1 * a.dir), Math.max(a.s + d0 * a.dir, a.s + d1 * a.dir), 0, o1]);
         }
         for (let ds = -63; ds <= 63; ds += PLATFORM.columnEvery) {
           const cs = st.ss + ds;
-          if (this.shape(cs).k < 0.95 || this.fareAreas.some((fa) => fa.side === side && Math.abs(fa.s - cs) < 7)) continue;
+          if (this.shape(cs).k < 0.95 || this.columnHidden(cs, side)) continue;
           const o = hwAt(cs) - PLATFORM.columnOff;
           taken.push([cs - 0.35, cs + 0.35, o - 0.35, o + 0.35]);
+        }
+        // the station's name, in mosaic, high on this wall: where it's seen across the tracks from the other
+        // platform, so never behind or beside stairs, fare controls, booths or where a street stair comes in
+        {
+          const block: R[] = taken.slice();
+          for (const sh of this.shafts) {
+            if (sh.kind !== "stairs" || !isFinite(sh.aw!) || sh.aw! < -STAIRS.half) continue;
+            const q = sub.nearest(sh.x + sh.ux * Math.max(sh.aw!, 0), sh.z + sh.uz * Math.max(sh.aw!, 0));
+            if ((q.off >= 0 ? 1 : -1) !== side || Math.abs(q.s - st.ss) > 90 || Math.abs(q.off) < hwAt(q.s) - 4) continue;
+            block.push([q.s - 4.5, q.s + 4.5, 0, 6]);
+          }
+          const tabs: number[] = [];
+          const free = (s: number) => s - 1.8 > lo && s + 1.8 < hi && this.shape(s).k >= 0.95 && !tabs.some((t) => Math.abs(t - s) < 12)
+            && !block.some((b) => s - 1.8 < b[1] + 1 && s + 1.8 > b[0] - 1 && b[2] < 3);
+          // (centred between two columns, so the columns of either platform don't stand in front of it)
+          const mid = (ds: number) => st.ss + PLATFORM.columnEvery / 2 + Math.round((ds - PLATFORM.columnEvery / 2) / PLATFORM.columnEvery) * PLATFORM.columnEvery;
+          for (const ds of [-45, -15, 15, 45]) {
+            let got: number | null = null;
+            for (let d = 0; d <= 18 && got === null; d += PLATFORM.columnEvery) for (const q of [mid(ds) + d, mid(ds) - d]) if (got === null && free(q)) got = q;
+            if (got !== null) tabs.push(got);
+          }
+          for (let q = mid(-63); q <= st.ss + 64 && tabs.length < 2; q += PLATFORM.columnEvery) if (free(q)) tabs.push(q);
+          for (let q = st.ss - 64; q <= st.ss + 64 && tabs.length < 2; q += 1.5) if (free(q)) tabs.push(q);
+          for (const t of tabs) this.wallProps.push({ s: t, side, kind: "tablet", j: 0 });
         }
         /** a prop at s, or nudged along the platform by up to `reach` metres to a clear spot: footprint
          *  [a0, a1] along about s and [o0, o1] out from the wall, clearance m. The s it went at, or null. */
@@ -313,8 +389,8 @@ export class Underground {
         const add = (p: Omit<StationProp, "station" | "side">) => this.stationProps.push({ ...p, side, station: st.name });
         // fare-card machines: a pair against the wall beside each fare control (downtown of its stairs, or
         // uptown past the booth where that's too near the end of the line)
-        for (const a of areas) if (a.side === side) for (const pref of [-9.4, 11.4]) {
-          const at = place("fare_machine", a.s + pref, -1.1, 1.1, 0, 0.7, 0.3, 1.5);
+        for (const a of areas) if (a.side === side && a.fare) for (const pref of [-10.0, 9.2]) {
+          const at = place("fare_machine", a.s + pref * a.dir, -1.1, 1.1, 0, 0.7, 0.3, 1.5);
           if (at === null) continue;
           for (const d of [-0.55, 0.55]) add({ s: at + d, off: hwAt(at) * side, kind: "fare_machine" });
           break;
@@ -481,6 +557,23 @@ export class Underground {
     this.shaftGrid.add(s, Math.min(s.x, x1) - 4, Math.min(s.z, z1) - 4, Math.max(s.x, x1) + 4, Math.max(s.z, z1) + 4);
   }
 
+  /** Take shafts out (after the fact: Airflow drops the vents inside closed streets). */
+  dropShafts(pred: (s: Shaft) => boolean) {
+    const n = this.shafts.length;
+    for (let i = this.shafts.length - 1; i >= 0; i--) if (pred(this.shafts[i])) this.shafts.splice(i, 1);
+    if (this.shafts.length === n) return;
+    this.shaftGrid = new Grid<Shaft>(16);
+    for (const sh of this.shafts) {
+      if (sh.relief) this.shaftGrid.add(sh, sh.x - 16, sh.z - 16, sh.x + 16, sh.z + 16);
+      else this.addShaft(sh, false);
+    }
+  }
+
+  /** No platform column here (s, side): it would stand in a fare control. */
+  columnHidden(cs: number, side: number) {
+    return this.fareAreas.some((fa) => fa.side === side && fa.fare && (cs - fa.s) * fa.dir > FARE.s0 - 0.6 && (cs - fa.s) * fa.dir < FARE.s1 + 0.6);
+  }
+
   /** The tunnel's width and ceiling at s (stations open out over 30 m). */
   shape(s: number) {
     let k = 0;
@@ -560,7 +653,7 @@ export class Underground {
             const j = Math.round(ds / PLATFORM.columnEvery), dd = ds - j * PLATFORM.columnEvery;
             if (Math.abs(j * PLATFORM.columnEvery) > PLATFORM.columnSpan) continue;
             const cs = st.ss + j * PLATFORM.columnEvery, cside = n.off >= 0 ? 1 : -1;
-            if (this.fareAreas.some((fa) => fa.side === cside && Math.abs(fa.s - cs) < 7)) continue;
+            if (this.columnHidden(cs, cside)) continue;
             best = Math.min(best, Math.hypot(dd, Math.abs(n.off) - PLATFORM.columnOff) - PLATFORM.columnRadius);
           }
         }
@@ -573,12 +666,21 @@ export class Underground {
           const qa = Math.abs(ds - (s0 + s1) / 2) - (s1 - s0) / 2, qo = Math.abs(o - (o0 + o1) / 2) - (o1 - o0) / 2, qy = Math.abs(y - (top + y1) / 2) - (y1 - top) / 2;
           return Math.hypot(Math.max(qa, 0), Math.max(qo, 0), Math.max(qy, 0)) + Math.min(Math.max(qa, qo, qy), 0);
         };
-        // the stairs: rising 3 m along the line from s - 5.7 to the landing at s + 0.6, walls 0.9 m over the steps
-        const rise = top + Math.max(0, Math.min(3, ((ds + 5.7) / 5.1) * 3)) + 0.9;
-        best = Math.min(best, box(-5.75, 0.6, fa.hw - 2.6, fa.hw, rise));
-        best = Math.min(best, box(-6.6, 6.6, fa.hw - 4.45, fa.hw - 3.95, top + 1.1)); // turnstiles and rails
-        best = Math.min(best, box(1.05, 4.45, fa.hw - 5.05, fa.hw - 3.35, top + 2.4)); // the full-height exit gates
-        best = Math.min(best, box(7.4, 9.8, fa.hw - 2.4, fa.hw - 0.4, top + 2.7)); // the booth
+        // (in the stairs' own frame: ds' along, rising toward the landing; o out from the wall)
+        const d2 = ds * fa.dir, o2 = fa.hw - o, P = PLATFORM_STAIR;
+        const box2 = (s0: number, s1: number, o0: number, o1: number, y1: number) => box(fa.dir > 0 ? s0 : -s1, fa.dir > 0 ? s1 : -s0, fa.hw - o1, fa.hw - o0, y1);
+        // the flight (its treads as a ramp), the landing, the tiled wall 0.9 m over them, the barrier across the foot
+        const tread = top + Math.max(0, Math.min(P.rise, ((d2 - P.foot) / P.run) * P.rise));
+        best = Math.min(best, box2(P.foot, -P.land, P.o0, P.o1, tread));
+        best = Math.min(best, box2(-P.land, P.land, P.o0, P.o1, top + P.rise));
+        best = Math.min(best, box2(P.foot - 0.05, P.land, P.o1, P.wall, tread + 0.9));
+        best = Math.min(best, box2(FARE.barrier - 0.1, FARE.barrier + 0.1, P.o0, P.wall, top + 1.1));
+        void o2;
+        if (fa.fare) {
+          best = Math.min(best, box2(FARE.s0, FARE.s1, FARE.line - 0.25, FARE.line + 0.25, top + 1.1)); // turnstiles and rails
+          best = Math.min(best, box2(FARE.gates[0] - 0.85, FARE.gates[1] + 0.85, FARE.line - 0.85, FARE.line + 0.85, top + 2.4)); // the full-height exit gates
+          best = Math.min(best, box2(FARE.booth - 1.2, FARE.booth + 1.2, 0.4, 2.4, top + 2.7)); // the booth
+        }
       }
       // the platforms' furniture
       if (k > 0.6) for (const pr of this.propGrid.at(x, z)) {

@@ -14,7 +14,7 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { STAIRS, TRAIN, TUNNEL, type Train, type Underground } from "../world/underground";
+import { FARE, PLATFORM_STAIR, STAIRS, TRAIN, TUNNEL, type FareArea, type Train, type Underground } from "../world/underground";
 import { entranceStyle } from "./subwayEntrances";
 
 /** heights the art is built to (world y) */
@@ -465,7 +465,7 @@ export class SubwayArt {
       // fare control at the foot of each entrance's passage, one per platform side within 30 m
       // (worked out in world/underground.ts, which makes them solid)
       const areas = u.fareAreas.filter((a) => a.station === st.name);
-      for (const { s, side } of areas) { this.fareArea(put, s, side); this.fareAreas.push({ s, side, station: st.name }); }
+      for (const fa of areas) { this.fareArea(put, fa); this.fareAreas.push({ s: fa.s, side: fa.side, station: st.name }); }
       const clear = (s: number, side: number, r = 11) => !areas.some((a) => a.side === side && Math.abs(a.s - s) < r);
       // (Bowling Green's platform would run on past where the line starts: nothing goes out there)
       const inLine = (s: number) => s > u.start + 2 && s < u.end - 2;
@@ -475,13 +475,13 @@ export class SubwayArt {
         // platform columns
         for (let ds = -63; ds <= 63; ds += 9) {
           const s = st.ss + ds;
-          if (this.width(s).k < 0.95 || !clear(s, side, 7) || !inLine(s)) continue;
+          if (this.width(s).k < 0.95 || u.columnHidden(s, side) || !inLine(s)) continue;
           put("column", s, 7.0 * side, PY, 0, undefined, new THREE.Vector3(1, (this.width(s).ceil - PY) / 6.0, 1));
         }
         // the wall: posters, mosaic plaques, a map; benches and trash cans in front
         // posters, the map and plaques where world/underground.ts's placement pass put them (clear of everything)
         for (const wp of u.wallProps) {
-          if (wp.side !== side || Math.abs(wp.s - st.ss) > TUNNEL.stationHalfLength) continue;
+          if (wp.side !== side || wp.kind === "tablet" || Math.abs(wp.s - st.ss) > TUNNEL.stationHalfLength) continue;
           const j = wp.j, s = wp.s, wall = this.width(s).hw * side;
           if (wp.kind === "map") put("map_frame", s, wall, PY, away);
           else if (wp.kind === "ad") {
@@ -523,21 +523,25 @@ export class SubwayArt {
 
   /** fare control where a passage comes down to the platform: stairs up the wall to the passage
    *  mouth, a line of turnstiles, exit gates and an emergency gate, railings to the wall and a booth. */
-  private fareArea(put: (name: string, s: number, off: number, y: number, turn?: number, remap?: [string, string][], scale?: THREE.Vector3) => void, s: number, side: number) {
-    const PY = SUBWAY_ART.platformTop;
+  private fareArea(put: (name: string, s: number, off: number, y: number, turn?: number, remap?: [string, string][], scale?: THREE.Vector3) => void, fa: FareArea) {
+    const PY = SUBWAY_ART.platformTop, P = PLATFORM_STAIR;
+    const { s, side, dir } = fa;
     const hw = this.width(s).hw;
-    const line = (hw - 4.2) * side;
+    const at = (d: number) => s + d * dir; // along the stairs' frame (world/underground.ts PLATFORM_STAIR, FARE)
+    // the stairs up to the landing in front of the doorway the passage comes through (the tiled wall on the
+    // platform side: the station wall, with the doorway, is the other), and the barrier across their foot
+    put(side * dir > 0 ? "platform_stair_a" : "platform_stair_b", at(P.foot), (hw - (P.o0 + P.o1) / 2) * side, PY, dir > 0 ? 0 : Math.PI);
+    put("barrier", at(FARE.barrier), (hw - 1.4) * side, PY);
+    if (!fa.fare) return;
+    const line = (hw - FARE.line) * side;
     const face = -side * Math.PI / 2; // turnstiles: entry (reader end) on the wall side
-    put("platform_stair", s - 5.7, (hw - 1.3) * side, PY);
-    put("portal", s, (hw - 0.02) * side, PY + 3.0, side > 0 ? Math.PI : 0); // the passage mouth at the top of the stairs
-    put("fare_rail", s - 5.5, line, PY);
-    put("emergency_gate", s - 3.85, line, PY, Math.PI / 2);
-    for (const d of [-2.75, -1.8, -0.85, 0.1]) put("turnstile", s + d, line, PY, face);
-    for (const d of [1.9, 3.6]) put("exit_gate", s + d, line, PY, face);
-    put("fare_rail", s + 5.5, line, PY);
-    for (const d of [-6.5, 6.5]) for (const k of [1.0, 3.0]) put("fare_rail", s + d, line + k * side, PY, Math.PI / 2);
-    put("booth", s + 8.6, (hw - 1.4) * side, PY, Math.PI);
-    put("trash", s + 7.2, line - 0.6 * side, PY);
+    put("fare_rail", at(FARE.s0 + 1), line, PY);
+    put("emergency_gate", at(FARE.emergency), line, PY, Math.PI / 2);
+    for (const d of FARE.turnstiles) put("turnstile", at(d), line, PY, face);
+    for (const d of FARE.gates) put("exit_gate", at(d), line, PY, face);
+    put("fare_rail", at(FARE.s1 - 1), line, PY);
+    for (const d of [FARE.s0, FARE.s1]) for (const k of [1.0, 3.0]) put("fare_rail", at(d), line + k * side, PY, Math.PI / 2);
+    put("booth", at(FARE.booth), (hw - 1.4) * side, PY, Math.PI);
   }
 
   private mergeStation(placed: Placed[], st: { ss: number; name: string }): THREE.Group {
@@ -651,10 +655,11 @@ export class SubwayArt {
 
   private tablets(st: { ss: number; name: string }): THREE.Mesh {
     const geos: THREE.BufferGeometry[] = [];
-    for (const ds of [-45, -15, 15, 45]) for (const side of [1, -1]) {
-      const s = st.ss + ds;
+    // (where world/underground.ts's placement pass put them: clear of the stairs, fare controls and booths)
+    for (const tp of this.u.wallProps) {
+      if (tp.kind !== "tablet" || Math.abs(tp.s - st.ss) > TUNNEL.stationHalfLength) continue;
+      const s = tp.s, side = tp.side;
       const w = this.width(s);
-      if (w.k < 0.95 || s < this.u.start + 3 || s > this.u.end - 3) continue;
       const g = new THREE.PlaneGeometry(3.6, 0.9);
       // facing away from the wall: the plane's +Z normal turned to -side * lateral
       g.applyMatrix4(this.at(s, (w.hw - 0.03) * side, TUNNEL.floor + 4.7, side > 0 ? -Math.PI / 2 : Math.PI / 2));

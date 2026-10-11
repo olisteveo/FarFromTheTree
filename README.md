@@ -32,7 +32,8 @@ It runs on PC and phones (touch controls), with a global leaderboard.
   - **The Mulberry St festival's** lantern curtains, **packed Times Square**, and **the Thanksgiving
     parade**, each with a tight emergency lane where a way through crosses.
 - **The subway.**
-  - The ways in draw you down the stairs onto the uptown track, just above the train roofs.
+  - The ways in, and the street grates along the tunnels (31 of them, mostly drawing you in, a few
+    blowing out), draw you down onto the uptown track, just above the train roofs.
   - Ride the tunnel's draught uptown through gently curving, dipping tunnels.
   - The ways out lift you back to the street when you turn for them.
   - Trains are a brutal hit, not instant death: they fling you clear and tear a big piece of the

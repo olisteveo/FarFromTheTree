@@ -95,8 +95,11 @@ The wind is the level design (`src/world/airflow.ts`, `src/world/windFeatures.ts
   they broke the Rooftops way.
 - **The edge of the map** is a visible wall of wind that blows you back toward the city and on
   uptown. Over the rivers the air drags you into the water.
-- **The subway's streams:** entrances draw you down onto the uptown track just above the train
-  roofs. Exits lift you out when you turn or slow toward them.
+- **The subway's streams:** entrances, and the street grates every 110–160 m along the tunnels (two
+  in for every one out), draw you down onto the uptown track just above the train roofs.
+- **Stations:** each platform stair is built from the same shaft data as the corridor the leaf comes
+  down, so it meets the corridor's end exactly, with a barrier across its foot. Name tablets sit on
+  the walls across the tracks, and props are laid out by one placement pass (`placeStationProps`). Exits lift you out when you turn or slow toward them.
   Tunnels curve and dip gently between stations (`subwayBend.ts`); the stations stay straight.
 
 ## Central Park and the rain

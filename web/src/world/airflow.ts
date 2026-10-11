@@ -126,6 +126,9 @@ export class Airflow {
 
   constructor(readonly city: CityData) {
     this.under = new Underground(city);
+    this.blockers = new Blockers(city);
+    // (no vent grate inside a closed street's blocked zone)
+    this.under.dropShafts((sh) => sh.kind === "vent" && this.blockers.list.some((bl) => Math.hypot(sh.x - bl.x, sh.z - bl.z) < bl.r + 10));
     // the ways in by the stairs reach out into the street round them (see the street air)
     for (const sh of this.under.shafts) {
       if (sh.exitPath) {
@@ -149,7 +152,6 @@ export class Airflow {
     this.life = new StreetLife(city);
     this.facades = new Facades(city);
     this.crowd = new Crowd(this.traffic);
-    this.blockers = new Blockers(city);
     this.traffic.closed = this.blockers.list;
     this.features = new WindFeatures(city, this.blockers.barriers, this.blockers.list);
     this.way = makeCourse(city).path;
@@ -403,7 +405,12 @@ export class Airflow {
           // (near the roof only well inside the opening, or it jams you against the rim)
           const nearRoof = yl > TUNNEL.ceiling - 1.6;
           const under = nearRoof ? (Math.abs(a) < VENT.halfLength - 1 && Math.abs(b) < VENT.halfWidth - 0.4 ? 1 : 0.1) : d < 1.5 ? 1 : 0.2;
-          wy += 18 * k * under * smoothstep(TUNNEL.floor + 0.1, TUNNEL.floor + 1.0, yl);
+          // (like the ways out by the stairs, it only takes a leaf that wants it: one turning toward it or
+          // slowing under it; one riding on along the line just feels the updraft)
+          const lv = this.lv, va = lv.x * sp.tx + lv.z * sp.tz, hx = g.x - x, hz = g.z - z;
+          const lat = hx * sp.tz - hz * sp.tx, across = Math.abs(lat) > 0.3 ? ((lv.x * sp.tz - lv.z * sp.tx) * Math.sign(lat)) : 0;
+          const want = Math.abs(va) < 5 || across > 1.5 || (Math.abs(a) < VENT.halfLength - 1 && Math.abs(b) < VENT.halfWidth - 0.4 && nearRoof && Math.abs(va) < 8) ? 1 : 0.15;
+          wy += 18 * k * under * want * smoothstep(TUNNEL.floor + 0.1, TUNNEL.floor + 1.0, yl);
           const na = Math.max(-VENT.halfLength + 0.8, Math.min(VENT.halfLength - 0.8, a)) - a, nb = Math.max(-VENT.halfWidth + 0.5, Math.min(VENT.halfWidth - 0.5, b)) - b;
           const nl = Math.hypot(na, nb) + 0.3;
           // the draught dies away under the vent (it's all going up the shaft), so you slow down there

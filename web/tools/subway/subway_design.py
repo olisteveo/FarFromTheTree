@@ -92,7 +92,6 @@ R["fare_machine"] = (0, 1920, 128, 128)
 R["busker_sign"] = (128, 1920, 128, 128)
 R["newspaper"] = (256, 1920, 128, 128)
 R["coat_tweed"] = (384, 1920, 128, 128)
-R["passage_view"] = (512, 1920, 128, 128)
 # where the runtime writes the station name into the mosaic tablet (inside tablet_frame)
 TABLET_FIELD = (56, 56, 912, 144)
 
@@ -951,31 +950,6 @@ def p_newspaper(d, w, h):
     return L
 
 
-def p_passage_view(d, w, h):
-    """looking into the passage at the top of the platform stairs: tiled walls running away to a lit end"""
-    cx, cy, ew, eh = w / 2, h * 0.46, w * 0.26, h * 0.3          # the far end
-    x0, y0, x1, y1 = cx - ew / 2, cy - eh / 2, cx + ew / 2, cy + eh / 2
-    L = [d.rect(0, 0, w, h, (0.55, 0.53, 0.48))]
-    L.append(d.poly([(0, 0), (w, 0), (x1, y0), (x0, y0)], (0.62, 0.6, 0.55)))                       # ceiling
-    L.append(d.poly([(0, h), (w, h), (x1, y1), (x0, y1)], (0.36, 0.35, 0.33)))                      # floor
-    for side, (a, b) in (("l", ((0, 0), (0, h))), ("r", ((w, 0), (w, h)))):                         # walls
-        xa, xb = (x0, x0) if side == "l" else (x1, x1)
-        L.append(d.poly([a, (xa, y0), (xb, y1), b], (0.8, 0.79, 0.74), grad=d.lin(a[0], 0, xa, 0, [(0, (0.86, 0.85, 0.8)), (1, (0.62, 0.6, 0.56))])))
-        for t in (0.25, 0.5, 0.75):                                                                # tile courses
-            ya, yb = a[1] + (b[1] - a[1]) * t, y0 + (y1 - y0) * t
-            L.append(d.line([(a[0], ya), (xa, yb)], (0.55, 0.53, 0.5), 1, op=60))
-        yb0, yb1 = a[1] + (b[1] - a[1]) * 0.62, y0 + (y1 - y0) * 0.62                               # the maroon band
-        L.append(d.poly([(a[0], yb0 - 4), (xa, yb1 - 1.5), (xa, yb1 + 1.5), (a[0], yb0 + 4)], (0.5, 0.12, 0.08)))
-    L.append(d.rect(x0, y0, ew, eh, (1.0, 0.96, 0.86)))                                           # the lit end
-    L.append(d.rect(x0 + ew * 0.2, y0 + eh * 0.45, ew * 0.6, eh * 0.55, (0.75, 0.72, 0.66)))       # stairs up beyond
-    for k in range(4):
-        L.append(d.rect(x0 + ew * 0.2, y0 + eh * (0.5 + k * 0.12), ew * 0.6, 1.2, (0.95, 0.75, 0.15)))
-    L.append(d.rect(cx - 14, 8, 28, 4, (1.0, 1.0, 0.95)))                                         # a ceiling light
-    L.append(d.ellipse(cx, 18, 70, 26, (1.0, 0.97, 0.9), op=25))
-    L.append(d.noise(w, h, op=14, scale=10))
-    return L
-
-
 def p_coat_tweed(d, w, h):
     """a worn winter coat's wool"""
     L = [d.rect(0, 0, w, h, (0.30, 0.24, 0.19))]
@@ -1012,7 +986,7 @@ def build_atlas_doc():
         "sign_exit": lambda d, w, h: p_sign(d, w, h, "Exit to Street", [], arrow=True),
         "sign_entrance": lambda d, w, h: p_sign(d, w, h, "Subway", ["N", "Q", "R", "W"], size=52),
         "hazard": p_hazard, "grime": p_grime,
-        "fare_machine": p_fare_machine, "busker_sign": p_busker_sign, "newspaper": p_newspaper, "coat_tweed": p_coat_tweed, "passage_view": p_passage_view,
+        "fare_machine": p_fare_machine, "busker_sign": p_busker_sign, "newspaper": p_newspaper, "coat_tweed": p_coat_tweed,
     }
     layers = []
     for name, (x, y, w, h) in R.items():
