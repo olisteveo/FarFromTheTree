@@ -245,7 +245,7 @@ export class WindFeatures {
   /** The ways through: chains of currents from Battery Park to the park, each a different line, with
    *  gaps between the links you have to fly yourself (and the closed streets to climb), so they help a
    *  lot but never carry you all the way. Mostly streams, now and then a gale, the odd breeze.
-   *    west    down the avenues west of Broadway, at about 12 m (over the traffic, under the roofs)
+   *    west    down the avenues west of Broadway, at about 16 m (over the traffic and the lamps, under the roofs)
    *    east    the same east of Broadway
    *    roofs   along Broadway over the rooftops (up to 70 m: between the towers it stays at 70)
    *  (the fourth way is the subway: the tunnel's own draught, the ways in and out and the vents) */
@@ -258,8 +258,9 @@ export class WindFeatures {
       return Math.max(28, Math.min(70, h + 14));
     };
     const defs = [
-      { id: "west", name: "the West Side", line: streetPath(city, course.tree, end, -170), y: () => 12, kind: "canyon" as JetKind },
-      { id: "east", name: "the East Side", line: streetPath(city, course.tree, end, 170), y: () => 12, kind: "canyon" as JetKind },
+      // (the route's right, +off, is west in the grid: east is -x)
+      { id: "west", name: "the West Side", line: streetPath(city, course.tree, end, 170), y: () => 16, kind: "canyon" as JetKind },
+      { id: "east", name: "the East Side", line: streetPath(city, course.tree, end, -170), y: () => 16, kind: "canyon" as JetKind },
       { id: "roofs", name: "the Rooftops", line: course.path, y: null as unknown as (s: number) => number, kind: "sky" as JetKind },
     ];
     defs[2].y = roofY(course.path);
@@ -270,7 +271,8 @@ export class WindFeatures {
       let link = 0;
       while (s < d.line.length - 80) {
         const h1 = h01(++seed * 7919 + d.id.length), h2 = h01(seed * 104729 + 3);
-        const len = 220 + h1 * 160, gap = 40 + h2 * 50;
+        // (shorter gaps down in the streets: between the towers the street air can be against you)
+        const len = 220 + h1 * 160, gap = d.kind === "sky" ? 40 + h2 * 50 : 25 + h2 * 30;
         const path: [number, number, number][] = [];
         for (let t = s; t <= Math.min(s + len, d.line.length - 40); t += STEP) { const a = d.line.at(t); path.push([a.x, d.y(t), a.z]); }
         if (path.length > 6) {

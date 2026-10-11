@@ -19,7 +19,8 @@ export interface Course {
 export function streetPath(city: CityData, from: { x: number; z: number }, to: { x: number; z: number }, shift = 0): Polyline {
   const key = (x: number, z: number) => `${Math.round(x * 2)},${Math.round(z * 2)}`;
   const nodes = new Map<string, number>(), xs: number[] = [], zs: number[] = [];
-  const adj: { to: number; cost: number; pts: number[] }[][] = [];
+  const adj: { to: number; cost: number; pts: number[]; name: number }[][] = [];
+  const names = new Map<string, number>();
   const node = (x: number, z: number) => {
     const k = key(x, z);
     let i = nodes.get(k);
@@ -29,35 +30,49 @@ export function streetPath(city: CityData, from: { x: number; z: number }, to: {
   for (const st of city.raw.streets) {
     const p = st.p, n = p.length / 2;
     if (n < 2) continue;
+    // (open streets only: not the road tunnels, ramps, overpasses and connectors)
+    if (/TUNL|TUNNEL|RAMP|EXIT|ENTRANCE|OPAS|OVERPASS|CONNECTOR|EN$/.test(st.n)) continue;
     const a = node(p[0], p[1]), b = node(p[p.length - 2], p[p.length - 1]);
+    const name = names.get(st.n) ?? names.set(st.n, names.size).get(st.n)!;
     let cost = 0;
     for (let i = 0; i < n - 1; i++) {
       const mx = (p[i * 2] + p[i * 2 + 2]) / 2, mz = (p[i * 2 + 1] + p[i * 2 + 3]) / 2;
       const L = Math.hypot(p[i * 2 + 2] - p[i * 2], p[i * 2 + 3] - p[i * 2 + 1]);
       const n = city.route.nearest(mx, mz);
+      // (a way through off to one side keeps to that side loosely, and well inside the edge of the map)
       const away = shift ? Math.abs(n.off - shift) : n.d;
-      cost += L * (1 + (away / 60) ** 2);
+      cost += L * (1 + (away / (shift ? 140 : 60)) ** 2 + (shift && n.d > 270 ? 40 : 0) + (shift && Math.sign(n.off) !== Math.sign(shift) ? 3 : 0));
     }
-    adj[a].push({ to: b, cost, pts: p });
+    adj[a].push({ to: b, cost, pts: p, name });
     const rev: number[] = [];
     for (let i = n - 1; i >= 0; i--) rev.push(p[i * 2], p[i * 2 + 1]);
-    adj[b].push({ to: a, cost, pts: rev });
+    adj[b].push({ to: a, cost, pts: rev, name });
   }
   const nearest = (x: number, z: number) => { let bi = 0, bd = Infinity; for (let i = 0; i < xs.length; i++) { const d = Math.hypot(xs[i] - x, zs[i] - z); if (d < bd) { bd = d; bi = i; } } return bi; };
   const s0 = nearest(from.x, from.z), s1 = nearest(to.x, to.z);
-  const dist = new Float64Array(xs.length).fill(Infinity), prev = new Int32Array(xs.length).fill(-1), via: (number[] | null)[] = new Array(xs.length).fill(null);
-  dist[s0] = 0;
-  const open = new Set([s0]);
+  // Dijkstra over (junction, street you came along): changing street costs extra, so a way through runs
+  // down long straight avenues rather than zigzagging block by block (every corner in a canyon is a wall
+  // to hit)
+  const TURN = shift ? 400 : 40;
+  const dist = new Map<string, number>(), prev = new Map<string, { k: string; pts: number[] }>();
+  const sk = (v: number, nm: number) => `${v}|${nm}`;
+  dist.set(sk(s0, -1), 0);
+  const open = new Map<string, { v: number; nm: number }>([[sk(s0, -1), { v: s0, nm: -1 }]]);
+  let endKey = "";
   while (open.size) {
-    let u = -1, du = Infinity;
-    for (const i of open) if (dist[i] < du) { du = dist[i]; u = i; }
-    open.delete(u);
-    if (u === s1) break;
-    for (const e of adj[u]) if (du + e.cost < dist[e.to]) { dist[e.to] = du + e.cost; prev[e.to] = u; via[e.to] = e.pts; open.add(e.to); }
+    let uk = "", du = Infinity;
+    for (const [k] of open) { const d = dist.get(k)!; if (d < du) { du = d; uk = k; } }
+    const u = open.get(uk)!;
+    open.delete(uk);
+    if (u.v === s1) { endKey = uk; break; }
+    for (const e of adj[u.v]) {
+      const k = sk(e.to, e.name), nd = du + e.cost + (u.nm >= 0 && e.name !== u.nm ? TURN : 0);
+      if (nd < (dist.get(k) ?? Infinity)) { dist.set(k, nd); prev.set(k, { k: uk, pts: e.pts }); open.set(k, { v: e.to, nm: e.name }); }
+    }
   }
-  if (prev[s1] < 0) return city.route;
+  if (!endKey) return city.route;
   const chain: number[][] = [];
-  for (let v = s1; v !== s0; v = prev[v]) chain.push(via[v]!);
+  for (let k = endKey; prev.has(k); k = prev.get(k)!.k) chain.push(prev.get(k)!.pts);
   const flat: number[] = [from.x, from.z];
   for (let k = chain.length - 1; k >= 0; k--) flat.push(...chain[k]);
   flat.push(to.x, to.z);

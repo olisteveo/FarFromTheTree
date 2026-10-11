@@ -1,0 +1,24 @@
+
+== west: 0/3 planted
+  dead     1.42 km in 5.0 min - Hit by a cab
+     270s s1410 (-86,1,1505) roof | 280s s1414 (-83,3,1509) roof | 290s s1408 (-82,1,1505) roof | 300s s1405 (-83,5,1499) roof  ::  t299.4 hit by a cab (y 1.4) -> 0.08 | t302.2 hit by a cab (y 2.4) -> -0.06
+  dead     3.51 km in 5.5 min - Torn apart on a wall
+     290s s3327 (-436,5,3169) roof | 300s s3400 (-439,5,3246) roof | 310s s3459 (-409,10,3299) roof | 320s s3507 (-386,10,3344) roof  ::  t326.6 a wall at 7.7 m/s (wind 1.3 street, y 7.8) -> 0.01 | t327.6 a wall at 5.1 m/s (wind 8.4 street, y 10.0) -> -0.00
+  dead     1.43 km in 10.6 min - Torn apart on a wall
+     600s s1410 (-86,1,1504) roof | 610s s1406 (-77,1,1504) roof | 620s s1408 (-79,1,1505) roof | 630s s1404 (-86,17,1492) roof  ::  t627.2 hit by a cab (y 2.4) -> 0.03 | t633.4 a wall at 9.5 m/s (wind 13.2 street, y 2.3) -> -0.05
+
+== east: 0/3 planted
+  flying   0.68 km in 3.2 min - 
+     160s s677 (-203,12,650) roof | 170s s677 (-202,21,650) roof | 180s s674 (-202,12,647) roof | 190s s672 (-212,17,644) roof  ::  t186.0 a wall at 4.6 m/s (wind 4.8 street, y 11.7) -> 0.76 | t188.2 a wall at 4.9 m/s (wind 3.4 street, y 14.3) -> 0.75
+  dead     5.62 km in 12.6 min - Torn apart on a wall
+     720s s5612 (-44,1,5438) roof | 730s s5622 (-30,10,5438) roof | 740s s5622 (-32,1,5438) roof | 750s s5620 (-32,1,5436) roof  ::  t735.8 a wall at 7.5 m/s (wind 3.7 street, y 1.6) -> 0.09 | t757.1 a wall at 11.4 m/s (wind 6.5 street, y 3.0) -> -0.04
+  dead     5.62 km in 13.5 min - Torn apart on a wall
+     770s s5612 (-42,1,5437) roof | 780s s5621 (-32,1,5438) roof | 790s s5620 (-40,1,5437) roof | 800s s5620 (-35,1,5438) roof  ::  t805.4 a wall at 5.2 m/s (wind 7.6 street, y 3.5) -> 0.05 | t807.1 a wall at 7.4 m/s (wind 4.1 street, y 4.0) -> -0.04
+
+== roofs: 0/3 planted
+  flying   3.82 km in 11.8 min - 
+     680s s3824 (-432,14,3665) roof | 690s s3822 (-434,7,3663) roof | 700s s3823 (-434,2,3664) roof | 710s s3823 (-429,5,3664) roof  ::  t700.4 a wall at 5.6 m/s (wind 9.5 street, y 4.4) -> 0.56 | t700.9 an AC unit at 8.6 m/s (wind 9.4 street, y 8.0) -> 0.44
+  flying   3.83 km in 9.7 min - 
+     550s s3824 (-407,10,3664) roof | 560s s3823 (-396,3,3662) roof | 570s s3827 (-398,6,3666) roof | 580s s3825 (-401,6,3665) roof  ::  t539.8 a wall at 7.3 m/s (wind 5.3 street, y 2.2) -> 0.43 | t569.4 a wall at 5.3 m/s (wind 9.8 street, y 3.1) -> 0.47
+  dead     0.65 km in 1.3 min - Hit head-on by a downtown train
+     40s s277 (-127,-4,250) roof | 50s s378 (-138,-9,352) roof | 60s s532 (-142,-6,508) roof | 70s s650 (-148,-5,626) roof

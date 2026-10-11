@@ -1,0 +1,16 @@
+
+== west: 0/3 planted
+  dead     1.42 km in 8.0 min - Hit by a cab
+     440s s1413 (-88,1,1504) roof | 450s s1404 (-73,0,1504) roof | 460s s1407 (-76,1,1506) roof | 470s s1404 (-84,4,1496) roof  ::  t474.7 hit by a cab (y 1.3) -> 0.12 | t479.2 hit by a cab (y 1.8) -> -0.01
+  flying   1.71 km in 4.5 min - 
+     240s s1708 (-332,5,1675) roof | 250s s1708 (-330,5,1676) roof | 260s s1708 (-333,18,1676) roof | 270s s1708 (-331,4,1676) roof  ::  t232.5 a wall at 4.5 m/s (wind 2.2 street, y 6.5) -> 0.96 | t255.2 a wall at 6.3 m/s (wind 8.5 street, y 6.0) -> 0.91
+  dead     1.42 km in 8.0 min - Hit by a cab
+     440s s1410 (-87,1,1504) roof | 450s s1408 (-80,1,1504) roof | 460s s1404 (-71,1,1505) roof | 470s s1408 (-78,2,1505) roof  ::  t475.9 hit by a cab (y 1.3) -> 0.08 | t477.4 hit by a cab (y 1.7) -> -0.06
+
+== east: 0/3 planted
+  flying   0.68 km in 3.0 min - 
+     150s s676 (-203,12,650) roof | 160s s674 (-197,10,647) roof | 170s s677 (-202,21,650) roof | 180s s674 (-203,13,647) roof  ::  t161.2 a wall at 4.6 m/s (wind 4.0 street, y 12.4) -> 0.83 | t167.8 a wall at 5.7 m/s (wind 9.1 street, y 17.6) -> 0.79
+  flying   0.68 km in 2.8 min - 
+     140s s673 (-205,12,646) roof | 150s s676 (-208,13,648) roof | 160s s677 (-203,15,650) roof | 170s s676 (-201,10,649) roof  ::  t156.7 a wall at 5.1 m/s (wind 9.3 street, y 16.3) -> 0.88 | t162.7 a wall at 4.7 m/s (wind 5.7 street, y 17.0) -> 0.89
+  dead     0.71 km in 1.4 min - Hit head-on by a downtown train
+     50s s433 (-136,-5,409) roof | 60s s544 (-144,-6,520) roof | 70s s633 (-147,-6,609) roof | 80s s713 (-152,-9,688) roof  ::  t23.9 a wall at 12.7 m/s (wind 13.1 street, y 3.3) -> 0.76

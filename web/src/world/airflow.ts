@@ -17,6 +17,8 @@ import { Crowd } from "./crowd";
 import { Blockers } from "./blockers";
 import { Park } from "./park";
 import { WindFeatures, type WindHit } from "./windFeatures";
+import { makeCourse } from "./course";
+import type { Polyline } from "./data";
 import { Grid } from "./data";
 import { colliderGrid, parkLayout, type ParkCollider, type ParkLayout } from "../render/centralPark";
 import { streetLayout, type StreetLayout } from "../render/streetLayout";
@@ -77,6 +79,10 @@ export class Airflow {
   private entryGrid = new Grid<Shaft>(16);
   private mouths = new Map<Shaft, Float32Array>();
   private exitGrid = new Grid<Shaft>(16);
+  /** the way through along the streets (world/course.ts): the city's draught at street level leads along it */
+  private way!: Polyline;
+  private wayN = { s: 0, off: 0, d: 0 };
+  private wayA = { x: 0, z: 0, tx: 0, tz: 1 };
   private water = new Map<number, boolean>();
   /** Open water, well clear of the shore (a coarse, cached look-up: 8 m cells, no land within a cell either side). */
   overWater(x: number, z: number): boolean {
@@ -142,6 +148,7 @@ export class Airflow {
     this.blockers = new Blockers(city);
     this.traffic.closed = this.blockers.list;
     this.features = new WindFeatures(city, this.blockers.barriers);
+    this.way = makeCourse(city).path;
     this.parkLayout = parkLayout(city);
     this.parkSolids = colliderGrid(this.parkLayout.colliders);
     this.streetLayout = streetLayout(city, { traffic: this.traffic, life: this.life, blockers: this.blockers, under: this.under });
@@ -578,6 +585,21 @@ export class Airflow {
         const w = this.traffic.wake(x, y, z, this.wk as never);
         sx += w.x; sy += w.y; sz += w.z;
         if (w.hit) out.vehicle = true;
+      }
+      // never dead calm down here: in the lee of the towers the street air can all but stop, and a leaf
+      // that's sunk into a sheltered corner had nothing to carry it on or lift it out. There's always a
+      // breath of the city's draught uptown, and a little lift off the pavement.
+      {
+        const hs = Math.hypot(sx, sz);
+        if (hs < 3.5) {
+          // along the way through, or back toward it from a side street (the route line itself cuts
+          // through buildings: its direction can point straight into a wall)
+          const wn = this.way.nearest(x, z, -1, this.wayN), a = this.way.at(wn.s + (wn.d > 15 ? 4 : 0), this.wayA);
+          let dx = a.tx, dz = a.tz;
+          if (wn.d > 15) { const L = Math.hypot(a.x - x, a.z - z) || 1; dx = (a.x - x) / L; dz = (a.z - z) / L; }
+          sx += dx * (3.5 - hs); sz += dz * (3.5 - hs);
+        }
+        if (y < 2.5) sy = Math.max(sy, 1.6 * (1 - y / 2.5) + 0.6);
       }
       // blend from street air into roof air near the roofline
       const k = streetLevel ? (H > 6 ? smoothstep(H * 0.6, H * 0.88, y) * 0.5 : smoothstep(8, 14, y)) : 1;

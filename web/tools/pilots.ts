@@ -44,7 +44,7 @@ function fly(layer: string, run: number) {
     if (i % 6 === 0) flow.traffic.update(g.clock);
     const p = g.pos, n = city.route.nearest(p.x, p.z), endNear = course.path.nearest(p.x, p.z).s > course.path.length - 150 || course.inMeadow(p.x, p.z);
     // where to steer, and at what height
-    let tx: number, tz: number, want: number;
+    let tx: number, tz: number, want: number, braking = false;
     if (mode === "toEntry") {
       if (!target) target = ins.filter((s) => s.ss > sub.nearest(p.x, p.z).s + 20 && s.ss < lastIn).sort((a, b) => a.ss - b.ss)[0] ?? null;
       if (!target || (layer === "subway" && subwayUsed && sub.nearest(p.x, p.z).s > lastIn)) mode = "roof";
@@ -68,7 +68,13 @@ function fly(layer: string, run: number) {
       tx = e ? e[0] : target.x; tz = e ? e[2] : target.z; want = 5; // climb at it: the way out's air does the rest
     } else if (way) {
       const wn = way.line.nearest(p.x, p.z);
-      const a = way.line.at(Math.min(way.line.length, wn.s + (wn.d > 10 ? 6 : 30)));
+      // look further ahead the faster you go, and flare into a sharp turn coming up (a player brakes
+      // into the corner; carrying 15 m/s straight on past it loses the line)
+      const sp = Math.hypot(g.vel.x, g.vel.z), look = wn.d > 10 ? 6 : Math.max(12, Math.min(34, sp * 1.4));
+      const a = way.line.at(Math.min(way.line.length, wn.s + look));
+      const h0 = way.line.at(wn.s), h1 = way.line.at(wn.s + 30);
+      const turn = Math.abs(Math.atan2(Math.sin(Math.atan2(h1.tx, h1.tz) - Math.atan2(h0.tx, h0.tz)), Math.cos(Math.atan2(h1.tx, h1.tz) - Math.atan2(h0.tx, h0.tz))));
+      braking = turn > 0.8 && sp > 8;
       tx = a.x; tz = a.z;
       want = way.line.length - wn.s < 150 ? 0 : way.y(wn.s);
       const closed = flow.blockers.barriers.some((b) => Math.hypot(b.x - a.x, b.z - a.z) < b.half + 25);
@@ -99,7 +105,7 @@ function fly(layer: string, run: number) {
     }
     let d = Math.atan2(tx - p.x, tz - p.z) - g.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
     // sitting on something (a roof, a ledge) away from the meadow: flare and hop off it, as a player would
-    const pitch = g.grounded && !course.inMeadow(p.x, p.z) ? -1 : clamp((p.y - want) * 0.15 - g.vel.y * 0.12, -1, 1);
+    const pitch = g.grounded && !course.inMeadow(p.x, p.z) ? -1 : braking ? -0.7 : clamp((p.y - want) * 0.15 - g.vel.y * 0.12, -1, 1);
     g.step(dt, { pitch, roll: clamp(-d * 2, -1, 1), spread: p.y < want - 4, curl: false, corkscrew: 0, loop: false });
     if (g.grounded && course.inMeadow(p.x, p.z) && Math.hypot(g.vel.x, g.vel.z) < 2.5) g.plant();
     if (i % 1200 === 0) {

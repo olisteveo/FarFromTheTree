@@ -1,0 +1,16 @@
+
+== west: 0/3 planted
+  flying   0.68 km in 2.8 min - 
+     140s s677 (-199,25,651) roof | 150s s673 (-199,13,646) roof | 160s s674 (-199,10,648) roof | 170s s677 (-202,22,650) roof  ::  t156.6 a wall at 7.4 m/s (wind 4.4 street, y 7.3) -> 0.64 | t167.3 a wall at 7.5 m/s (wind 9.5 street, y 14.3) -> 0.67
+  dead     5.28 km in 9.7 min - Torn apart on a wall
+     550s s5275 (-95,17,5089) roof | 560s s5275 (-92,6,5088) roof | 570s s5264 (-103,1,5088) roof | 580s s5264 (-93,16,5083) roof  ::  t561.1 a wall at 5.8 m/s (wind 0.6 street, y 3.0) -> 0.06 | t583.1 a wall at 11.6 m/s (wind 6.2 street, y 5.8) -> -0.01
+  flying   0.95 km in 4.0 min - 
+     210s s951 (-222,1,922) roof | 220s s950 (-223,1,921) roof | 230s s951 (-227,7,922) roof | 240s s949 (-227,6,920) roof  ::  t224.1 a wall at 7.3 m/s (wind 8.3 street, y 2.8) -> 0.51 | t226.0 an AC unit at 5.1 m/s (wind 6.8 street, y 18.2) -> 0.49
+
+== east: 0/3 planted
+  flying   1.84 km in 11.7 min - 
+     670s s1824 (-260,7,1852) roof | 680s s1824 (-261,2,1852) roof | 690s s1824 (-254,1,1852) roof | 700s s1824 (-254,10,1852) roof  ::  t664.3 a wall at 4.5 m/s (wind 7.2 street, y 4.3) -> 0.75 | t694.3 a wall at 5.0 m/s (wind 5.6 street, y 4.1) -> 0.74
+  dead     2.25 km in 3.4 min - Hit by a cab
+     170s s1776 (-231,13,1821) roof | 180s s1924 (-259,17,1904) roof | 190s s2108 (-313,27,1998) roof | 200s s2254 (-319,13,2071) roof  ::  t202.8 a wall at 6.4 m/s (wind 22.1 street, y 3.3) -> 0.14 | t206.6 hit by a cab (y 0.2) -> -0.00
+  flying   1.82 km in 4.5 min - 
+     240s s1824 (-256,1,1853) roof | 250s s1824 (-252,0,1852) roof | 260s s1824 (-252,2,1853) roof | 270s s1824 (-252,0,1855) roof  ::  t222.1 a wall at 4.9 m/s (wind 6.6 street, y 3.4) -> 0.76 | t233.1 a wall at 7.2 m/s (wind 1.3 street, y 4.1) -> 0.69
