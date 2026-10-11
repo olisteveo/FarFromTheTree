@@ -31,7 +31,7 @@ for (const root of ROOTS) {
   for (const f of fs.readdirSync(root)) {
     if (!f.endsWith(".ts")) continue;
     const file = `${root}/${f}`;
-    const lines = fs.readFileSync(path.join(root, f), "utf8").split("\n");
+    const lines = fs.readFileSync(path.join(root, f), "utf8").split(/\r?\n/); // (CRLF checkouts too)
     lines.forEach((line, i) => {
       if (/^\s*(\*|\/\*\*?)/.test(line)) return; // (doc comments)
       const code = line.replace(/\/\/.*$/, "");
