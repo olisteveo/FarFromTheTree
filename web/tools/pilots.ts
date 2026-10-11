@@ -104,6 +104,9 @@ function fly(layer: string, run: number) {
       }
     }
     let d = Math.atan2(tx - p.x, tz - p.z) - g.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
+    // never aim below the roof you're over (between the towers it aims for the street canyon, but up on a
+    // lower roof beside a tower that meant diving into the roof)
+    { const under = city.buildingAt(p.x, p.z); if (under && p.y > under.h - 1 && want < under.h + 4 && !endNear) want = under.h + 6; }
     // sitting on something (a roof, a ledge) away from the meadow: flare and hop off it, as a player would
     const pitch = g.grounded && !course.inMeadow(p.x, p.z) ? -1 : braking ? -0.7 : clamp((p.y - want) * 0.15 - g.vel.y * 0.12, -1, 1);
     g.step(dt, { pitch, roll: clamp(-d * 2, -1, 1), spread: p.y < want - 4, curl: false, corkscrew: 0, loop: false });

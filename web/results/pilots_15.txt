@@ -1,0 +1,30 @@
+
+== roofs: 2/3 planted, best 13.5 min
+  planted  8.71 km in 14.4 min 
+  planted  8.74 km in 13.5 min 
+  flying   1.19 km in 3.3 min - 
+     170s s1192 (-95,54,1173) roof | 180s s1192 (-95,62,1173) roof | 190s s1192 (-95,55,1173) roof | 200s s1192 (-95,55,1173) roof  ::  t72.6 a wall at 11.5 m/s (wind 5.1 street, y 52.6) -> 0.80 | t100.3 a wall at 7.1 m/s (wind 0.3 street, y 63.2) -> 0.86
+
+== west: 0/3 planted
+  flying   3.51 km in 8.0 min - 
+     450s s3513 (-367,10,3345) roof | 460s s3513 (-367,12,3345) roof | 470s s3513 (-367,12,3345) roof | 480s s3513 (-367,12,3345) roof  ::  t373.8 a wall at 6.5 m/s (wind 1.9 street, y 10.9) -> 0.24 | t375.5 a wall at 8.8 m/s (wind 1.2 street, y 12.3) -> 0.11
+  flying   1.71 km in 25.0 min - 
+     1460s s1708 (-333,10,1676) roof | 1470s s1707 (-331,2,1674) roof | 1480s s1703 (-330,1,1668) roof | 1490s s1708 (-333,7,1676) roof  ::  t1485.5 a wall at 5.0 m/s (wind 11.2 street, y 4.2) -> 0.19 | t1498.8 a wall at 6.2 m/s (wind 2.7 street, y 0.7) -> 0.15
+  dead     3.51 km in 6.2 min - Torn apart on a wall
+     340s s3299 (-430,5,3140) roof | 350s s3335 (-436,7,3179) roof | 360s s3438 (-430,11,3283) roof | 370s s3507 (-379,11,3342) roof  ::  t369.3 a wall at 12.3 m/s (wind 3.6 street, y 10.0) -> 0.02 | t371.1 a wall at 5.8 m/s (wind 2.5 street, y 14.7) -> -0.02
+
+== east: 0/3 planted
+  flying   0.75 km in 3.7 min - 
+     190s s747 (-183,4,722) roof | 200s s750 (-180,1,724) roof | 210s s749 (-181,6,724) roof | 220s s751 (-181,4,725) roof  ::  t202.1 a wall at 5.4 m/s (wind 8.2 street, y 6.0) -> 0.91 | t217.5 a wall at 6.4 m/s (wind 2.3 street, y 2.5) -> 0.87
+  flying   0.68 km in 2.8 min - 
+     140s s674 (-215,6,646) roof | 150s s673 (-216,1,646) roof | 160s s673 (-226,13,645) roof | 170s s671 (-224,5,643) roof  ::  t109.6 a wall at 5.0 m/s (wind 3.1 street, y 11.5) -> 0.88 | t145.6 a wall at 5.4 m/s (wind 2.6 street, y 1.3) -> 0.86
+  dead     0.41 km in 0.9 min - Eaten by a rat
+     20s s142 (-93,7,115) roof | 30s s261 (-145,20,229) roof | 40s s328 (-140,-7,300) roof | 50s s411 (-139,-8,386) roof
+
+== subway: 0/3 planted
+  dead     5.49 km in 9.7 min (used the subway) - Hit by a cab
+     550s s5044 (-22,9,4825) roof | 560s s5182 (37,3,4947) roof | 570s s5337 (102,8,5083) roof | 580s s5493 (161,3,5228) roof  ::  t579.8 hit by a cab (y 1.3) -> 0.11 | t584.0 hit by a cab (y 0.8) -> -0.02
+  dead     3.05 km in 5.0 min (used the subway) - Torn apart on a wall
+     270s s2680 (-570,46,2538) roof | 280s s2767 (-575,20,2626) roof | 290s s2892 (-544,33,2749) roof | 300s s3049 (-520,16,2904) roof  ::  t226.8 a wall at 8.6 m/s (wind 1.5 street, y 12.5) -> 0.27 | t301.3 a wall at 22.4 m/s (wind 4.7 street, y 5.0) -> -0.16
+  flying   3.65 km in 10.5 min (used the subway) - 
+     600s s3644 (-297,9,3463) roof | 610s s3645 (-285,7,3462) roof | 620s s3644 (-284,0,3460) roof | 630s s3646 (-289,9,3464) roof  ::  t611.5 a wall at 7.4 m/s (wind 1.1 street, y 2.9) -> 0.42 | t629.5 a wall at 9.5 m/s (wind 8.2 street, y 3.4) -> 0.34
