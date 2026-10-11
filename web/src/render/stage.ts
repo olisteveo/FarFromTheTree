@@ -12,6 +12,7 @@ import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { N8AOPass } from "n8ao";
+import { Warmup } from "./warmup";
 
 export type Quality = "low" | "medium" | "high";
 
@@ -208,6 +209,10 @@ function installFog(sun: THREE.Vector3, far: number) {
 }
 
 const _rainFog = new THREE.Color(0x646a72);
+const _underFog = new THREE.Color(0x0d0b09);
+const _underBg = new THREE.Color(0x050403);
+
+const _up = new THREE.Vector3(0, 1, 0), _lx = new THREE.Vector3(), _ly = new THREE.Vector3(), _snap = new THREE.Vector3();
 
 /** Ground-level haze density above ground (per metre; see installFog). */
 const HAZE = 0.0002;
@@ -227,6 +232,8 @@ export class Stage {
   private bloom: UnrealBloomPass;
   private ao: N8AOPass | null = null;
   private sky: THREE.Mesh;
+  /** new objects' shaders compile and their textures upload before they're drawn (warmup.ts) */
+  readonly warmup: Warmup;
   quality: Quality;
   /** 0..1: Central Park's rain (render/rain.ts): overcast sky, thick grey haze, dim light, a colder grade */
   rain = 0;
@@ -247,6 +254,10 @@ export class Stage {
     this.renderer.toneMappingExposure = 0.95;
     this.renderer.shadowMap.enabled = quality !== "low";
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    // the shadow map is drawn once a frame (render() asks for it), not by every scene render: N8AO draws the
+    // scene up to three times a frame (the beauty pass and its two transparency passes), and each redrew the
+    // 4096 px shadow map, the last two with only the transparent objects in it
+    this.renderer.shadowMap.autoUpdate = false;
 
     // the low November sun, south-west (true azimuth ~235 deg, 11 deg up), which in the
     // grid frame (avenues along +z) is behind and to the left of a player heading uptown
@@ -314,27 +325,47 @@ export class Stage {
     this.composer.addPass(new OutputPass());
     if (quality !== "low") this.composer.addPass(new SMAAPass());
 
+    this.warmup = new Warmup(this.renderer, this.scene, this.camera, { budgetMs: quality === "low" ? 2 : 3, maxTexture: quality === "low" ? 512 : 0 });
+    if (new URLSearchParams(location.search).get("warm") === "0") this.warmup.enabled = false; // (to compare)
+
     window.addEventListener("resize", () => this.resize());
     this.resize();
   }
 
-  /** Resolution governor: if frames run slow for a couple of seconds, render at a lower resolution
-   *  (down to half); when there's headroom again, step back up. Call once per real frame. */
+  /** Resolution governor: if frames run slow for a few seconds, render at a lower resolution (down to
+   *  half); when there's plenty of headroom for a while, step back up. Each change reallocates every
+   *  post-processing target (a hitch, and the picture visibly softens or sharpens), so it judges the typical
+   *  frame (the median of each 2 s window, which one-off hitches can't move), needs two slow windows in a
+   *  row to step down, and six good ones (and 10 s since the last change) to step up: no more see-sawing
+   *  every couple of seconds on a machine that sits near the line. Call once per real frame. */
   private maxRatio = 1;
   private resScale = 1;
-  private ema = 1 / 60;
+  private static readonly LEVELS = [1, 0.85, 0.72, 0.6, 0.5];
+  private level = 0;
+  private win: number[] = [];
   private judge = 0;
+  private slow = 0;
+  private fast = 0;
+  private lastChange = 0;
   adapt(dt: number) {
-    this.ema += (Math.min(dt, 0.2) - this.ema) * 0.05;
+    if (dt <= 0) return;
+    this.win.push(dt);
     if ((this.judge += dt) < 2) return;
     this.judge = 0;
-    let next = this.resScale;
-    if (this.ema > 1 / 38 && this.resScale > 0.5) next = Math.max(0.5, this.resScale - 0.15);
-    else if (this.ema < 1 / 56 && this.resScale < 1) next = Math.min(1, this.resScale + 0.1);
-    if (next === this.resScale) return;
-    this.resScale = next;
-    this.renderer.setPixelRatio(this.maxRatio * next);
-    this.composer.setPixelRatio(this.maxRatio * next);
+    const w = this.win.sort((a, b) => a - b), med = w[w.length >> 1];
+    this.win.length = 0;
+    const now = performance.now() / 1000;
+    if (med > 1 / 38) { this.slow++; this.fast = 0; } else if (med < 1 / 55) { this.fast++; this.slow = 0; } else { this.slow = 0; this.fast = 0; }
+    let next = this.level;
+    if (this.slow >= 2 && this.level < Stage.LEVELS.length - 1) next = this.level + 1;
+    else if (this.fast >= 6 && this.level > 0 && now - this.lastChange > 10) next = this.level - 1;
+    if (next === this.level) return;
+    this.level = next;
+    this.slow = this.fast = 0;
+    this.lastChange = now;
+    this.resScale = Stage.LEVELS[next];
+    this.renderer.setPixelRatio(this.maxRatio * this.resScale);
+    this.composer.setPixelRatio(this.maxRatio * this.resScale);
     this.resize();
   }
 
@@ -347,27 +378,38 @@ export class Stage {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Follow the player: the shadow box, the sky, and the underground mood. */
-  update(focus: THREE.Vector3, t: number, speed: number, hurt: number, underground: boolean) {
-    this.sun.position.copy(focus).addScaledVector(this.sunDir, 1200);
-    this.sun.target.position.copy(focus);
+  /** Follow the player: the shadow box, the sky, and the underground mood.
+   *  underground: how far underground the camera is, 0..1 (a boolean still works). */
+  update(focus: THREE.Vector3, t: number, speed: number, hurt: number, underground: boolean | number) {
+    const u = typeof underground === "number" ? Math.min(1, Math.max(0, underground)) : underground ? 1 : 0;
+    const under = u > 0.5;
+    // the shadow box follows the focus in whole shadow-map texels *in the light's own frame* (the camera looks
+    // down the sun direction, so snapping world x/z didn't line up with its texels and every shadow edge
+    // crawled and shimmered as you flew)
     const step = (this.sun.shadow.camera.right * 2) / this.sun.shadow.mapSize.x;
-    this.sun.target.position.x = Math.round(this.sun.target.position.x / step) * step;
-    this.sun.target.position.z = Math.round(this.sun.target.position.z / step) * step;
+    const lz = this.sunDir, lx = _lx.crossVectors(_up, lz).normalize(), ly = _ly.crossVectors(lz, lx);
+    const a = Math.round(focus.dot(lx) / step) * step, b = Math.round(focus.dot(ly) / step) * step, c = focus.dot(lz);
+    _snap.set(0, 0, 0).addScaledVector(lx, a).addScaledVector(ly, b).addScaledVector(lz, c);
+    this.sun.target.position.copy(_snap);
+    this.sun.position.copy(_snap).addScaledVector(this.sunDir, 1200);
     this.sky.position.copy(this.camera.position);
-    this.sky.visible = !underground; // no daylight leaking through anything down there
-    this.scene.background = underground ? new THREE.Color(0x050403) : null;
+    this.sky.visible = !under; // no daylight leaking through anything down there
+    this.scene.background = under ? _underBg : null;
     (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
-    const r = underground ? 0 : this.rain;
+    const r = under ? 0 : this.rain;
     (this.sky.material as THREE.ShaderMaterial).uniforms.uRain.value = r;
-    this.fog.density = underground ? 0.045 : HAZE + r * 0.0017;
-    this.fog.color.set(underground ? 0x0d0b09 : 0xb9bcc4);
+    // the haze turns into the tunnel murk over the same half second the light does (it used to switch in one
+    // frame halfway down the stairs: a sudden wall of black fog)
+    const above = HAZE + r * 0.0017;
+    this.fog.density = Math.exp(Math.log(above) + (Math.log(0.045) - Math.log(above)) * u);
+    this.fog.color.set(0xb9bcc4);
     if (r > 0) {
       this.fog.color.lerp(_rainFog, r);
       // (main.ts sets the light each frame; the rain dims it after)
       this.sun.intensity *= 1 - 0.72 * r;
       this.hemi.intensity *= 1 - 0.2 * r;
     }
+    if (u > 0) this.fog.color.lerp(_underFog, u);
     const ug = this.grade.uniforms;
     ug.uSpeed.value += (speed - ug.uSpeed.value) * 0.08;
     ug.uTime.value = t;
@@ -375,10 +417,12 @@ export class Stage {
     ug.uCold.value = 0.8 + 0.4 * r;
     ug.uSat.value = 1.08 - 0.3 * r;
     ug.uGain.value.set(1 - 0.1 * r, 1 - 0.08 * r, 1 - 0.03 * r);
-    this.bloom.strength = underground ? 0.32 : 0.3;
+    this.bloom.strength = under ? 0.32 : 0.3;
   }
 
   render() {
+    if (this.renderer.shadowMap.enabled) this.renderer.shadowMap.needsUpdate = true; // (see autoUpdate above)
+    this.warmup.frame(this.composer.readBuffer);
     this.composer.render();
   }
 }

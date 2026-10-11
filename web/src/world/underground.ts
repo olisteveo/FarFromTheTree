@@ -7,6 +7,7 @@
 // the line ends at 57 St - 7 Av.
 
 import { Grid, inRing, type CityData } from "./data";
+import { subwayPlan } from "./subwayBend";
 
 export const TUNNEL = {
   halfWidth: 7.2,
@@ -64,11 +65,34 @@ export interface Blocked { ss0: number; ss1: number; kind: "flood" | "end"; name
  *  token booth (drawn by render/subwayArt.ts, solid here). s along the line, side +1/-1. */
 export interface FareArea { s: number; side: number; station: string; hw: number }
 
+/** Furniture on the platforms that the leaf can hit (render/subwayArt.ts draws it here): benches, trash
+ *  cans, the fare-card machines by each fare control, someone asleep on a bench, a busker. s along the
+ *  line, off the lateral offset of its origin (signed like Polyline.nearest), side the platform's side. */
+export interface StationProp { s: number; off: number; side: number; kind: "bench" | "trash" | "fare_machine" | "sleeper" | "busker" | "commuter"; station: string;
+  /** commuters: which of the two, and which way they face (0 the tracks, +-1 along the line) */
+  variant?: number; turn?: number }
+/** Flat on a station wall (render/subwayArt.ts): a poster, the map, a mosaic plaque. j: its slot (picks the poster). */
+export interface WallProp { s: number; side: number; kind: "ad" | "map" | "plaque"; j: number }
+/** where a prop is solid, in (along s, out from the wall o = hw - |off|, up from the platform top): boxes */
+const PROP_BOXES: Record<StationProp["kind"], [number, number, number, number, number][]> = {
+  //            s0     s1    o0    o1   height  (o measured from the prop's origin, + toward the tracks)
+  bench: [[-1.2, 1.2, -0.21, 0.21, 0.5], [-1.2, 1.2, -0.27, -0.15, 1.0]],
+  trash: [[-0.31, 0.31, -0.31, 0.31, 0.95]],
+  fare_machine: [[-0.48, 0.48, 0, 0.62, 1.85]],
+  sleeper: [[-1.1, 1.15, -0.21, 0.21, 0.95]],
+  busker: [[-0.2, 0.2, -0.2, 0.55, 1.3], [-0.55, 0.55, 0.72, 1.6, 0.12]],
+  commuter: [[-0.26, 0.26, -0.26, 0.26, 1.78]],
+};
+
 export class Underground {
   readonly shafts: Shaft[] = [];
   readonly fareAreas: FareArea[] = [];
+  readonly stationProps: StationProp[] = [];
+  private propGrid = new Grid<StationProp>(16);
+  /** wisps of steam rising off the track bed by the stations (render/life.ts's SteamView) */
+  readonly steam: { x: number; z: number; y: number; ss: number }[] = [];
   private fareGrid = new Grid<FareArea>(16);
-  readonly shaftGrid = new Grid<Shaft>(16);
+  shaftGrid = new Grid<Shaft>(16);
   readonly stations: { ss: number; name: string }[];
   readonly blocked: Blocked[];
   /** stretches with no train service: the flood, and Bowling Green to the Wall St junction
@@ -78,18 +102,19 @@ export class Underground {
   readonly end: number;
   private hint = -1;
   private near = { s: 0, off: 0, d: 0 };
+  private startAt = { x: 0, z: 0, tx: 0, tz: 1 };
   rats: Rat[] = [];
 
   constructor(readonly city: CityData) {
     const sub = city.subway;
     this.stations = city.raw.stations.map((s) => ({ ss: s.ss, name: s.n }));
-    const prince = this.stations.find((s) => /Prince/.test(s.name))?.ss ?? 2593;
-    const end57 = this.stations.find((s) => /57 St/.test(s.name))?.ss ?? sub.length - 20;
+    // (the same plan the bend in the line was made round: world/subwayBend.ts)
+    const plan = subwayPlan(this.stations, sub.length, TUNNEL.stationHalfLength, VENT.every);
     this.start = 0;
-    this.end = Math.min(sub.length, end57 + TUNNEL.stationHalfLength - 5);
+    this.end = plan.end;
     this.blocked = [
-      { ss0: prince - 150, ss1: prince + 140, kind: "flood", name: "Prince St is flooded" },
-      { ss0: this.end, ss1: sub.length + 1000, kind: "end", name: "End of the line" },
+      { ...plan.blocked[0], kind: "flood", name: "Prince St is flooded" },
+      { ...plan.blocked[1], kind: "end", name: "End of the line" },
     ];
     // real entrance stairs: at every station some are ways in (air drawn down) and some ways
     // out (warm station air rising into the cold street, steaming)
@@ -99,6 +124,7 @@ export class Underground {
     // ways out: you're going uptown, so you drop in at one end, ride through and come out at the other.
     // (Real entrances come in pairs on the corners of a street: alternating them put a way out right
     // beside every way in, and the leaf went down one and straight back up the other.)
+    const dropped = new Set<Shaft>();
     for (const list of byStation.values()) {
       const sorted = list.map((e) => ({ e, s: sub.nearest(e.x, e.z).s })).sort((a, b) => a.s - b.s);
       const st = this.stations.find((q) => q.name === list[0].n);
@@ -123,6 +149,14 @@ export class Underground {
         }
       }
       if (mine.length > 1) for (const q of mine) if (q !== last && !q.out && Math.hypot(q.x - last.x, q.z - last.z) < 30) q.out = true;
+      // a way out that's still within 30 m of a way in (it's that close to the last way out too, so it can't
+      // be either): those stairs are left out (Canal St and 28 St each had one between the two)
+      for (const o of mine) if (o.out && o !== last && mine.some((q) => !q.out && Math.hypot(q.x - o.x, q.z - o.z) < 30)) dropped.add(o);
+    }
+    if (dropped.size) {
+      for (let i = this.shafts.length - 1; i >= 0; i--) if (dropped.has(this.shafts[i])) this.shafts.splice(i, 1);
+      this.shaftGrid = new Grid<Shaft>(16);
+      for (const sh of this.shafts) this.addShaft(sh, false);
     }
     const wallSt = this.stations.find((s) => /Wall St/.test(s.name))?.ss ?? 380;
     this.noTrains = [{ ss0: -2000, ss1: wallSt - 110 }, this.blocked[0]];
@@ -135,25 +169,24 @@ export class Underground {
     }
     // massive vents over the tunnel between stations: alternately ways in and ways out
     const vents: number[] = [];
-    let flip = 0;
-    for (let s = 150; s < this.end - 60; s += VENT.every) {
-      let ss = s;
-      // keep clear of the stations (their stairs do that job) and the closed stretches
-      const st = this.stations.find((q) => Math.abs(q.ss - ss) < TUNNEL.stationHalfLength + 40);
-      if (st) ss = st.ss + Math.sign(ss - st.ss || 1) * (TUNNEL.stationHalfLength + 45);
-      if (this.isBlocked(ss) || this.isBlocked(ss + 10) || this.isBlocked(ss - 10) || ss > this.end - 60) continue;
-      if (this.stations.some((q) => Math.abs(q.ss - ss) < TUNNEL.stationHalfLength + 30)) continue;
-      const p = sub.at(ss), side = flip % 2 ? 1 : -1;
-      const off = (TUNNEL.halfWidth - VENT.halfWidth - 0.6) * side;
-      this.addShaft({ x: p.x + p.tz * off, z: p.z - p.tx * off, r: VENT.halfLength, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "vent", ss, name: flip % 2 ? "air vent (out)" : "air vent (in)", out: flip % 2 === 1 });
+    // (out in the street: where the line swings under a building, the vent goes in the tunnel's other side
+    // or its middle instead)
+    const underBuilding = (x: number, z: number, ux: number, uz: number, ha: number, hb: number) =>
+      [-ha, 0, ha].some((a) => [-hb, 0, hb].some((b) => !!city.buildingAt(x + ux * a + uz * b, z + uz * a - ux * b)));
+    for (const { ss, out } of plan.vents) {
+      const p = sub.at(ss), side = out ? 1 : -1;
+      const base = (TUNNEL.halfWidth - VENT.halfWidth - 0.6) * side;
+      const off = [base, -base, 0].find((o) => !underBuilding(p.x + p.tz * o, p.z - p.tx * o, p.tx, p.tz, VENT.halfLength, VENT.halfWidth)) ?? base;
+      this.addShaft({ x: p.x + p.tz * off, z: p.z - p.tx * off, r: VENT.halfLength, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "vent", ss, name: out ? "air vent (out)" : "air vent (in)", out });
       vents.push(ss);
-      flip++;
     }
     // small grates over the tunnel between stations (not right next to a big vent)
     for (let s = 40; s < this.end - 20; s += TUNNEL.grateEvery) {
       if (this.stations.some((st) => Math.abs(st.ss - s) < TUNNEL.stationHalfLength + 10)) continue;
       if (this.isBlocked(s) || vents.some((v) => Math.abs(v - s) < 30)) continue;
       const p = sub.at(s);
+      // (not under a building: the grate is a hole in the street)
+      if (underBuilding(p.x - p.tz * 4.5, p.z + p.tx * 4.5, p.tx, p.tz, 1.3, 1.3)) continue;
       this.addShaft({ x: p.x - p.tz * 4.5, z: p.z + p.tx * 4.5, r: 1.3, tx: 0, tz: 0, ux: p.tx, uz: p.tz, kind: "grate", ss: s, name: "" });
     }
     // where each stairwell meets the tunnel or a station. Stairs that come down over the hall stop
@@ -170,12 +203,14 @@ export class Underground {
         s.aCut = Math.min(STAIRS_FOOT + 0.6, Math.max(s.aw + 0.3, stairsBelow(cl, 2.6)));
       }
     }
+    // (the ways out first: a way in's stream mustn't run on past a way out's mouth)
+    for (const s of this.shafts) if (s.kind === "stairs" && s.out && !this.isBlocked(s.ss)) s.exitPath = this.buildExitPath(s);
+    const mouths = this.shafts.filter((s) => s.exitPath).map((s) => [s.exitPath![0], s.exitPath![2]]);
     for (const s of this.shafts) {
-      if (s.kind !== "stairs" || this.isBlocked(s.ss)) continue;
+      if (s.kind !== "stairs" || this.isBlocked(s.ss) || s.out) continue;
       const p = this.buildExitPath(s);
       if (!p) continue;
-      if (s.out) s.exitPath = p;
-      else {
+      {
         // the same line run backwards, from a few metres out in the street down into the station
         // (from a few metres out in the street, if that's open street: not inside a building or against its wall)
         const ax = s.x - s.ux * (STAIRS.half + 5), az = s.z - s.uz * (STAIRS.half + 5);
@@ -190,11 +225,14 @@ export class Underground {
           if (p[i * 3 + 1] < -3.8 && this.hallAt(ex, ez)) break;
         }
         // and on down over the uptown track, easing across as it turns uptown into the tunnel's draught
-        // (onto the downtown track, it delivered you to the trains coming the other way)
+        // (onto the downtown track, it delivered you to the trains coming the other way), above the trains'
+        // roofs (at train height it handed you to the next uptown train: they pass under you up here)
         const q = sub.nearest(ex, ez), lane = TRAIN.track;
-        for (const [ds, y] of [[6, -5.8], [14, -6.0], [24, -6.2]] as const) {
-          const a = sub.at(q.s + ds);
-          rev.push(a.x + a.tz * lane, y, a.z - a.tx * lane);
+        for (const [ds, y] of [[6, -4.9], [14, -4.6], [24, -4.4]] as const) {
+          const a = sub.at(q.s + ds), x = a.x + a.tz * lane, z = a.z - a.tx * lane;
+          // (it lets you go short of a way out's mouth: it held you on past it, unable to turn off for it)
+          if (mouths.some(([mx, mz]) => Math.hypot(mx - x, mz - z) < 10)) break;
+          rev.push(x, y, z);
         }
         s.entryPath = new Float32Array(rev);
       }
@@ -207,7 +245,8 @@ export class Underground {
       const mine: FareArea[] = [];
       for (const sh of near) {
         const q = sub.nearest(sh.x, sh.z), side = q.off >= 0 ? 1 : -1;
-        const s = Math.max(st.ss - 58, Math.min(st.ss + 58, q.s));
+        // (and clear of the ends of the line: Bowling Green's platform runs on past where the tunnel starts)
+        const s = Math.max(st.ss - 58, this.start + 10, Math.min(st.ss + 58, this.end - 12, q.s));
         if (mine.some((a) => a.side === side && Math.abs(a.s - s) < 30)) continue;
         mine.push({ s, side, station: st.name, hw: this.shape(s).hw });
       }
@@ -217,7 +256,124 @@ export class Underground {
         this.fareGrid.add(a, p.x + p.tz * o - 16, p.z - p.tx * o - 16, p.x + p.tz * o + 16, p.z - p.tx * o + 16);
       }
     }
+    this.placeStationProps();
     this.rats = makeRats(this);
+  }
+
+  /** The platforms' furniture (drawn by render/subwayArt.ts, solid in sdf) and what hangs flat on the
+   *  walls (posters, the map, plaques). Everything goes through one placement pass per platform that keeps
+   *  it clear of everything else: the fare controls and the foot of their stairs, the columns, the posters,
+   *  each other, the walkway along the platform edge and the ends of the line. Then the steam. */
+  readonly wallProps: WallProp[] = [];
+  /** what the placement pass found: props whose first spot overlapped something, and of those how many it
+   *  moved to a clear spot and how many it left out */
+  readonly placement = { conflicts: 0, moved: 0, dropped: 0, byKind: {} as Record<string, { conflicts: number; moved: number; dropped: number }> };
+  private placeStationProps() {
+    const sub = this.city.subway;
+    this.stations.forEach((st, si) => {
+      if (this.isBlocked(st.ss)) return;
+      const areas = this.fareAreas.filter((a) => a.station === st.name);
+      const hwAt = (s: number) => this.shape(s).hw;
+      const sleepSide = si % 4 === 0 ? 1 : si % 4 === 2 ? -1 : 0;
+      for (const side of [1, -1]) {
+        // footprints in (s along the line, o out from the wall): [s0, s1, o0, o1]
+        type R = [number, number, number, number];
+        const taken: R[] = [];
+        const lo = Math.max(st.ss - 66, this.start + 2), hi = Math.min(st.ss + 66, this.end - 2);
+        // the walkway along the platform edge (from the columns to the yellow strip) stays clear, but for people
+        const walk = (s: number) => hwAt(s) - PLATFORM.columnOff - 0.4;
+        const hit = (r: R, m: number, person = false) => r[0] < lo || r[1] > hi || (!person && r[3] > walk((r[0] + r[1]) / 2))
+          || taken.some((t) => r[0] < t[1] + m && r[1] > t[0] - m && r[2] < t[3] + m && r[3] > t[2] - m);
+        // the fixed things: each fare control (its stairs and their clear foot, turnstiles, gates, the booth,
+        // the paid side behind them, the booth's trash can) and the columns
+        for (const a of areas) if (a.side === side) {
+          taken.push([a.s - 8.2, a.s + 9.9, 0, 5.1]);
+          taken.push([a.s + 6.6, a.s + 7.8, 3.6, 5.6]);
+        }
+        for (let ds = -63; ds <= 63; ds += PLATFORM.columnEvery) {
+          const cs = st.ss + ds;
+          if (this.shape(cs).k < 0.95 || this.fareAreas.some((fa) => fa.side === side && Math.abs(fa.s - cs) < 7)) continue;
+          const o = hwAt(cs) - PLATFORM.columnOff;
+          taken.push([cs - 0.35, cs + 0.35, o - 0.35, o + 0.35]);
+        }
+        /** a prop at s, or nudged along the platform by up to `reach` metres to a clear spot: footprint
+         *  [a0, a1] along about s and [o0, o1] out from the wall, clearance m. The s it went at, or null. */
+        const place = (kind: string, s0: number, a0: number, a1: number, o0: number, o1: number, m: number, reach: number) => {
+          const tally = (this.placement.byKind[kind] ??= { conflicts: 0, moved: 0, dropped: 0 });
+          const ok = (s: number) => this.shape(s).k >= 0.95 && !hit([s + a0, s + a1, o0, o1], m);
+          let at: number | null = ok(s0) ? s0 : null;
+          if (at === null) {
+            this.placement.conflicts++; tally.conflicts++;
+            for (let d = 0.75; d <= reach && at === null; d += 0.75) for (const q of [s0 + d, s0 - d]) if (at === null && ok(q)) at = q;
+            if (at === null) { this.placement.dropped++; tally.dropped++; } else { this.placement.moved++; tally.moved++; }
+          }
+          if (at !== null) taken.push([at + a0, at + a1, o0, o1]);
+          return at;
+        };
+        const add = (p: Omit<StationProp, "station" | "side">) => this.stationProps.push({ ...p, side, station: st.name });
+        // fare-card machines: a pair against the wall beside each fare control (downtown of its stairs, or
+        // uptown past the booth where that's too near the end of the line)
+        for (const a of areas) if (a.side === side) for (const pref of [-9.4, 11.4]) {
+          const at = place("fare_machine", a.s + pref, -1.1, 1.1, 0, 0.7, 0.3, 1.5);
+          if (at === null) continue;
+          for (const d of [-0.55, 0.55]) add({ s: at + d, off: hwAt(at) * side, kind: "fare_machine" });
+          break;
+        }
+        // posters and the map flat on the wall (the space in front of them is theirs: nothing stands there),
+        // plaques up high
+        for (let j = 0; j < 22; j++) {
+          const s = st.ss - 63 + j * 6;
+          const kind = j === 10 ? "map" : j % 4 === 0 || j % 4 === 2 ? "ad" : j % 4 === 3 ? "plaque" : null;
+          if (!kind || this.shape(s).k < 0.95 || s < lo || s > hi) continue;
+          if (kind === "plaque") { if (!areas.some((a) => a.side === side && s > a.s - 8.5 && s < a.s + 10.2)) this.wallProps.push({ s, side, kind, j }); continue; }
+          const half = kind === "map" ? 0.95 : 0.7;
+          const at = place(kind, s, -half, half, 0, 0.7, 0.3, 2.25);
+          if (at !== null) this.wallProps.push({ s: at, side, kind, j });
+        }
+        // a busker at the big stations, out on the platform
+        if (/Union Sq|Herald Sq|Times Sq|Fulton|Canal/.test(st.name) && side === (si % 2 ? 1 : -1)) {
+          const at = place("busker", st.ss + 18, -0.6, 0.6, 2.35, 4.25, 0.8, 30);
+          if (at !== null) add({ s: at, off: (hwAt(at) - 2.6) * side, kind: "busker" });
+        }
+        // benches along the wall, a metre clear of everything; trash cans
+        for (let j = 0; j < 22; j++) {
+          const s = st.ss - 63 + j * 6 + 3;
+          if (j % 5 === 2) {
+            const at = place("bench", s, -1.2, 1.2, 0.45, 1.0, 1.0, 3);
+            if (at !== null) add({ s: at, off: (hwAt(at) - 0.75) * side, kind: j === 7 && side === sleepSide ? "sleeper" : "bench" });
+          }
+          if (j % 7 === 4) {
+            const at = place("trash", s, -0.32, 0.32, 0.18, 0.82, 0.5, 3);
+            if (at !== null) add({ s: at, off: (hwAt(at) - 0.5) * side, kind: "trash" });
+          }
+        }
+        // people waiting for the train: some by the platform edge (between the columns and the yellow strip),
+        // some back by the wall
+        let seed = Math.round(st.ss) * 31 + 7 + (side > 0 ? 0 : 13);
+        const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+        let placed = 0;
+        for (let tries = 0; tries < 40 && placed < 4; tries++) {
+          const s = st.ss + (rnd() * 2 - 1) * 60, hw = hwAt(s);
+          const byWall = rnd() < 0.35, o = byWall ? 1.7 : hw - 6.1;
+          const variant = rnd() < 0.5 ? 0 : 1, turn = rnd() < 0.6 ? 0 : rnd() < 0.5 ? 1 : -1;
+          if (this.shape(s).k < 0.95 || hit([s - 0.3, s + 0.3, o - 0.3, o + 0.3], 0.5, true)) continue;
+          taken.push([s - 0.3, s + 0.3, o - 0.3, o + 0.3]);
+          add({ s, off: (hw - o) * side, kind: "commuter", variant, turn });
+          placed++;
+        }
+      }
+      // steam off the track bed at the station's ends (warm air from the drains into the cold tunnel)
+      for (const ds of [-TUNNEL.stationHalfLength - 8, TUNNEL.stationHalfLength + 12]) {
+        const ss = st.ss + ds;
+        if (ss < this.start + 5 || ss > this.end - 5 || this.isBlocked(ss)) continue;
+        const a = sub.at(ss);
+        this.steam.push({ x: a.x, z: a.z, y: TUNNEL.floor + this.city.subwayDip(ss) + 0.1, ss });
+      }
+    });
+    for (const p of this.stationProps) {
+      const a = sub.at(p.s), x = a.x + a.tz * p.off, z = a.z - a.tx * p.off;
+      this.propGrid.add(p, x - 3, z - 3, x + 3, z + 3);
+    }
   }
 
   /** The way out from a station by these stairs: in from the platform, through the doorway or the
@@ -313,8 +469,8 @@ export class Underground {
     return best ?? [x, z];
   }
 
-  private addShaft(s: Shaft) {
-    this.shafts.push(s);
+  private addShaft(s: Shaft, push = true) {
+    if (push) this.shafts.push(s);
     if (s.kind === "vent") {
       const h = VENT.halfLength + 6;
       this.shaftGrid.add(s, s.x - h, s.z - h, s.x + h, s.z + h);
@@ -329,8 +485,13 @@ export class Underground {
   shape(s: number) {
     let k = 0;
     for (const st of this.stations) { const d = Math.abs(st.ss - s); if (d < TUNNEL.stationHalfLength + 30) k = Math.max(k, Math.min(1, (TUNNEL.stationHalfLength + 30 - d) / 30)); }
-    return { hw: TUNNEL.halfWidth + (TUNNEL.stationHalfWidth - TUNNEL.halfWidth) * k, ceil: TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k, k };
+    const dy = this.city.subwayDip(s);
+    return { hw: TUNNEL.halfWidth + (TUNNEL.stationHalfWidth - TUNNEL.halfWidth) * k, ceil: TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k + dy, floor: TUNNEL.floor + dy, k };
   }
+
+  /** How far the tunnel's floor and ceiling sit above (+) / below (-) their usual height at s (the line
+   *  dips and rises between the stations: world/subwayBend.ts). */
+  dip(s: number) { return this.city.subwayDip(s); }
 
   /** Is (x, z) inside the tunnel's or a station's walls? Its ceiling there if so. */
   hallAt(x: number, z: number): { ceil: number } | null {
@@ -339,7 +500,7 @@ export class Underground {
     let k = 0;
     for (const st of this.stations) { const d = Math.abs(st.ss - n.s); if (d < TUNNEL.stationHalfLength + 30) k = Math.max(k, Math.min(1, (TUNNEL.stationHalfLength + 30 - d) / 30)); }
     const hw = TUNNEL.halfWidth + (TUNNEL.stationHalfWidth - TUNNEL.halfWidth) * k;
-    return Math.abs(n.off) < hw + 0.1 ? { ceil: TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k } : null;
+    return Math.abs(n.off) < hw + 0.1 ? { ceil: TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k + this.city.subwayDip(n.s) } : null;
   }
 
   isBlocked(ss: number): Blocked | null {
@@ -362,6 +523,9 @@ export class Underground {
     const blk = this.isBlocked(n.s);
     if (blk) best = -Math.min(n.s - blk.ss0, blk.ss1 - n.s);
     if (n.s >= this.start - 1 && !blk) {
+      // (the line dips and rises between the stations: measure heights from its floor here)
+      const yg = y;
+      y -= this.city.subwayDip(n.s);
       // stations open out smoothly from the tunnel over 30 m
       let k = 0;
       for (const st of this.stations) {
@@ -371,11 +535,15 @@ export class Underground {
       const hw = TUNNEL.halfWidth + (TUNNEL.stationHalfWidth - TUNNEL.halfWidth) * k;
       tunnelHW = hw;
       const ceil = TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k;
-      hallCeil = ceil;
+      hallCeil = ceil + (yg - y);
       const lateral = hw - n.d;
       best = Math.min(lateral, y - TUNNEL.floor, ceil - y);
       // the tunnel's end walls
-      const endWall = Math.min(n.s - this.start + 2, this.end - n.s);
+      // (the start: a flat wall across the line where it's drawn, render/subway.ts; the nearest point can't
+      // say how far past it you are, so measure along the line's first stretch)
+      let fromStart = n.s - this.start;
+      if (fromStart < 1) { const a = this.city.subway.at(this.start, this.startAt); fromStart = (x - a.x) * a.tx + (z - a.z) * a.tz; }
+      const endWall = Math.min(fromStart, this.end - n.s);
       const b = this.blocked[0];
       const flood = Math.min(Math.abs(n.s - b.ss0), Math.abs(n.s - b.ss1));
       best = Math.min(best, endWall, n.s < b.ss0 || n.s > b.ss1 ? flood + 0.0 : -flood);
@@ -409,7 +577,16 @@ export class Underground {
         const rise = top + Math.max(0, Math.min(3, ((ds + 5.7) / 5.1) * 3)) + 0.9;
         best = Math.min(best, box(-5.75, 0.6, fa.hw - 2.6, fa.hw, rise));
         best = Math.min(best, box(-6.6, 6.6, fa.hw - 4.45, fa.hw - 3.95, top + 1.1)); // turnstiles and rails
-        best = Math.min(best, box(7.6, 9.6, fa.hw - 2.6, fa.hw - 0.2, top + 2.7)); // the booth
+        best = Math.min(best, box(1.05, 4.45, fa.hw - 5.05, fa.hw - 3.35, top + 2.4)); // the full-height exit gates
+        best = Math.min(best, box(7.4, 9.8, fa.hw - 2.4, fa.hw - 0.4, top + 2.7)); // the booth
+      }
+      // the platforms' furniture
+      if (k > 0.6) for (const pr of this.propGrid.at(x, z)) {
+        const ds = n.s - pr.s, o = (pr.off - n.off) * pr.side, top = TUNNEL.floor + PLATFORM.height;
+        for (const [s0, s1, o0, o1, h] of PROP_BOXES[pr.kind]) {
+          const qa = Math.abs(ds - (s0 + s1) / 2) - (s1 - s0) / 2, qo = Math.abs(o - (o0 + o1) / 2) - (o1 - o0) / 2, qy = Math.abs(y - (top + h / 2)) - h / 2;
+          best = Math.min(best, Math.hypot(Math.max(qa, 0), Math.max(qo, 0), Math.max(qy, 0)) + Math.min(Math.max(qa, qo, qy), 0));
+        }
       }
       // the row of columns between the tracks (not in the stations, where the platforms are)
       if (k < 0.3) {
@@ -417,12 +594,13 @@ export class Underground {
         const dc = Math.hypot(TUNNEL.columnEvery / 2 - ds, n.off) - TUNNEL.columnRadius;
         best = Math.min(best, dc);
       }
+      y = yg;
     }
     for (const s of this.shaftGrid.at(x, z)) {
       const a = (x - s.x) * s.ux + (z - s.z) * s.uz, b = (x - s.x) * s.uz - (z - s.z) * s.ux;
       if (s.kind === "grate") {
         // a vertical shaft from the street down to the tunnel roof
-        const v = Math.min(s.r - Math.hypot(x - s.x, z - s.z), y - (TUNNEL.ceiling - 0.5), 0.6 - y);
+        const v = Math.min(s.r - Math.hypot(x - s.x, z - s.z), y - (TUNNEL.ceiling + this.city.subwayDip(s.ss) - 0.5), 0.6 - y);
         if (v > best) { best = v; if (info) info.inShaft = s; }
       } else if (s.kind === "vent") {
         // a long box straight down to the tunnel roof

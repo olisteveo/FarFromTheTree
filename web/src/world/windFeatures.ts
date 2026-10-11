@@ -21,7 +21,7 @@ import { Grid } from "./data";
 import { project } from "./landmarks";
 import { makeCourse, streetPath } from "./course";
 import { nearestEdge, type Polyline } from "./data";
-import type { Barrier } from "./blockers";
+import { inGap, openLanes, type Barrier, type Blocker } from "./blockers";
 
 export type JetKind = "canyon" | "sky" | "plunge" | "gutter";
 
@@ -83,13 +83,21 @@ export class WindFeatures {
   private scratch: [number, number][] = [];
 
   /** barriers: the closed streets (world/blockers.ts). A current that would run through one stops
-   *  short of it, or it would carry you into the barrier and hold you there. */
-  constructor(private city: CityData, barriers: Barrier[] = []) {
+   *  short of it, or it would carry you into the barrier and hold you there; one that runs along an open
+   *  lane through it (a way through: the lanes are opened here, once the ways are laid) goes on through. */
+  private barriers: Barrier[];
+  /** the closures' hazards above their barriers (a geyser, a building site's boom and crane): a current through one
+   *  stops short of it too, and the Rooftops way keeps well over them */
+  private hazards: Blocker[];
+  constructor(private city: CityData, barriers: Barrier[] = [], hazards: Blocker[] = []) {
+    this.barriers = barriers;
+    this.hazards = hazards.filter((h) => h.shape === "stretch");
     this.buildCanyons();
     this.buildSky();
     this.buildPlunges();
     this.buildGutters();
     this.buildRoutes();
+    openLanes(barriers, this.routes);
     for (const j of this.jets) {
       const p = j.pts, n = p.length / 3;
       let cut = n;
@@ -99,10 +107,17 @@ export class WindFeatures {
           if (Math.min(ya, yb) > b.height + 3) continue;
           const da = (p[k * 3] - b.x) * b.nx + (p[k * 3 + 2] - b.z) * b.nz, db = (p[k * 3 + 3] - b.x) * b.nx + (p[k * 3 + 5] - b.z) * b.nz;
           if (da * db > 0 && Math.min(Math.abs(da), Math.abs(db)) > j.r) continue;
-          const ax = Math.abs((p[k * 3] - b.x) * b.ax + (p[k * 3 + 2] - b.z) * b.az);
-          if (ax > b.half + j.r) continue;
+          const ac = (p[k * 3] - b.x) * b.ax + (p[k * 3 + 2] - b.z) * b.az;
+          if (Math.abs(ac) > b.half + j.r) continue;
+          // (along a lane kept open through it: on through)
+          if (inGap(b, ac, Math.max(ya, yb) + 1, -1)) continue;
           cut = Math.max(2, k - 2); break;
         }
+      }
+      // (and short of a geyser or a building site's boom and swinging load)
+      for (let k = 0; k < cut - 1; k++) {
+        const x = p[k * 3], y = p[k * 3 + 1], z = p[k * 3 + 2];
+        if (this.hazards.some((h) => y < h.height + 3 && Math.hypot(x - h.x, z - h.z) < h.r + j.r)) { cut = Math.max(2, k - 2); break; }
       }
       // and stops short of the first building it would run into (a current that carries you takes you
       // into the wall and holds you there)
@@ -261,7 +276,12 @@ export class WindFeatures {
     const roofY = (line: Polyline) => (s: number) => {
       let h = 0;
       for (let d = -40; d <= 40; d += 10) { const a = line.at(s + d); h = Math.max(h, city.canopy(a.x, a.z, 20)); }
-      return Math.max(28, Math.min(70, h + 14));
+      // (and always well over a closed street it passes over: the Rooftops way never runs into a closure)
+      let y = Math.max(28, Math.min(70, h + 14));
+      const a = line.at(s);
+      for (const b of this.barriers) if (Math.abs(b.x - a.x) < 60 && Math.abs(b.z - a.z) < 60 && Math.hypot(b.x - a.x, b.z - a.z) < b.half + 40) y = Math.max(y, b.height + 12);
+      for (const h of this.hazards) if (Math.hypot(h.x - a.x, h.z - a.z) < h.r + 40) y = Math.max(y, h.height + 12);
+      return y;
     };
     const defs = [
       // (the route's right, +off, is west in the grid: east is -x)

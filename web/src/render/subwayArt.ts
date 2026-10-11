@@ -34,7 +34,8 @@ type MatName = "atlas" | "metal" | "glow" | "lamp";
 interface Part { geo: THREE.BufferGeometry; mat: MatName }
 
 const Y = new THREE.Vector3(0, 1, 0);
-const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1);
+const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _p = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1), _e = new THREE.Euler();
+const _a = { x: 0, z: 0, tx: 0, tz: 1 }, _b = { x: 0, z: 0, tx: 0, tz: 1 };
 
 function lowerBound(a: Float32Array, n: number, x: number) {
   let lo = 0, hi = n;
@@ -153,8 +154,8 @@ export class TrainsArt {
   }
 
   /** sub: city.subway; trains: Airflow.trainsAt(t); focus: the camera / leaf position */
-  update(sub: { at(s: number): { x: number; z: number; tx: number; tz: number }; nearest(x: number, z: number): { s: number }; length: number },
-    trains: Train[], focus: THREE.Vector3, range = 600) {
+  update(sub: { at(s: number, out?: { x: number; z: number; tx: number; tz: number }): { x: number; z: number; tx: number; tz: number }; nearest(x: number, z: number): { s: number }; length: number },
+    trains: Train[], focus: THREE.Vector3, range = 600, dip?: (s: number) => number) {
     const near = sub.nearest(focus.x, focus.z).s;
     const carL = SUBWAY_ART.carLength;
     const by = new Map(this.sets.map((s) => [s.key, s]));
@@ -169,10 +170,13 @@ export class TrainsArt {
         const cab = k === 0 || k === 7;
         const set = by.get(`${cab ? "front" : "mid"}_${dirKey}`)!;
         if (set.n >= this.max) continue;
-        const a = sub.at(ss);
-        let yaw = Math.atan2(a.tx, a.tz);
-        if (k === 0) yaw += Math.PI; // the rear cab faces backward
-        _m.compose(_p.set(a.x + a.tz * tr.off, SUBWAY_ART.railTop, a.z - a.tx * tr.off), _q.setFromAxisAngle(Y, yaw), _s.set(1, 1, 1));
+        // on its two bogies (round the bends and up and down the dips: the car is the chord between them)
+        const back = k === 0 ? 1 : -1; // the rear cab faces backward
+        const A = sub.at(ss - back * carL * 0.36, _a), xa = A.x + A.tz * tr.off, za = A.z - A.tx * tr.off, ya = dip ? dip(ss - back * carL * 0.36) : 0;
+        const B = sub.at(ss + back * carL * 0.36, _b), xb = B.x + B.tz * tr.off, zb = B.z - B.tx * tr.off, yb = dip ? dip(ss + back * carL * 0.36) : 0;
+        const yaw = Math.atan2(xb - xa, zb - za), pitch = Math.atan2(yb - ya, Math.hypot(xb - xa, zb - za));
+        _q.setFromEuler(_e.set(-pitch, yaw, 0, "YXZ"));
+        _m.compose(_p.set((xa + xb) / 2, SUBWAY_ART.railTop + (ya + yb) / 2, (za + zb) / 2), _q, _s.set(1, 1, 1));
         for (const im of set.meshes) im.setMatrixAt(set.n, _m);
         if (set.lamp) {
           const leading = (k === 7 && tr.dir > 0) || (k === 0 && tr.dir < 0);
@@ -214,6 +218,8 @@ export class SubwayArt {
   private meta!: Meta;
   private parts = new Map<string, Part[]>();
   private hint = -1;
+  /** the failing fluorescent tubes' glow (dimmed and stuttered in update) */
+  private flickerMat: THREE.MeshBasicMaterial | null = null;
 
   constructor(readonly u: Underground, readonly base = "./models/") {
     this.root.name = "subwayArt";
@@ -335,10 +341,11 @@ export class SubwayArt {
 
   // --- placement helpers --------------------------------------------------------------
 
-  /** a prop at (s, lateral off, y), facing along the line (+Z = +s, +X = +off), turned by `turn` */
+  /** a prop at (s, lateral off, y), facing along the line (+Z = +s, +X = +off), turned by `turn`
+   *  (y as if the line were level: it's raised or lowered with the tunnel's dips between the stations) */
   private at(s: number, off: number, y: number, turn = 0, scale?: THREE.Vector3) {
     const a = this.u.city.subway.at(s);
-    return new THREE.Matrix4().compose(new THREE.Vector3(a.x + a.tz * off, y, a.z - a.tx * off),
+    return new THREE.Matrix4().compose(new THREE.Vector3(a.x + a.tz * off, y + this.u.dip(s), a.z - a.tx * off),
       new THREE.Quaternion().setFromAxisAngle(Y, Math.atan2(a.tx, a.tz) + turn), scale ?? new THREE.Vector3(1, 1, 1));
   }
 
@@ -357,14 +364,22 @@ export class SubwayArt {
     };
     const [x0, z0] = joint(i), [x1, z1] = joint(i + 1);
     const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz) || 1;
-    return new THREE.Matrix4().compose(new THREE.Vector3((x0 + x1) / 2, y, (z0 + z1) / 2),
-      new THREE.Quaternion().setFromAxisAngle(Y, Math.atan2(dx, dz) + turn), new THREE.Vector3(1, 1, L / sub.step));
+    // sheared to follow the line's grade (verticals stay vertical, the module's length runs up or down
+    // the slope, so the modules meet end to end where the tunnel dips)
+    const y0 = this.u.city.subwayDy[i] ?? 0, y1 = this.u.city.subwayDy[i + 1] ?? y0;
+    const sgn = Math.cos(turn) >= 0 ? 1 : -1;
+    const fx = dx / L, fz = dz / L;
+    return new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(fz * sgn, 0, -fx * sgn),
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(dx * sgn / sub.step, (y1 - y0) * sgn / sub.step, dz * sgn / sub.step),
+    ).setPosition((x0 + x1) / 2, y + (y0 + y1) / 2, (z0 + z1) / 2);
   }
 
-  private strip(name: string, items: { ss: number; m: THREE.Matrix4; c?: THREE.Color }[], radius = 110, underOnly = true, remap: [string, string][] = [], model = name) {
+  private strip(name: string, items: { ss: number; m: THREE.Matrix4; c?: THREE.Color }[], radius = 110, underOnly = true, remap: [string, string][] = [], model = name, mats?: Partial<Record<MatName, THREE.Material>>) {
     if (!items.length) return;
     const st = new Strip(name, items, radius, underOnly);
-    st.build(this.partsFor(model, remap), this.matMap(), this.root);
+    st.build(this.partsFor(model, remap), { ...this.matMap(), ...mats }, this.root);
     this.strips.push(st);
   }
 
@@ -397,14 +412,15 @@ export class SubwayArt {
     this.strip("ibeam", beams, 100);
 
     // light fittings where subway.ts puts its lamps; signals, blue boxes, emergency lights
-    const work: typeof track = [], fluor: typeof track = [], sigR: typeof track = [], sigG: typeof track = [], blue: typeof track = [], emerg: typeof track = [];
+    const work: typeof track = [], fluor: typeof track = [], flicker: typeof track = [], sigR: typeof track = [], sigG: typeof track = [], blue: typeof track = [], emerg: typeof track = [];
     let seed = 11;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     for (let s = 0; s < u.end; s += 8) {
       if (u.isBlocked(s)) continue;
       const w = this.width(s);
       if (w.k > 0.6) {
-        for (const off of [-3.3, 3.3, -8.5, 8.5]) fluor.push({ ss: s, m: this.at(s, off, w.ceil, 0) });
+        // (a few tubes in every station are on their way out: they buzz and stutter now and then)
+        for (const off of [-3.3, 3.3, -8.5, 8.5]) ((Math.round(s / 8) * 7919 + Math.round(off * 10) * 13) % 41 === 0 ? flicker : fluor).push({ ss: s, m: this.at(s, off, w.ceil, 0) });
       } else if (s % 32 === 0) {
         const side = (s / 32) % 2 ? 1 : -1;
         work.push({ ss: s, m: this.at(s, w.hw * side, w.ceil - 1.2, side > 0 ? Math.PI : 0) });
@@ -418,6 +434,8 @@ export class SubwayArt {
     }
     this.strip("work_light", work, 110);
     this.strip("fluor", fluor, 110);
+    this.flickerMat = this.materials.glow.clone();
+    this.strip("fluor_flicker", flicker, 110, true, [], "fluor", { glow: this.flickerMat });
     this.strip("signal_red", sigR, 130);
     this.strip("signal_green", sigG, 130);
     this.strip("blue_light", blue, 120);
@@ -449,40 +467,55 @@ export class SubwayArt {
       const areas = u.fareAreas.filter((a) => a.station === st.name);
       for (const { s, side } of areas) { this.fareArea(put, s, side); this.fareAreas.push({ s, side, station: st.name }); }
       const clear = (s: number, side: number, r = 11) => !areas.some((a) => a.side === side && Math.abs(a.s - s) < r);
+      // (Bowling Green's platform would run on past where the line starts: nothing goes out there)
+      const inLine = (s: number) => s > u.start + 2 && s < u.end - 2;
 
       for (const side of [1, -1]) {
         const away = side > 0 ? Math.PI : 0; // wall props face away from the wall
         // platform columns
         for (let ds = -63; ds <= 63; ds += 9) {
           const s = st.ss + ds;
-          if (this.width(s).k < 0.95 || !clear(s, side, 7)) continue;
+          if (this.width(s).k < 0.95 || !clear(s, side, 7) || !inLine(s)) continue;
           put("column", s, 7.0 * side, PY, 0, undefined, new THREE.Vector3(1, (this.width(s).ceil - PY) / 6.0, 1));
         }
         // the wall: posters, mosaic plaques, a map; benches and trash cans in front
-        for (let j = 0; j < 22; j++) {
-          const ds = -63 + j * 6, s = st.ss + ds;
-          const w = this.width(s);
-          if (w.k < 0.95) continue;
-          const wall = w.hw * side;
-          if (clear(s, side)) {
-            if (j === 10) put("map_frame", s, wall, PY, away);
-            else if (j % 4 === 0 || j % 4 === 2) {
-              const ads = ["ad_soup", "ad_movie", "ad_dental", "ad_kites", "ad_owl", "ad_pigeon", "ad_mattress", "ad_tree"];
-              const ad = ads[(j * 3 + (side > 0 ? 0 : 5) + Math.round(st.ss)) % ads.length];
-              put("ad_frame", s, wall, PY, away, ad === "ad_soup" ? undefined : [["ad_soup", ad]]);
-            } else if (j % 4 === 3) put("plaque", s, wall, F + 3.65, away);
-            if (j % 5 === 2) put("bench", s + 3, (w.hw - 0.75) * side, PY, away);
-            if (j % 7 === 4) put("trash", s + 3, (w.hw - 0.5) * side, PY);
-          }
+        // posters, the map and plaques where world/underground.ts's placement pass put them (clear of everything)
+        for (const wp of u.wallProps) {
+          if (wp.side !== side || Math.abs(wp.s - st.ss) > TUNNEL.stationHalfLength) continue;
+          const j = wp.j, s = wp.s, wall = this.width(s).hw * side;
+          if (wp.kind === "map") put("map_frame", s, wall, PY, away);
+          else if (wp.kind === "ad") {
+            const ads = ["ad_soup", "ad_movie", "ad_dental", "ad_kites", "ad_owl", "ad_pigeon", "ad_mattress", "ad_tree"];
+            const ad = ads[(j * 3 + (side > 0 ? 0 : 5) + Math.round(st.ss)) % ads.length];
+            put("ad_frame", s, wall, PY, away, ad === "ad_soup" ? undefined : [["ad_soup", ad]]);
+          } else put("plaque", s, wall, F + 3.65, away);
         }
         // hanging signs: which way the trains on this side go
         const dirSign: [string, string][] = side > 0 ? [] : [["sign_uptown", "sign_downtown"]];
         for (const ds of [-42, 0, 42]) {
           const s = st.ss + ds;
-          if (!clear(s, side, 6)) continue;
+          if (!clear(s, side, 6) || !inLine(s)) continue;
           put("sign_hang", s, 6.2 * side, this.width(s).ceil, 0, dirSign.length ? dirSign : undefined);
         }
-        for (const a of areas) if (a.side === side) for (const d of [-12, 12]) put("sign_hang", a.s + d, 6.2 * side, this.width(a.s + d).ceil, 0, [["sign_uptown", "sign_exit"]]);
+        // "Exit to Street" only where there is a way out (a way in's passage blows you back down to the
+        // platform): over each fare control a way out comes down to, and over where each way out's air starts
+        const exits = u.shafts.filter((sh) => sh.out && sh.exitPath && sh.kind === "stairs" && Math.abs(sh.ss - st.ss) < TUNNEL.stationHalfLength + 40)
+          .map((sh) => u.city.subway.nearest(sh.exitPath![0], sh.exitPath![2])).filter((q) => (q.off >= 0 ? 1 : -1) === side);
+        const signs: number[] = [];
+        for (const a of areas) if (a.side === side && exits.some((q) => Math.abs(q.s - a.s) < 30)) for (const d of [-12, 12]) signs.push(a.s + d);
+        for (const q of exits) if (!signs.some((x) => Math.abs(x - q.s) < 9) && this.width(q.s).k > 0.6) signs.push(q.s);
+        for (const x of signs) put("sign_hang", x, 6.2 * side, this.width(x).ceil, 0, [["sign_uptown", "sign_exit"]]);
+      }
+      // the furniture the leaf can hit (world/underground.ts places it and makes it solid): benches, trash
+      // cans, the fare-card machines, someone asleep on a bench, a busker
+      for (const p of u.stationProps) {
+        if (p.station !== st.name) continue;
+        const away = p.side > 0 ? Math.PI : 0;
+        if (p.kind === "bench" || p.kind === "sleeper") put("bench", p.s, p.off, PY, away);
+        if (p.kind === "sleeper") put("sleeper", p.s, p.off, PY, away);
+        if (p.kind === "trash") put("trash", p.s, p.off, PY);
+        if (p.kind === "fare_machine" || p.kind === "busker") put(p.kind, p.s, p.off, PY, away);
+        if (p.kind === "commuter") put(p.variant ? "commuter_b" : "commuter_a", p.s, p.off, PY, away + (p.turn ?? 0) * Math.PI / 2);
       }
       this.stations.push({ ss: st.ss, group: this.mergeStation(placed, st) });
     }
@@ -621,7 +654,7 @@ export class SubwayArt {
     for (const ds of [-45, -15, 15, 45]) for (const side of [1, -1]) {
       const s = st.ss + ds;
       const w = this.width(s);
-      if (w.k < 0.95) continue;
+      if (w.k < 0.95 || s < this.u.start + 3 || s > this.u.end - 3) continue;
       const g = new THREE.PlaneGeometry(3.6, 0.9);
       // facing away from the wall: the plane's +Z normal turned to -side * lateral
       g.applyMatrix4(this.at(s, (w.hw - 0.03) * side, TUNNEL.floor + 4.7, side > 0 ? -Math.PI / 2 : Math.PI / 2));
@@ -647,21 +680,43 @@ export class SubwayArt {
     this.hint = near;
     const under = underground > 0.01 || cam.y < -0.5;
     for (const st of this.strips) st.update(near, !st.underOnly || under);
+    if (this.flickerMat && under) {
+      // a tired tube: a little dim, and every few seconds a short, soft stutter (never a strobe)
+      const t = performance.now() / 1000, ph = t % 6.7;
+      const k = ph < 0.45 ? 0.35 + 0.45 * (Math.sin(ph * 41) > 0.2 ? 1 : 0) : ph < 0.9 ? 0.55 + 0.4 * ((ph - 0.45) / 0.45) : 0.95;
+      this.flickerMat.color.setScalar(1.1 * k);
+    }
     for (const st of this.stations) st.group.visible = under && Math.abs(st.ss - near) < TUNNEL.stationHalfLength + 140;
-    if (trains) this.trains.update(sub, trains, focus ?? cam);
+    if (trains) this.trains.update(sub, trains, focus ?? cam, 600, (s) => this.u.dip(s));
   }
 
   /**
    * Re-skins SubwayMesh's walls and floor with the Tesseract textures. Pass subway.root: the
    * first four meshes subway.ts adds are, in order, station walls, tunnel walls, floor, ceiling.
    */
-  retexture(subwayRoot: THREE.Object3D) {
+  async retexture(subwayRoot: THREE.Object3D, renderer?: THREE.WebGLRenderer, scene?: THREE.Scene, camera?: THREE.Camera) {
     if (!this.ready) return;
     const byName = (n: string) => subwayRoot.getObjectByName(n) as THREE.Mesh | undefined;
     const wall = byName("wall"), twall = byName("twall"), floor = byName("floor");
-    if (wall) wall.material = this.materials.stationWall;
-    if (twall) twall.material = this.materials.tunnelWall;
-    if (floor) floor.material = this.materials.floor;
+    const swaps: [THREE.Mesh | undefined, THREE.Material][] = [[wall, this.materials.stationWall], [twall, this.materials.tunnelWall], [floor, this.materials.floor]];
+    // (swapping the materials on meshes already in the picture compiled their shaders and uploaded their
+    // 2048 px textures inside a frame: ~100 ms each. Decode, upload and compile first, a piece a frame)
+    if (renderer && scene && camera) {
+      const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+      const texs = new Set<THREE.Texture>();
+      for (const [, m] of swaps) for (const t of [(m as THREE.MeshStandardMaterial).map, (m as THREE.MeshStandardMaterial).emissiveMap]) if (t) texs.add(t);
+      for (const t of texs) {
+        const img = t.image as HTMLImageElement | undefined;
+        try { if (img && typeof img.decode === "function") await img.decode(); } catch { /* already decoded */ }
+        renderer.initTexture(t);
+        await nextFrame();
+      }
+      const probe = new THREE.Group();
+      for (const [mesh, m] of swaps) if (mesh) probe.add(new THREE.Mesh(mesh.geometry, m));
+      try { await renderer.compileAsync(probe, camera, scene); } catch { /* compiles on first draw instead */ }
+      await nextFrame();
+    }
+    for (const [mesh, m] of swaps) if (mesh) mesh.material = m;
   }
 
   /** draw-call / triangle summary for debugging */

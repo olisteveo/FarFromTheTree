@@ -19,7 +19,7 @@ import { inPoly, nearestEdge, type Building, type CityData } from "../world/data
 import { Airflow, type AirSample, type Lane } from "../world/airflow";
 import { ratAt } from "../world/underground";
 import { Facades } from "../world/facades";
-import { BARRIER_NAME } from "../world/blockers";
+import { BARRIER_NAME, CAP, craneAt, inGap } from "../world/blockers";
 import { PARK } from "../world/park";
 import { collideParkColliders, type ParkCollider } from "../render/centralPark";
 import { RAIN, rainField, rainHash, type RainField } from "../world/rain";
@@ -407,8 +407,7 @@ export class Glider {
     const impact = -vn;
     // settling onto the ground is gentle; walls and ceilings are what tear a leaf
     // settling onto the ground barely hurts; glancing off a tunnel wall hurts less than a building
-    // the water main's spray shoves you back but it's only water: it never tears the leaf
-    const safe = what === BARRIER_NAME.water ? Infinity : ny > 0.7 ? 14 : this.soft ? FLIGHT.safeImpact * 2 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;
+    const safe = ny > 0.7 ? 14 : this.soft ? FLIGHT.safeImpact * 2 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;
     if (impact > safe && this.clock - this.lastHit > 0.15) {
       this.lastHit = this.clock;
       const dmg = (impact - safe) * FLIGHT.damage;
@@ -421,6 +420,37 @@ export class Glider {
     const f = Math.exp(-(ny > 0.7 ? 2.5 : 1) * this.dtNow);
     this.vel.x *= f; this.vel.z *= f;
     if (ny > 0.7) this.grounded = true;
+  }
+
+  /** Flying into the burst main's geyser (k 1: its column; less, its fall of water): blasted up and back out of
+   *  it, soaked, and hurt. */
+  private spray(nx: number, nz: number, depth: number, k: number) {
+    this.pos.x += nx * depth; this.pos.z += nz * depth;
+    if (k < 1 && this.clock - this.lastHit < 0.45) return; // (under the fall: a battering, a blow at a time)
+    if (this.trick) { this.trick = null; this.spin = 0; this.flip = 0; }
+    const vn = this.vel.x * nx + this.vel.z * nz;
+    const back = (Math.max(0, -vn) * 0.8 + 8) * k;
+    this.vel.x += nx * (back - Math.min(0, vn)); this.vel.z += nz * (back - Math.min(0, vn));
+    this.vel.y = Math.max(this.vel.y, 0) + 7 * k;
+    this.wet = Math.min(0.9, this.wet + 0.22 * k);
+    if (this.clock - this.lastHit > 0.45) {
+      this.lastHit = this.clock;
+      const dmg = (0.12 + Math.max(0, -vn) * 0.012) * k;
+      this.integrity -= dmg;
+      this.maxIntegrity -= dmg * FLIGHT.scar;
+      this.events.push(`t${this.time.toFixed(1)} drenched by the burst water main (y ${this.pos.y.toFixed(1)}, wet ${this.wet.toFixed(2)}) -> ${this.integrity.toFixed(2)}`);
+      if (this.integrity <= 0) this.fail("Blasted apart by the burst water main");
+    }
+  }
+
+  /** a solid segment of radius cr (a boom, a hose, a cable, a load) */
+  private capsule(ax: number, ay: number, az: number, bx: number, by: number, bz: number, cr: number, what: string) {
+    const p = this.pos, dx = bx - ax, dy = by - ay, dz = bz - az, L2 = dx * dx + dy * dy + dz * dz || 1e-9;
+    const t = Math.max(0, Math.min(1, ((p.x - ax) * dx + (p.y - ay) * dy + (p.z - az) * dz) / L2));
+    const qx = p.x - (ax + dx * t), qy = p.y - (ay + dy * t), qz = p.z - (az + dz * t), d = Math.hypot(qx, qy, qz);
+    const R = cr + FLIGHT.radius;
+    if (d >= R || d < 1e-6) return;
+    this.contact(qx / d, qy / d, qz / d, R - d, what);
   }
 
   private collide() {
@@ -475,20 +505,50 @@ export class Glider {
         else { const s2 = Math.sign(lu) || 1; this.contact(f.tx * s2, 0, f.tz * s2, du, what); }
       }
     }
-    // blockers: lantern curtains and crowd barriers close the street layer (paper lanterns, plastic
-    // barriers: you glance off them)
-    this.soft = true;
-    if (p.y < 12 && p.y > -0.4) {
+    // blockers: the closures are solid, wall to wall and up to their tops (scaffold and hoarding, trucks and
+    // stacked barricades, the strung lights and lanterns, which snag and tear). The water main's spray is a
+    // thick curtain: fly into it and it blasts you back and down the way you came, soaks you, and hurts.
+    // (Not in the lanes kept open along the ways through.)
+    this.soft = false;
+    if (p.y < CAP + 1 && p.y > -0.4) {
       for (const bar of this.flow.blockers.barriers) {
         if (p.y > bar.height) continue;
         const rx = p.x - bar.x, rz = p.z - bar.z;
         const across = rx * bar.ax + rz * bar.az;
         if (Math.abs(across) > bar.half) continue;
         const d = rx * bar.nx + rz * bar.nz; // + outside the closed area
-        if (Math.abs(d) < r + 0.15) {
-          const side = d >= 0 ? 1 : -1;
-          this.contact(bar.nx * side, 0, bar.nz * side, r + 0.15 - Math.abs(d), BARRIER_NAME[bar.kind]);
+        // (solid from depth[0] to depth[1] along the normal: out through the nearer face)
+        const d0 = bar.depth[0] - r, d1 = bar.depth[1] + r;
+        if (d <= d0 || d >= d1 || inGap(bar, across, p.y)) continue;
+        const side = d1 - d < d - d0 ? 1 : -1, pen = Math.min(d1 - d, d - d0);
+        this.contact(bar.nx * side, 0, bar.nz * side, pen, BARRIER_NAME[bar.kind]);
+        // strung lights and lanterns up above the trucks and barricades: they snag and tear
+        if ((bar.kind === "festival" || (bar.kind !== "construction" && p.y > 5)) && this.clock - this.lastSnag > 0.8) {
+          this.lastSnag = this.clock;
+          const tear = bar.kind === "festival" ? 0.06 : 0.05;
+          this.integrity -= tear; this.maxIntegrity -= tear * FLIGHT.scar;
+          this.events.push(`t${this.time.toFixed(1)} snagged in ${bar.kind === "festival" ? "the festival lanterns" : "the strung lights"} (y ${p.y.toFixed(1)}) -> ${this.integrity.toFixed(2)}`);
+          if (this.integrity <= 0) this.fail(`Torn apart on ${BARRIER_NAME[bar.kind]}`);
         }
+      }
+    }
+    // the burst main's geyser: fly into the column and it blasts you up and out of it, soaked and hurt; under
+    // its fall of water (wide: the whole street) you're battered back out, soaked; it's what shuts the block.
+    // A building site: the concrete pump's boom and hose are solid, and so are the crane's swinging load and
+    // its cable.
+    for (const b of this.flow.blockers.list) {
+      if (Math.abs(p.x - b.x) > b.r + 30 || Math.abs(p.z - b.z) > b.r + 30) continue;
+      const gz = b.geyser;
+      if (gz && p.y < gz.h + 2 && p.y > -0.4) {
+        const dx = p.x - gz.x, dz = p.z - gz.z, d = Math.hypot(dx, dz), ux = d > 0.01 ? dx / d : 1, uz = d > 0.01 ? dz / d : 0;
+        if (d < gz.r) this.spray(ux, uz, gz.r - d, 1);
+        else if (d < gz.fall && p.y < gz.h * 0.9) this.spray(ux, uz, 0, 0.45);
+      }
+      for (const c of b.solids ?? []) this.capsule(c.ax, c.ay, c.az, c.bx, c.by, c.bz, c.r, c.what);
+      if (b.crane) {
+        const k = craneAt(b.crane, this.clock), hl = 3.5;
+        this.capsule(k.tx, k.ty, k.tz, k.hx, k.hy, k.hz, 0.12, "the crane's cable");
+        this.capsule(k.hx - k.jx * hl, k.ly, k.hz - k.jz * hl, k.hx + k.jx * hl, k.ly, k.hz + k.jz * hl, 0.75, "the crane's swinging load");
       }
     }
     // Central Park: rocks, lamps, benches, trunks, the bridge, the rink boards
@@ -539,9 +599,11 @@ export class Glider {
     // Central Park's puddles, once the rain has been falling a while: come down in one and you drown
     if (this.rainFor > RAIN.puddleAfter && p.y < 0.12 + RAIN.puddleDepth && p.y > -0.2 && this.rf?.puddleAt(p.x, p.z, this.rainFor)) this.fail("Drowned in a puddle");
     if (p.y < -1.2 && p.y > -3 && !this.flow.under.openingAt(p.x, p.z) && !this.city.onLand(p.x, p.z)) this.fail("Swallowed by the harbour");
-    if (p.y < -12) this.fail("Lost in the dark");
+    // (the tunnels dip a little between the stations: measured from the floor there)
+    const dip = p.y < -6 ? this.city.subwayDip(this.city.subway.nearest(p.x, p.z).s) : 0;
+    if (p.y - dip < -12) this.fail("Lost in the dark");
     // down on the track bed the rats find you
-    if (p.y < -8.9 && this.grounded) {
+    if (p.y - dip < -8.9 && this.grounded) {
       const u = this.flow.under, n = this.city.subway.nearest(p.x, p.z);
       for (const r of u.rats) {
         if (Math.abs(r.home - n.s) > r.range + 4) continue;

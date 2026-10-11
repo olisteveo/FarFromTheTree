@@ -208,8 +208,8 @@ export class TrainsView {
         // the track's lateral offset uses the same sign as Polyline.nearest's "off"
         const px = a.x + a.tz * tr.off, pz = a.z - a.tx * tr.off;
         q.setFromAxisAngle(Y, Math.atan2(a.tx, a.tz));
-        this.cars.setMatrixAt(ci, m.compose(p.set(px, TUNNEL.floor + 0.6 + TRAIN.height / 2, pz), q, s.set(TRAIN.width, TRAIN.height, carL - 0.9)));
-        this.windows.setMatrixAt(ci, m.compose(p.set(px, TUNNEL.floor + 0.6 + TRAIN.height * 0.62, pz), q, s.set(TRAIN.width + 0.04, 1.0, carL - 3)));
+        this.cars.setMatrixAt(ci, m.compose(p.set(px, TUNNEL.floor + this.flow.city.subwayDip(ss) + 0.6 + TRAIN.height / 2, pz), q, s.set(TRAIN.width, TRAIN.height, carL - 0.9)));
+        this.windows.setMatrixAt(ci, m.compose(p.set(px, TUNNEL.floor + this.flow.city.subwayDip(ss) + 0.6 + TRAIN.height * 0.62, pz), q, s.set(TRAIN.width + 0.04, 1.0, carL - 3)));
         ci++;
       }
       const hd = sub.at(Math.max(0, Math.min(sub.length, tr.head)));
@@ -217,7 +217,7 @@ export class TrainsView {
       for (const d of headOut ? [-0.9, 0.9] : []) {
         if (li >= 40) break;
         const px = hd.x + hd.tz * (tr.off + d), pz = hd.z - hd.tx * (tr.off + d);
-        this.lights.setMatrixAt(li++, m.compose(p.set(px + hd.tx * tr.dir * 0.2, TUNNEL.floor + 1.6, pz + hd.tz * tr.dir * 0.2), q.identity(), s.set(1, 1, 1)));
+        this.lights.setMatrixAt(li++, m.compose(p.set(px + hd.tx * tr.dir * 0.2, TUNNEL.floor + this.flow.city.subwayDip(tr.head) + 1.6, pz + hd.tz * tr.dir * 0.2), q.identity(), s.set(1, 1, 1)));
       }
     }
     this.cars.count = ci; this.windows.count = ci; this.lights.count = li;
@@ -291,6 +291,17 @@ export class SteamView {
         const j = this.next++ % this.n;
         this.p.set([sh.x + (Math.random() - 0.5) * 3, 0.4, sh.z + (Math.random() - 0.5) * 3], j * 3);
         this.v.set([0, 2.5 + Math.random() * 2, 0], j * 3);
+        this.age[j] = 0;
+      }
+    }
+    // in the subway: wisps off the track bed by the stations, slow and thin (world/underground.ts)
+    if (focus.y < 0) for (const st of this.flow.under.steam) {
+      if (Math.abs(st.x - focus.x) > 90 || Math.abs(st.z - focus.z) > 90) continue;
+      let k = 8 * dt + Math.random();
+      while (k-- >= 1) {
+        const j = this.next++ % this.n;
+        this.p.set([st.x + (Math.random() - 0.5) * 2.5, st.y, st.z + (Math.random() - 0.5) * 2.5], j * 3);
+        this.v.set([0, 0.9 + Math.random() * 0.6, 0], j * 3);
         this.age[j] = 0;
       }
     }

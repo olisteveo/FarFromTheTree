@@ -823,7 +823,7 @@ export class Crowd {
     const route = city.route;
     for (const c of this.closed()) {
       const kind = c.kind ?? "crowd";
-      if (kind === "water") continue;
+      if (kind === "water" || kind === "construction") continue; // (a burst main, a building site: no crowds)
       const budget = kind === "crowd" ? 1700 : kind === "parade" ? 1300 : kind === "festival" ? 900 : 650;
       const pts: [number, number, number][] = [];
       const R = c.r - 1.6;

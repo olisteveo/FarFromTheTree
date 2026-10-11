@@ -108,13 +108,10 @@ export class Achievements {
       if (/parade balloon/.test(e)) this.unlock("gobble");
       if (/caught by a kid/.test(e)) this.unlock("kid");
     }
-    // touching the spray curtain of the water main
-    if (p.y < 8 && p.y > 0) {
-      for (const bar of leaf.flow.blockers.barriers) {
-        if (bar.kind !== "water") continue;
-        const rx = p.x - bar.x, rz = p.z - bar.z;
-        if (Math.abs(rx * bar.ax + rz * bar.az) < bar.half && Math.abs(rx * bar.nx + rz * bar.nz) < 1.2) this.unlock("splash");
-      }
+    // touching the burst water main's geyser
+    for (const b of leaf.flow.blockers.list) {
+      const gz = b.geyser;
+      if (gz && p.y > 0 && p.y < gz.h && Math.hypot(p.x - gz.x, p.z - gz.z) < gz.r + 0.5) this.unlock("splash");
     }
     if (leaf.lane !== this.lastLane) {
       if (this.lastLane === "subway" && leaf.lane !== "subway" && leaf.vel.y > 6) this.unlock("vent");

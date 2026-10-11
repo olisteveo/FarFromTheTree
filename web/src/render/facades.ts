@@ -150,10 +150,62 @@ async function decode(url: string, size: number): Promise<Uint8ClampedArray> {
 }
 
 /** opts.base: folder holding textures/ (default: next to the page, or the site root from the tools/ test pages). */
-export function buildFacadeTextures(opts: { base?: string; quality?: FacadeQuality } = {}): FacadeTextures {
+/**
+ * Per-layer uploads straight into the arrays already on the GPU (WebGL2): each decoded layer goes up with
+ * its own mip chain (built in the worker), a few layers a frame under a small time budget. Before, the whole
+ * arrays (~190 MB on high) were re-sent twice while loading, each time a frame of 100+ ms plus a mipmap
+ * rebuild of every layer: a hitch you could feel, and every style popping in at once.
+ */
+class LayerUploader {
+  private q: { tex: THREE.DataArrayTexture; layer: number; levels: Uint8Array[]; size: number }[] = [];
+  private running = false;
+  constructor(private r: THREE.WebGLRenderer, private budgetMs: number) {}
+  static ok(r?: THREE.WebGLRenderer): r is THREE.WebGLRenderer {
+    return !!r && typeof WebGL2RenderingContext !== "undefined" && r.getContext() instanceof WebGL2RenderingContext;
+  }
+  push(tex: THREE.DataArrayTexture, layer: number, levels: Uint8Array[], size: number) {
+    this.q.push({ tex, layer, levels, size });
+    if (!this.running) { this.running = true; requestAnimationFrame(this.pump); }
+  }
+  get pending() { return this.q.length; }
+  private pump = () => {
+    const t0 = performance.now();
+    while (this.q.length) {
+      if (!this.upload(this.q[0])) break; // the array isn't on the GPU yet (no frame drawn): try next frame
+      this.q.shift();
+      if (performance.now() - t0 > this.budgetMs) break;
+    }
+    if (this.q.length) requestAnimationFrame(this.pump);
+    else this.running = false;
+  };
+  private upload(it: { tex: THREE.DataArrayTexture; layer: number; levels: Uint8Array[]; size: number }): boolean {
+    const r = this.r, gl = r.getContext() as WebGL2RenderingContext;
+    const p = r.properties.get(it.tex) as { __webglTexture?: WebGLTexture; __version?: number };
+    if (!p.__webglTexture || p.__version !== it.tex.version) return false;
+    // through three's state cache, so its own uploads still see the right binding and unpack settings
+    const st = r.state as unknown as { bindTexture(t: number, tex: WebGLTexture | null): void; unbindTexture(): void; pixelStorei(n: number, v: number | boolean): void };
+    st.bindTexture(gl.TEXTURE_2D_ARRAY, p.__webglTexture);
+    st.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    st.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    st.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+    st.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    for (let lv = 0; lv < it.levels.length; lv++) {
+      const s = Math.max(1, it.size >> lv);
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, lv, 0, 0, it.layer, s, s, 1, gl.RGBA, gl.UNSIGNED_BYTE, it.levels[lv]);
+    }
+    st.unbindTexture();
+    return true;
+  }
+}
+
+/** opts.renderer: lets the layers go up one at a time as they arrive (see LayerUploader); without it the
+ *  arrays are re-sent whole. */
+export function buildFacadeTextures(opts: { base?: string; quality?: FacadeQuality; renderer?: THREE.WebGLRenderer } = {}): FacadeTextures {
   const quality = opts.quality ?? detectQuality();
   const base = opts.base ?? (location.pathname.includes("/tools/") ? "/" : "./");
   const AS = quality === "low" ? 512 : 1024, NS = quality === "low" ? 256 : 512;
+  const useWorkers = typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined";
+  const gpu = useWorkers && LayerUploader.ok(opts.renderer) ? new LayerUploader(opts.renderer, quality === "low" ? 2 : 3) : null;
   const tex: FacadeTextures = {
     albedo: placeholder(4, true, false),
     normal: placeholder(4, false, true),
@@ -177,28 +229,30 @@ export function buildFacadeTextures(opts: { base?: string; quality?: FacadeQuali
     const rank = (n: string) => (/^(party|brick|prewar)/.test(n) ? 0 : /^(castiron|deco)/.test(n) ? 1 : 2);
     const order = FACADE_LAYERS.map((l, i) => ({ l, i })).sort((a, b) => rank(a.l.name) - rank(b.l.name));
     let firstLeft = order.filter((o) => rank(o.l.name) === 0).length * 2;
-    const put = (_arr: THREE.DataArrayTexture, data: Uint8Array, px: Uint8Array | Uint8ClampedArray, size: number, i: number) => {
-      data.set(px, i * size * size * 4);
+    const put = (arr: THREE.DataArrayTexture, data: Uint8Array, px: Uint8Array | Uint8ClampedArray, size: number, i: number, levels?: Uint8Array[]) => {
+      data.set(px, i * size * size * 4); // (the CPU copy stays whole, for a context restore)
+      if (gpu && levels) { gpu.push(arr, i, levels, size); return; }
       if (rank(FACADE_LAYERS[i].name) === 0 && --firstLeft === 0) albedo.needsUpdate = normal.needsUpdate = true;
     };
-    const useWorkers = typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined";
     if (useWorkers) {
       const N = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4) - 2));
       const workers = Array.from({ length: N }, () => new Worker(new URL("./facadeWorker.ts", import.meta.url), { type: "module" }));
       let next = 0;
-      const pending = new Map<number, (d: Uint8Array | null) => void>();
-      for (const w of workers) w.onmessage = (e) => { pending.get(e.data.id)?.(e.data.error ? null : e.data.data); pending.delete(e.data.id); };
-      const job = (w: Worker, url: string, size: number) => new Promise<Uint8Array | null>((res) => { const id = next++; pending.set(id, res); w.postMessage({ id, url: new URL(url, location.href).href, size }); }); // (a worker resolves relative URLs against its own script)
+      type Got = { data: Uint8Array; levels?: Uint8Array[] } | null;
+      const pending = new Map<number, (d: Got) => void>();
+      for (const w of workers) w.onmessage = (e) => { pending.get(e.data.id)?.(e.data.error ? null : e.data); pending.delete(e.data.id); };
+      const job = (w: Worker, url: string, size: number, srgb: boolean) => new Promise<Got>((res) => { const id = next++; pending.set(id, res); w.postMessage({ id, url: new URL(url, location.href).href, size, mips: !!gpu, srgb }); }); // (a worker resolves relative URLs against its own script)
       const queue = [...order];
       await Promise.all(workers.map(async (w) => {
         while (queue.length) {
           const { l, i } = queue.shift()!;
-          const [a, n] = await Promise.all([job(w, `${base}textures/buildings/${l.name}_c.webp`, AS), job(w, `${base}textures/buildings/${l.name}_n.webp`, NS)]);
-          if (a) put(albedo, ad, a, AS, i); else console.warn("facade layer missing", l.name);
-          if (n) put(normal, nd, n, NS, i);
+          const [a, n] = await Promise.all([job(w, `${base}textures/buildings/${l.name}_c.webp`, AS, true), job(w, `${base}textures/buildings/${l.name}_n.webp`, NS, false)]);
+          if (a) put(albedo, ad, a.data, AS, i, a.levels); else console.warn("facade layer missing", l.name);
+          if (n) put(normal, nd, n.data, NS, i, n.levels);
         }
       }));
       for (const w of workers) w.terminate();
+      if (gpu) return; // every layer is on its way up already: no whole-array upload at the end
     } else {
       const flip = (px: Uint8ClampedArray, size: number) => {
         const out = new Uint8Array(size * size * 4);

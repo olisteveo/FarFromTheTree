@@ -77,7 +77,7 @@ function pickQuality(): Quality {
 const stage = new Stage(canvas, pickQuality());
 // the facade images start decoding now (off the main thread), while the city loads. Same quality as the
 // renderer: on its own it took iPhones for desktops (full-size facades, no building streaming)
-const tex = buildFacadeTextures({ quality: stage.quality });
+const tex = buildFacadeTextures({ quality: stage.quality, renderer: stage.renderer });
 
 /** low quality (phones, small laptops): less simulated around you, fewer effects */
 
@@ -126,7 +126,7 @@ const centralPark = new CentralPark(city, { layout: flow.parkLayout, quality: st
 const rainView = new RainView(city, flow.parkLayout, stage.quality);
 stage.scene.add(rainView.root);
 let subwayArtReady = false;
-subwayArt.load().then(() => { subwayArtReady = true; subwayArt.retexture(subway.root); subway.legacy.visible = false; trains.root.visible = false; })
+subwayArt.load().then(() => { subwayArtReady = true; void subwayArt.retexture(subway.root, stage.renderer, stage.scene, stage.camera); subway.legacy.visible = false; trains.root.visible = false; })
   .catch((e) => console.warn("subway art didn't load", e));
 // ---- subway entrances, stairwells and air vents (render/subwayEntrances.ts): the street entrance styles,
 // the stairwells and passages down to the stations, the big vents with their fans and plumes. The holes
@@ -166,7 +166,7 @@ Object.assign(window, { ffttPeople: people }); // for tools/people/bench.ts
 const pigeons = new Pigeons(city);
 const landmarks = new Landmarks(city);
 landmarkSolids(landmarks, flow.facades);
-const blockerView = blockerMeshes(flow.blockers);
+const blockerView = blockerMeshes(flow.blockers, stage.quality);
 // ---- chinatown (render/chinatown.ts): paifang gates close the festival streets (they replace the stand-in lantern
 // curtains once loaded), lanterns over the streets, neon signs, and the modelled Manhattan Bridge with its arch
 const chinatown = new Chinatown(city, flow.blockers, { quality: stage.quality, festival: blockerView.userData.festival, farCity: LOW ? null : farCity });
@@ -203,7 +203,7 @@ function placeAt() {
     leaf.detach();
   } else if (sub) {
     const p = city.subway.at(Number(sub));
-    leaf.pos.set(p.x, (TUNNEL.floor + TUNNEL.ceiling) / 2, p.z);
+    leaf.pos.set(p.x, (TUNNEL.floor + TUNNEL.ceiling) / 2 + city.subwayDip(Number(sub)), p.z);
     leaf.heading = Math.atan2(p.tx, p.tz);
     leaf.lane = "subway";
     leaf.detach();
@@ -419,11 +419,13 @@ if (autopilot || freeCam || params.get("at") || params.get("sub") || params.get(
 const STEP = LOW ? 1 / 120 : 1 / 240;
 let lowFrame = 0;
 let last = performance.now(), acc = 0, wall = 0, bestS = 0;
-let underMix = 0;
+let underMix = 0, underTarget = 0;
 let lastHint = "";
 
 function frame(now: number) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  // (clamped at 0 too: a frame timestamp can predate `last` when the first frame was queued while the page was
+  // still busy building the city; a negative dt froze the flight for seconds and blew the camera's fov up, flipping the view)
+  const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
   // Esc / P pauses a run (and resumes); while paused the world stands still and only draws
   if ((input.hit("Escape") || input.hit("KeyP")) && leaf.state === "flying" && !replay) setPaused(!pause.open);
@@ -553,7 +555,7 @@ function tick(dt: number, render: boolean) {
     people.update(peopleList, viewing() ? leaf.clock + wall : leaf.clock, cam);
   } else crowdView.update();
   pigeons.update(dt, leaf.pos, wall);
-  blockerView.userData.update(wall);
+  blockerView.userData.update(wall, leaf.clock);
   centralPark.update(cam.position, wall);
   rainView.update(dt, wall, leaf, cam, stage, leafView);
   chinatown.update(cam.position, wall);
@@ -562,14 +564,17 @@ function tick(dt: number, render: boolean) {
   ground.update(wall);
   ground.updateFocus(focus);
   // light: underground the sun goes and the fluorescents take over
-  underMix += ((cam.position.y < -0.6 ? 1 : 0) - underMix) * (1 - Math.exp(-dt * 4));
+  // (with some hysteresis: the camera jitters about the street line going down a stair, and the target
+  // flipping every frame held underMix at the 0.5 where the sky and background switch: a flashing frame or three)
+  if (cam.position.y < -0.9) underTarget = 1; else if (cam.position.y > -0.3) underTarget = 0;
+  underMix += (underTarget - underMix) * (1 - Math.exp(-dt * 4));
   stage.sun.intensity = 3.4 * (1 - underMix);
   stage.hemi.intensity = 0.6 * (1 - underMix) + 0.07 * underMix; // the tunnels are dark: the lamps do the lighting
   stage.hemi.color.setRGB(0.66 + underMix * 0.2, 0.7 + underMix * 0.1, 0.78 - underMix * 0.2);
   subway.update(leaf.clock, cam.position, underMix);
   entrances.update(viewing() ? leaf.clock + wall : leaf.clock, cam.position, window.innerHeight);
   if (subwayArtReady) subwayArt.update(cam.position, underMix, flow.trainsAt(leaf.clock), focus);
-  stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix > 0.5);
+  stage.update(focus, wall, leaf.state === "flying" ? leaf.vel.length() : 0, Math.max(0, 0.6 - leaf.integrity) * 1.4, underMix);
   hud.update(dt, leaf, bestS);
   touch?.show(leaf.state === "flying" && !pause.open, leaf.state === "attached"); // controls once the run has started; restart after it ends
   subwaySigns.update(wall, leaf.pos, ns.s, leaf.state === "flying" && leaf.lane === "street" && !replay, cam, dt, leaf.state === "flying" && leaf.lane === "subway" && !replay ? city.subway.nearest(leaf.pos.x, leaf.pos.z).s : null);
@@ -689,4 +694,6 @@ if (LOW) for (const ms of [6000, 15000, 30000]) setTimeout(() => shrinkTextures(
 
 // the views, for timing and debugging from the console
 Object.assign(window, { ffttViews: { rainView, chinatown, traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
-Object.assign(window, { fftt: { THREE, tex, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances } });
+Object.assign(window, { fftt: { THREE, tex, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances,
+  /** (tools: move the ?cam= free camera without reloading) */
+  setCam: (x: number, y: number, z: number, yawDeg: number, pitchDeg: number) => { freePos.set(x, y, z); freeYaw = THREE.MathUtils.degToRad(yawDeg); freePitch = THREE.MathUtils.degToRad(pitchDeg); } } });

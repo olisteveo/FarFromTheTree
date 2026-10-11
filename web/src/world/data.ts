@@ -2,6 +2,8 @@
 // Data): types, polygon helpers, the route and a spatial index. No three.js here, so
 // the headless test bot and the s&box exporter can use it too.
 
+import { bendSubway, subwayPlan } from "./subwayBend";
+
 export type Style = "tenement" | "castiron" | "prewar" | "deco" | "modern" | "glass" | "brick" | "civic";
 export const STYLES: Style[] = ["tenement", "castiron", "prewar", "deco", "modern", "glass", "brick", "civic"];
 
@@ -244,7 +246,10 @@ function bbox(r: number[]) {
 export class CityData {
   readonly raw: RawCity;
   readonly route: Polyline;
+  /** the bent tunnel line (world/subwayBend.ts): its s is the surveyed s */
   readonly subway: Polyline;
+  /** per point of the subway line: how far its floor and ceiling sit above (+) or below (-) the usual */
+  readonly subwayDy: Float32Array;
   readonly buildings: Building[];
   readonly bgrid = new Grid<Building>(24);
   readonly land: Poly[];
@@ -254,7 +259,20 @@ export class CityData {
   constructor(raw: RawCity) {
     this.raw = raw;
     this.route = new Polyline(raw.route);
-    this.subway = new Polyline(raw.subway);
+    // the tunnels between the stations bend and dip a little (world/subwayBend.ts); the stations don't
+    {
+      const sts = raw.stations.map((q) => ({ ss: q.ss, name: q.n }));
+      const straight = new Polyline(raw.subway);
+      const plan = subwayPlan(sts, straight.length, 75, 260);
+      const bent = bendSubway(raw.subway, {
+        step: straight.step, stations: sts.map((q) => q.ss), vents: plan.vents.map((v) => v.ss),
+        passages: raw.entrances.map((e) => straight.nearest(e.x, e.z).s), walls: [plan.blocked[0].ss0, plan.blocked[0].ss1, plan.end],
+      });
+      // (tools: globalThis.__fftt_noBend = true keeps the surveyed line, to A/B the bend)
+      const noBend = (globalThis as { __fftt_noBend?: boolean }).__fftt_noBend;
+      this.subway = noBend ? straight : new Polyline(bent.flat, straight.step);
+      this.subwayDy = noBend ? new Float32Array(straight.x.length) : bent.dip;
+    }
     this.buildings = raw.buildings.map((b, id) => {
       const bb = bbox(b.p[0]);
       let cx = 0, cz = 0;
@@ -266,6 +284,12 @@ export class CityData {
     this.land = raw.land;
     for (const p of this.land) { const bb = bbox(p[0]); this.landGrid.add(p, bb.x0, bb.z0, bb.x1, bb.z1); }
     raw.streets.forEach((st, i) => { const bb = bbox(st.p); this.streetGrid.add(i, bb.x0 - st.w, bb.z0 - st.w, bb.x1 + st.w, bb.z1 + st.w); });
+  }
+
+  /** How far the tunnel's floor and ceiling are raised (+) or lowered (-) at subway s (0 in the stations). */
+  subwayDip(s: number): number {
+    const d = this.subwayDy, f = Math.max(0, Math.min(d.length - 1.001, s / this.subway.step)), i = Math.floor(f);
+    return d[i] + (d[i + 1] - d[i]) * (f - i);
   }
 
   static async load(url = "./city.json"): Promise<CityData> {

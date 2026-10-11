@@ -643,8 +643,14 @@ def build_turnstile():
     """the classic waist-high three-arm turnstile: stainless cabinet along Z, rotor out to +X.
     Lane pitch 0.95 m in X. Entry from -Z (card reader at the -Z end of the top)."""
     B = Builder()
-    box(B, (0, 0.5, 0), (0.32, 1.0, 1.15), "metal", "steel_plain", rects={"py": "turnstile_top"}, skip=("ny",))
-    box(B, (0, 0.03, 0), (0.36, 0.06, 1.2), "atlas", "rubber", skip=("ny",))
+    # brushed-steel cabinet with rounded ends (0.95 m to the top), a black kick plinth and a dark seam band
+    box(B, (0, 0.5, 0), (0.32, 0.9, 0.83), "metal", "steel_flute", rects={"py": "turnstile_top"}, skip=("ny", "py", "pz", "nz"))
+    box(B, (0, 0.975, 0), (0.32, 0.05, 0.83), "metal", "steel_plain", rects={"py": "turnstile_top"}, skip=("ny", "pz", "nz"))
+    for zc in (-0.415, 0.415):
+        cyl(B, (0, 0.06, zc), (0, 0.95, zc), 0.16, 12, "metal", "steel_flute")
+        cyl(B, (0, 0.95, zc), (0, 1.0, zc), 0.16, 12, "metal", "steel_plain")
+    box(B, (0, 0.06, 0), (0.34, 0.12, 1.16), "atlas", "rubber", skip=("ny",))
+    box(B, (0, 0.62, 0), (0.33, 0.05, 0.84), "atlas", "steel_dark", skip=("ny", "py"))
     # reader head on top at the entry end, screen tilted toward the rider
     M = RX(-0.5)
     box(B, (0, 1.08, -0.38), (0.26, 0.18, 0.26), "atlas", "paint_black", M=M)
@@ -660,8 +666,8 @@ def build_turnstile():
     for k in range(3):
         ang = k * 2 * math.pi / 3
         d = a1 * math.cos(ang) + a2 * math.sin(ang)
-        tube(B, tuple(hub), tuple(hub + d * 0.5), 0.022, "metal", "steel_plain", 6)
-        disc(B, tuple(hub + d * 0.5), tuple(d), 0.022, "metal", "steel_plain", 6)
+        tube(B, tuple(hub), tuple(hub + d * 0.5), 0.03, "metal", "steel_plain", 8)
+        disc(B, tuple(hub + d * 0.5), tuple(d), 0.03, "atlas", "rubber", 8)
     return B
 
 
@@ -820,12 +826,32 @@ def build_platform_stair():
     L = n * run
     # landing and the side walls (white tile) with their capping
     B.quad((-W / 2, rise, L), (W / 2, rise, L), (W / 2, rise, L + 1.2), (-W / 2, rise, L + 1.2), "atlas", "concrete_light", out=(0, 1, 0))
+    # the side walls: real 3x6 inch subway tile (the tile_white rect is 4 x 8 tiles: 0.6 m square), laid in
+    # 0.6 m cells under the sloping top, with a maroon band under the cap
+    top = lambda z: 0.9 if z <= 0 else (rise + 0.9 if z >= L else 0.9 + rise * z / L)
+    TS = 0.6
+    def tiled(x, outx):
+        zs = [-0.05] + [k * TS for k in range(1, int((L + 1.2) / TS) + 1) if k * TS < L + 1.2] + [L, L + 1.2]
+        zs = sorted(set(round(z, 4) for z in zs))
+        for z0, z1 in zip(zs, zs[1:]):
+            t0, t1 = top(z0) - 0.14, top(z1) - 0.14
+            y = 0.0
+            while y < max(t0, t1) - 1e-4:
+                y1 = y + TS
+                a0, a1 = min(y1, t0), min(y1, t1)
+                if a0 > y + 1e-4 or a1 > y + 1e-4:
+                    a0, a1 = max(a0, y), max(a1, y)
+                    s0 = z0 / TS - math.floor(z0 / TS + 1e-6)
+                    s1 = s0 + (z1 - z0) / TS
+                    B.face([(x, y, z0), (x, y, z1), (x, a1, z1), (x, a0, z0)], "atlas", "tile_white",
+                           [(s0, 0), (s1, 0), (s1, (a1 - y) / TS), (s0, (a0 - y) / TS)], out=(outx, 0, 0))
+                y = y1
+            # the band
+            B.face([(x, t0, z0), (x, t1, z1), (x, t1 + 0.14, z1), (x, t0 + 0.14, z0)], "atlas", "paint_red", out=(outx, 0, 0))
     for sx in (-1, 1):
         x = sx * (W / 2 + 0.1)
-        B.face([(x, 0, -0.05), (x, 0, L + 1.2), (x, rise + 0.9, L + 1.2), (x, rise + 0.9, L), (x, 0.9, 0), (x, 0.9, -0.05)], "atlas", "tile_white",
-               [(0, 0), (4, 0), (4, 2), (3.5, 2), (0, 0.6), (0, 0.6)], out=(sx, 0, 0))
-        B.face([(x - sx * 0.2, 0, -0.05), (x - sx * 0.2, 0, L + 1.2), (x - sx * 0.2, rise + 0.9, L + 1.2), (x - sx * 0.2, rise + 0.9, L),
-                (x - sx * 0.2, 0.9, 0), (x - sx * 0.2, 0.9, -0.05)], "atlas", "tile_white", [(0, 0), (4, 0), (4, 2), (3.5, 2), (0, 0.6), (0, 0.6)], out=(-sx, 0, 0))
+        tiled(x, sx)
+        tiled(x - sx * 0.2, -sx)
         # sloped cap
         B.quad((x - sx * 0.2, 0.9, 0), (x, 0.9, 0), (x, rise + 0.9, L), (x - sx * 0.2, rise + 0.9, L), "atlas", "concrete_light", out=(0, 1, -0.5))
         B.quad((x - sx * 0.2, rise + 0.9, L), (x, rise + 0.9, L), (x, rise + 0.9, L + 1.2), (x - sx * 0.2, rise + 0.9, L + 1.2), "atlas", "concrete_light", out=(0, 1, 0))
@@ -850,7 +876,8 @@ def build_portal():
     surround with an exit sign over it. origin: wall at the landing floor; +X out of the wall"""
     B = Builder()
     W, H = 2.3, 2.45
-    plane(B, (0.01, H / 2, 0), (0, 0, -1), (0, 1, 0), W, H, "atlas", "paint_black", out=(1, 0, 0))
+    # the passage beyond, lit (painted in perspective: the station wall has no hole here)
+    plane(B, (0.01, H / 2, 0), (0, 0, -1), (0, 1, 0), W, H, "glow", "passage_view", out=(1, 0, 0))
     for z in (-W / 2 - 0.08, W / 2 + 0.08):
         box(B, (0.05, H / 2, z), (0.1, H, 0.16), "atlas", "concrete_light")
     box(B, (0.05, H + 0.08, 0), (0.1, 0.16, W + 0.32), "atlas", "concrete_light")
@@ -896,6 +923,121 @@ def build_street_entrance():
 
 
 # ============================================================ materials, export, previews
+
+# ============================================================ station life (fare machines, a sleeper, a busker)
+
+def build_fare_machine():
+    """a fare-card vending machine against the wall: 0.6 deep (+X out of the wall), 0.95 wide (Z), 1.85 tall.
+    origin: the platform top at the wall"""
+    B = Builder()
+    D, W, H = 0.6, 0.95, 1.85
+    box(B, (D / 2, 0.06, 0), (D - 0.04, 0.12, W - 0.04), "atlas", "rubber")                  # kick plate
+    box(B, (D / 2, 0.12 + (H - 0.32) / 2, 0), (D, H - 0.32, W), "metal", "paint_blue", skip=("px", "ny"))
+    plane(B, (D + 0.001, 0.12 + 0.35, 0), (0, 0, -1), (0, 1, 0), W, 0.7, "metal", "paint_blue", out=(1, 0, 0))
+    plane(B, (D + 0.002, 0.12 + 0.7 + 0.42, 0), (0, 0, -1), (0, 1, 0), W - 0.04, 0.84, "atlas", "fare_machine", out=(1, 0, 0))
+    # the lit header and the hood over the screen
+    box(B, (D / 2 + 0.02, H - 0.1, 0), (D + 0.04, 0.2, W + 0.04), "atlas", "paint_black")
+    box(B, (D + 0.06, 1.43, 0), (0.12, 0.03, W - 0.1), "metal", "steel_dark")
+    return B
+
+
+def figure_coat(B, M, c, size, rect="coat_tweed"):
+    box(B, tuple(V(c)), size, "atlas", rect, M=M)
+
+
+def build_sleeper():
+    """someone asleep along a platform bench under a newspaper, a bag for a pillow. Same frame as the
+    bench (seat facing +X, 2.4 m along Z); origin the platform top under the bench's middle"""
+    B = Builder()
+    seat = 0.48
+    # bag under the head, shoes at the far end
+    box(B, (0.0, seat + 0.09, 0.95), (0.34, 0.18, 0.4), "atlas", "paint_red")
+    # legs (bent a little at the knee), the coat over the body, the arms folded on it
+    box(B, (0.02, seat + 0.09, -0.62), (0.3, 0.18, 0.62), "atlas", "wood_dark")
+    box(B, (0.0, seat + 0.1, -0.12), (0.34, 0.2, 0.42), "atlas", "wood_dark", M=RX(-0.12))
+    box(B, (0.0, seat + 0.15, 0.36), (0.42, 0.3, 0.62), "atlas", "coat_tweed")
+    box(B, (0.12, seat + 0.3, 0.32), (0.16, 0.08, 0.4), "atlas", "coat_tweed")
+    box(B, (0.02, seat + 0.12, -1.0), (0.26, 0.2, 0.14), "atlas", "rubber")
+    # the head on the bag, a knit hat, and the paper over the face
+    sphere(B, (0.0, seat + 0.27, 0.82), 0.11, "atlas", "booth_tan", segs=10, rings=5)
+    cyl(B, (0.0, seat + 0.27, 0.84), (0.0, seat + 0.27, 0.95), 0.115, 10, "atlas", "paint_green", r2=0.07)
+    # (spread over the chest and face, tilted a little toward the platform so it reads from there)
+    plane(B, (0.03, seat + 0.36, 0.62), (0, 0, -1), (0.96, 0.28, 0), 0.52, 0.4, "atlas", "newspaper", out=(-0.28, 0.96, 0))
+    return B
+
+
+def build_busker():
+    """a guitarist on an upturned milk crate, the case open in front for coins, a cardboard sign.
+    Faces +X; origin the platform top under the crate"""
+    B = Builder()
+    box(B, (0, 0.17, 0), (0.34, 0.34, 0.34), "atlas", "orange")
+    # legs: thighs forward, shins down, boots
+    for z in (-0.1, 0.1):
+        box(B, (0.2, 0.42, z), (0.42, 0.15, 0.15), "atlas", "paint_blue")
+        box(B, (0.4, 0.21, z), (0.13, 0.42, 0.13), "atlas", "paint_blue")
+        box(B, (0.45, 0.05, z), (0.24, 0.1, 0.12), "atlas", "rubber")
+    # body in a heavy coat, scarf, head, beanie
+    box(B, (-0.02, 0.72, 0), (0.26, 0.56, 0.4), "atlas", "coat_tweed", M=RZ(-0.08))
+    box(B, (0.0, 1.0, 0), (0.22, 0.08, 0.3), "atlas", "paint_red")
+    sphere(B, (0.0, 1.13, 0), 0.11, "atlas", "booth_tan", segs=10, rings=5)
+    cyl(B, (-0.01, 1.15, 0), (-0.02, 1.27, 0), 0.115, 10, "atlas", "paint_yellow", r2=0.06)
+    # the guitar across the lap: body (two lobes) facing +X, neck out to the left (-Z)
+    for zc, r in ((0.07, 0.17), (-0.15, 0.13)):
+        cyl(B, (0.19, 0.66, zc), (0.27, 0.66, zc), r, 12, "atlas", "bench_wood")
+    disc(B, (0.275, 0.66, -0.02), (1, 0, 0), 0.045, "atlas", "rubber", 8)
+    box(B, (0.24, 0.72, -0.55), (0.04, 0.05, 0.62), "atlas", "wood_dark", M=RX(0.25))
+    box(B, (0.24, 0.8, -0.87), (0.05, 0.07, 0.12), "atlas", "wood_dark", M=RX(0.25))
+    # arms: one over the strings, one up the neck
+    box(B, (0.15, 0.78, 0.1), (0.3, 0.1, 0.1), "atlas", "coat_tweed", M=RY(-0.3))
+    box(B, (0.13, 0.76, -0.32), (0.1, 0.1, 0.42), "atlas", "coat_tweed", M=RX(0.2))
+    # the case: open on the floor in front, red lining, coins, the sign propped in it
+    box(B, (0.95, 0.04, 0), (0.42, 0.08, 1.05), "atlas", "paint_black", skip=("py",))
+    plane(B, (0.95, 0.075, 0), (0, 0, 1), (1, 0, 0), 1.0, 0.38, "atlas", "paint_red", out=(0, 1, 0))
+    box(B, (1.38, 0.015, 0), (0.42, 0.03, 1.05), "atlas", "paint_black")      # the lid, flat open beyond it
+    for i in range(7):
+        disc(B, (0.88 + 0.03 * (i % 3), 0.078, -0.3 + i * 0.08), (0, 1, 0), 0.016, "atlas", "brass", 6)
+    plane(B, (0.95, 0.24, 0.32), (0, 0, -1), (0.45, 0.89, 0), 0.32, 0.32, "atlas", "busker_sign", out=(0.89, -0.45, 0))
+    return B
+
+
+def commuter(B, coat, legs, hat, extra):
+    """someone standing on the platform waiting, facing +X (the tracks); origin the platform top"""
+    for z in (-0.09, 0.09):
+        box(B, (0.0, 0.42, z), (0.15, 0.84, 0.14), "atlas", legs)
+        box(B, (0.04, 0.04, z), (0.26, 0.08, 0.13), "atlas", "rubber")
+    box(B, (0.0, 1.12, 0), (0.3, 0.62, 0.46), "atlas", coat)                 # coat
+    box(B, (0.0, 0.83, 0), (0.32, 0.12, 0.48), "atlas", coat)                # its skirt
+    box(B, (0.01, 1.47, 0), (0.2, 0.08, 0.26), "atlas", "paint_red" if coat != "paint_red" else "paint_grey")  # scarf
+    sphere(B, (0.0, 1.6, 0), 0.105, "atlas", "booth_tan", segs=10, rings=5)
+    if hat == "beanie":
+        cyl(B, (0.0, 1.62, 0), (0.0, 1.74, 0), 0.11, 10, "atlas", "paint_green", r2=0.05)
+    else:
+        cyl(B, (0.0, 1.66, 0), (0.0, 1.68, 0), 0.17, 10, "atlas", "paint_black")
+        cyl(B, (0.0, 1.68, 0), (0.0, 1.8, 0), 0.105, 10, "atlas", "paint_black")
+    if extra == "bag":
+        box(B, (0.0, 0.95, 0.27), (0.08, 0.5, 0.06), "atlas", coat)          # arm down
+        box(B, (0.0, 0.62, 0.3), (0.12, 0.3, 0.38), "atlas", "wood_dark")    # briefcase
+        box(B, (0.0, 0.95, -0.27), (0.08, 0.5, 0.06), "atlas", coat)
+    else:
+        # looking at a phone: forearms forward, the screen lit
+        for z in (-0.12, 0.12):
+            box(B, (0.1, 1.05, z * 1.9), (0.08, 0.36, 0.08), "atlas", coat)
+            box(B, (0.2, 1.17, z * 0.7), (0.24, 0.08, 0.08), "atlas", coat)
+        box(B, (0.33, 1.22, 0), (0.02, 0.15, 0.08), "atlas", "rubber")
+        plane(B, (0.341, 1.22, 0), (0, 0, -1), (0, 1, 0), 0.07, 0.13, "glow", "reader_screen", out=(1, 0, 0))
+
+
+def build_commuter_a():
+    B = Builder()
+    commuter(B, "coat_tweed", "paint_grey", "hat", "bag")
+    return B
+
+
+def build_commuter_b():
+    B = Builder()
+    commuter(B, "paint_blue", "wood_dark", "beanie", "phone")
+    return B
+
 
 def convert_textures():
     s = bpy.context.scene
@@ -957,6 +1099,8 @@ BUILDERS = [
     ("fare_rail", build_fare_rail), ("booth", build_booth), ("bench", build_bench), ("trash", build_trash),
     ("sign_hang", build_sign_hang), ("ad_frame", build_ad_frame), ("map_frame", build_map_frame), ("plaque", build_plaque),
     ("platform_stair", build_platform_stair), ("portal", build_portal), ("street_entrance", build_street_entrance),
+    ("fare_machine", build_fare_machine), ("sleeper", build_sleeper), ("busker", build_busker),
+    ("commuter_a", build_commuter_a), ("commuter_b", build_commuter_b),
 ]
 
 
@@ -1076,6 +1220,16 @@ def previews(objs, imgs, only=None):
         x += {"cable_run": 4.5, "ibeam": 1.2, "sign_hang": 2.8, "ad_frame": 1.6, "map_frame": 2.2}.get(n, 1.2)
     show(wall + ["ground"])
     shoot("wall_props", (x / 2, 1.8, 0), x * 0.8, 0, 10, res=(1800, 700))
+    # station life: a fare machine, the sleeper on a bench, the busker
+    place(by["fare_machine"], -2.2, 0, 0, math.radians(-90))
+    place(by["bench"], 0, 0, 0, math.radians(-90))
+    place(by["sleeper"], 0, 0, 0, math.radians(-90))
+    place(by["busker"], 2.6, 0, 0, math.radians(-90))
+    place(by["commuter_a"], 4.4, 0, 0.8, math.radians(-90))
+    place(by["commuter_b"], 5.4, 0, 0.8, math.radians(-90))
+    show(["fare_machine", "bench", "sleeper", "busker", "commuter_a", "commuter_b", "ground"])
+    shoot("station_life", (1.6, 0.9, 0.4), 7.0, 0, 14, res=(1600, 800))
+    shoot("station_life_close", (2.8, 0.6, 0.6), 2.4, 30, 18)
     for o in objs:
         place(o, 0, 0, 0)
 

@@ -14,7 +14,7 @@ import { inPoly, nearestEdge, streetHit, type Building, type CityData } from "./
 import { StreetLife } from "./streetlife";
 import { Facades } from "./facades";
 import { Crowd } from "./crowd";
-import { Blockers } from "./blockers";
+import { Blockers, CAP, inGap } from "./blockers";
 import { Park } from "./park";
 import { WindFeatures, type WindHit } from "./windFeatures";
 import { makeCourse } from "./course";
@@ -150,7 +150,7 @@ export class Airflow {
     this.crowd = new Crowd(this.traffic);
     this.blockers = new Blockers(city);
     this.traffic.closed = this.blockers.list;
-    this.features = new WindFeatures(city, this.blockers.barriers);
+    this.features = new WindFeatures(city, this.blockers.barriers, this.blockers.list);
     this.way = makeCourse(city).path;
     this.buildWayField();
     this.parkLayout = parkLayout(city);
@@ -158,7 +158,9 @@ export class Airflow {
     this.streetLayout = streetLayout(city, { traffic: this.traffic, life: this.life, blockers: this.blockers, under: this.under });
     this.streetSolids = colliderGrid(this.streetLayout.colliders);
     // the sidewalk crowd (block loops, schedules, groups) needs the furniture to step round it
-    this.crowd.attach(city, { street: this.streetLayout });
+    // (people step round the subway stairs' openings too: they walked over the holes, in mid-air)
+    const stairHoles = this.under.shafts.filter((sh) => sh.kind === "stairs").flatMap((sh) => [-1.1, 0.6].map((a) => ({ kind: "cyl", x: sh.x + sh.ux * a, z: sh.z + sh.uz * a, r: 1.75, y0: 0, y1: 1 })));
+    this.crowd.attach(city, { street: { ...this.streetLayout, colliders: [...this.streetLayout.colliders, ...stairHoles] } });
     this.park = new Park(city, city.raw.districts.find((d) => d.id === "park")?.s0 ?? city.route.length - 700, this.parkLayout.keepClear);
   }
 
@@ -200,7 +202,7 @@ export class Airflow {
    *  the local air it replaces (1 inside the tube). Null when you're nowhere near it. */
   private ef = { x: 0, y: 0, z: 0, k: 0, tube: false };
   private lv = { x: 0, y: 0, z: 0 };
-  private exitFlow(p: Float32Array, x: number, y: number, z: number, reach: number, TUBE = 3.2, gatherToNearest = false, release = true) {
+  private exitFlow(p: Float32Array, x: number, y: number, z: number, reach: number, TUBE = 3.2, gatherToNearest = false, release = true, axis?: { tx: number; tz: number }) {
     const n = p.length / 3;
     // a cheap bounds check against the path's start and end first
     if (Math.hypot(p[0] - x, p[2] - z) > reach + 30 && Math.hypot(p[n * 3 - 3] - x, p[n * 3 - 1] - z) > reach + 30) return null;
@@ -237,6 +239,15 @@ export class Airflow {
       // (if you're making for it: a leaf going past at speed is left alone)
       if (d > reach) return null;
       if (sp > 4 && ((cx - x) * v.x + (cy - y) * v.y + (cz - z) * v.z) / d < 0.35 * sp) return null;
+      // in a tunnel or station (axis: the line's direction), heading for it means turning toward it: a leaf
+      // riding on along the line past a way out is left alone, however close it passes (the way out lies
+      // ahead of it, so "toward it" alone took everyone riding through the station)
+      if (axis) {
+        const va = v.x * axis.tx + v.z * axis.tz;
+        const hx = cx - x - axis.tx * ((cx - x) * axis.tx + (cz - z) * axis.tz), hz = cz - z - axis.tz * ((cx - x) * axis.tx + (cz - z) * axis.tz), hl = Math.hypot(hx, hz);
+        const across = hl > 0.3 ? (v.x * hx + v.z * hz) / hl : 0;
+        if (Math.abs(va) > 5 && across < 1.5) return null;
+      }
       const kk = Math.sqrt(1 - (d - TUBE) / (reach - TUBE));
       f.k = Math.min(1, 1.3 * kk);
       f.x = ((cx - x) / d) * 9 + (dx / L) * 4; f.y = ((cy - y) / d) * 9 + (dy / L) * 4; f.z = ((cz - z) / d) * 9 + (dz / L) * 4;
@@ -310,7 +321,6 @@ export class Airflow {
     const rt = this.rtw; rt.x = rt0.x; rt.z = rt0.z; rt.tx = rt0.tx * tc + rt0.tz * ts; rt.tz = rt0.tz * tc - rt0.tx * ts;
     let wx = 0, wy = 0, wz = 0;
     let entry: { x: number; y: number; z: number; k: number } | null = null;
-    let lift = 0; // how firmly a barrier's updraft carries you (a guided stream)
 
     // ---------------------------------------------------------------- underground
     if (y < -0.4) {
@@ -318,6 +328,8 @@ export class Airflow {
       const u = this.under;
       const wallD = u.sdf(x, y, z, this.uinfo as never);
       const ss = this.uinfo.ss, off = this.uinfo.off;
+      // heights measured from the tunnel's own floor here (it dips and rises between the stations)
+      const yl = y - u.dip(ss);
       const sp = city.subway.at(ss);
       const st = u.stationAt(ss);
       let along = st ? AIR.station : AIR.tunnel;
@@ -342,7 +354,7 @@ export class Airflow {
         if (sameTrack === 1 && ahead > 0 && ahead < 45) spill = Math.max(spill, 7 * (1 - ahead / 45));
         // inside a train?
         const inBody = tr.dir > 0 ? ss < tr.head && ss > tr.tail : ss > tr.head && ss < tr.tail;
-        if (inBody && Math.abs(off - tr.off) < TRAIN.width / 2 + 0.15 && y < TUNNEL.floor + 0.35 + TRAIN.height) { out.train = true; out.trainDir = tr.dir; }
+        if (inBody && Math.abs(off - tr.off) < TRAIN.width / 2 + 0.15 && yl < TUNNEL.floor + 0.35 + TRAIN.height) { out.train = true; out.trainDir = tr.dir; }
       }
       wx = sp.tx * along; wz = sp.tz * along;
       // pull toward the middle of the tunnel and a little turbulence
@@ -388,9 +400,9 @@ export class Airflow {
           const k = 1 - d / 9;
           // straight up under the opening; round it, drawn in toward the opening first
           // (near the roof only well inside the opening, or it jams you against the rim)
-          const nearRoof = y > TUNNEL.ceiling - 1.6;
+          const nearRoof = yl > TUNNEL.ceiling - 1.6;
           const under = nearRoof ? (Math.abs(a) < VENT.halfLength - 1 && Math.abs(b) < VENT.halfWidth - 0.4 ? 1 : 0.1) : d < 1.5 ? 1 : 0.2;
-          wy += 18 * k * under * smoothstep(TUNNEL.floor + 0.1, TUNNEL.floor + 1.0, y);
+          wy += 18 * k * under * smoothstep(TUNNEL.floor + 0.1, TUNNEL.floor + 1.0, yl);
           const na = Math.max(-VENT.halfLength + 0.8, Math.min(VENT.halfLength - 0.8, a)) - a, nb = Math.max(-VENT.halfWidth + 0.5, Math.min(VENT.halfWidth - 0.5, b)) - b;
           const nl = Math.hypot(na, nb) + 0.3;
           // the draught dies away under the vent (it's all going up the shaft), so you slow down there
@@ -402,7 +414,7 @@ export class Airflow {
       // the stream, which carries you out (see exitFlow)
       let exitTube = false;
       for (const g of this.exitGrid.at(x, z)) {
-        const f = this.exitFlow(g.exitPath!, x, y, z, EXIT_REACH, 3.2, true);
+        const f = this.exitFlow(g.exitPath!, x, y, z, EXIT_REACH, 3.2, true, true, sp);
         if (f) { wx = wx * (1 - f.k) + f.x * f.k; wy = wy * (1 - f.k) + f.y * f.k; wz = wz * (1 - f.k) + f.z * f.k; out.guide = Math.max(out.guide ?? 0, f.tube ? 1 : f.k * 0.6); }
         if (f?.tube) { exitTube = true; break; }
       }
@@ -418,13 +430,13 @@ export class Airflow {
         if (g.kind !== "grate") continue;
         const d = Math.hypot(x - g.x, z - g.z);
         const reach = g.relief ? 14 : g.r + 2.5;
-        if (d > reach || (!g.relief && y < TUNNEL.ceiling - 3.5)) continue;
+        if (d > reach || (!g.relief && yl < TUNNEL.ceiling - 3.5)) continue;
         let pump = g.relief ? 13 : 0;
         if (!g.relief) for (const tr of this.trainsAt(t)) {
           const dd = Math.max(0, tr.dir > 0 ? g.ss - tr.head : tr.head - g.ss, tr.dir > 0 ? tr.tail - g.ss : g.ss - tr.tail);
           pump = Math.max(pump, 16 * Math.max(0, 1 - dd / 90));
         }
-        const k = g.relief ? 0.35 + 0.65 * (1 - d / reach) : (1 - d / reach) * Math.min(1, (y - (TUNNEL.ceiling - 3.5)) / 2);
+        const k = g.relief ? 0.35 + 0.65 * (1 - d / reach) : (1 - d / reach) * Math.min(1, (yl - (TUNNEL.ceiling - 3.5)) / 2);
         wy += pump * k;
         wx += ((g.x - x) / (d + 0.3)) * pump * 0.25 * k;
         wz += ((g.z - z) / (d + 0.3)) * pump * 0.25 * k;
@@ -606,28 +618,45 @@ export class Airflow {
         sx += ((sh.x - x) / (d + 0.2)) * pull * kk;
         sz += ((sh.z - z) / (d + 0.2)) * pull * kk;
       }
-      // the closed streets: the air piles up against the barrier and rises (the festival's warm air,
-      // the market's stalls, the crowds' breath): fly at one and it lifts you up over it onto the roofs
-      if (y < 26) for (const bl of this.blockers.list) {
-        if (Math.hypot(x - bl.x, z - bl.z) > bl.r + 16) continue;
+      // the closed streets: no lift over them. The air at a closure churns and blows back at you (the idling
+      // trucks, the crowd, the scaffold's netting: a buffeting push back the way you came). Over the roofs,
+      // under, or round. (Not in the lanes kept open along the ways through.)
+      if (y < CAP + 6) for (const bl of this.blockers.list) {
+        if (Math.abs(x - bl.x) > bl.r + 16 || Math.abs(z - bl.z) > bl.r + 16) continue;
         for (const bar of this.blockers.barriers) {
           if (bar.blocker !== bl.id) continue;
           const rx = x - bar.x, rz = z - bar.z;
           // (either side: you can be caught inside a closed stretch too)
-          const d = rx * bar.nx + rz * bar.nz, across = Math.abs(rx * bar.ax + rz * bar.az), ad = Math.abs(d), side = d >= 0 ? 1 : -1;
-          if (ad > 12 || across > bar.half + 2) continue;
-          const k = (1 - ad / 12) * (1 - Math.max(0, across - bar.half) / 2) * (1 - smoothstep(bar.height + 6, 26, y));
-          // up, and just off the barrier (none of the air blows into it); over the top, on over it
-          const over = y > bar.height + 1 ? 1 : 0;
+          const d = rx * bar.nx + rz * bar.nz, across = rx * bar.ax + rz * bar.az, ad = Math.abs(d), side = d >= 0 ? 1 : -1;
+          const reach = 12;
+          if (ad > reach || Math.abs(across) > bar.half + 2 || y > bar.height + 4) continue;
+          if (inGap(bar, across, y, 1.5)) continue;
+          const k = (1 - ad / reach) * (1 - Math.max(0, Math.abs(across) - bar.half) / 2) * (1 - smoothstep(bar.height - 3, bar.height + 4, y));
+          // none of the air blows into it...
           const into = Math.min(0, (sx * bar.nx + sz * bar.nz) * side);
-          sx -= bar.nx * side * into; sz -= bar.nz * side * into;
-          sy = sy * (1 - k) + 13 * k * (1 - over * 0.6);
-          // (over the top it carries you across uptown, whichever side you're on: across "to the other side"
-          // flipped the moment you crossed the line and held you hovering over the barrier)
-          const upAcross = rt0.tx * bar.nx + rt0.tz * bar.nz >= 0 ? 1 : -1;
-          sx = sx * (1 - 0.7 * k) + bar.nx * (over ? 6 * upAcross : 1.5 * side) * k;
-          sz = sz * (1 - 0.7 * k) + bar.nz * (over ? 6 * upAcross : 1.5 * side) * k;
-          lift = Math.max(lift, k * 0.7);
+          sx -= bar.nx * side * into * k; sz -= bar.nz * side * into * k;
+          // ...it blows back out at you, and churns
+          const push = 4.5 * k, ch = 2.4 * k;
+          sx += bar.nx * side * push + Math.sin(t * 2.7 + x * 0.31 + z * 0.17) * ch;
+          sz += bar.nz * side * push + Math.cos(t * 2.3 - x * 0.13 + z * 0.29) * ch;
+          sy = sy * (1 - 0.7 * k) + 1.8 * Math.sin(t * 1.9 + x * 0.2 + y * 0.3) * k;
+        }
+      }
+      // the burst main's geyser: a column of air and water roaring up, and round it the fall of water beating
+      // down and blowing out
+      for (const bl of this.blockers.list) {
+        const gz = bl.geyser;
+        if (!gz || y > gz.h + 8) continue;
+        const dx = x - gz.x, dz = z - gz.z, d = Math.hypot(dx, dz);
+        if (d > gz.fall + 6) continue;
+        if (d < gz.r * 1.3) { const k = 1 - d / (gz.r * 1.3); sy = sy * (1 - k) + 18 * k; }
+        else {
+          // the fall of water and the mist cloud round it: beating down, blowing out, turbulent
+          const k = Math.min(1, 1.3 * (1 - (d - gz.r * 1.3) / (gz.fall + 6 - gz.r * 1.3))) * (1 - Math.max(0, y - gz.h * 0.7) / (gz.h * 0.3 + 8));
+          sy -= 4 * k;
+          sx += (dx / d) * 6 * k + Math.sin(t * 3.1 + y * 0.7 + z * 0.3) * 3.5 * k;
+          sz += (dz / d) * 6 * k + Math.cos(t * 2.7 + y * 0.6 + x * 0.3) * 3.5 * k;
+          sy += Math.sin(t * 4.3 + x * 0.4) * 2.5 * k;
         }
       }
       // open manholes suck you down
@@ -783,7 +812,6 @@ export class Airflow {
       out.guide = Math.max(out.guide ?? 0, 0.5 * k);
     }
     if (y > 320) wy -= (y - 320) * 0.15;
-    if (lift > (out.guide ?? 0)) out.guide = lift;
     if (entry) { const k = Math.min(1, entry.k * 1.4); wx = wx * (1 - k) + entry.x * k; wy = wy * (1 - k) + entry.y * k; wz = wz * (1 - k) + entry.z * k; out.guide = entry.k; }
 
     out.x = wx; out.y = wy; out.z = wz;

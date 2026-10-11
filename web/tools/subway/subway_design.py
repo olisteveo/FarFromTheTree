@@ -87,6 +87,12 @@ for i, k in enumerate(SWATCHES):
 ADS = ["ad_soup", "ad_movie", "ad_dental", "ad_kites", "ad_owl", "ad_pigeon", "ad_mattress", "ad_tree"]
 for i, a in enumerate(ADS):
     R[a] = (256 * i, 1536, 256, 384)
+# station life (added later, so appended: everything above keeps its place and its look)
+R["fare_machine"] = (0, 1920, 128, 128)
+R["busker_sign"] = (128, 1920, 128, 128)
+R["newspaper"] = (256, 1920, 128, 128)
+R["coat_tweed"] = (384, 1920, 128, 128)
+R["passage_view"] = (512, 1920, 128, 128)
 # where the runtime writes the station name into the mosaic tablet (inside tablet_frame)
 TABLET_FIELD = (56, 56, 912, 144)
 
@@ -890,6 +896,97 @@ def p_ad(d, w, h, name):
 
 # --------------------------------------------------------------------------------- the documents
 
+# --------------------------------------------------------------------------------- painters: station life
+
+def p_fare_machine(d, w, h):
+    """the front of a fare-card vending machine: screen, card slot, coin and bill slots, receipt tray"""
+    L = steel_base(d, w, h, (0.12, 0.24, 0.52))
+    L.append(d.rect(0, 0, w, 22, (0.03, 0.03, 0.04)))
+    L.append(d.text(w / 2, 16, "MetroCard", 15, (0.99, 0.80, 0.10), font=("Arial", "Bold")))
+    L.append(d.rect(0, 80, 10, h - 80, (0.03, 0.03, 0.04)))
+    L.append(d.rect(w - 10, 80, 10, h - 80, (0.03, 0.03, 0.04)))
+    L.append(d.rect(14, 28, 64, 46, (0.02, 0.02, 0.03), round_=3))                       # screen bezel
+    L.append(d.rect(18, 32, 56, 38, (0.1, 0.35, 0.55), grad=d.lin(0, 32, 0, 70, [(0, (0.25, 0.55, 0.85)), (1, (0.06, 0.2, 0.4))])))
+    for i, t in enumerate(("Buy", "Refill", "Tap")):
+        L.append(d.rect(22, 36 + i * 11, 48, 8, (0.85, 0.9, 0.95), op=70, round_=2))
+        L.append(d.text(46, 43 + i * 11, t, 7, (0.05, 0.15, 0.3)))
+    L.append(d.rect(88, 30, 30, 10, (0.9, 0.62, 0.1), round_=2))                         # card slot (yellow)
+    L.append(d.rect(92, 34, 22, 2, BLACK))
+    L.append(d.rect(88, 48, 30, 10, (0.75, 0.76, 0.78), round_=2))                       # coins
+    L.append(d.rect(92, 52, 22, 2, BLACK))
+    L.append(d.rect(88, 64, 30, 12, (0.15, 0.6, 0.3), round_=2))                         # bills
+    L.append(d.rect(91, 69, 24, 2, BLACK))
+    L.append(d.rect(20, 88, 88, 26, (0.03, 0.03, 0.04), round_=4))                       # cards and change out
+    L.append(d.rect(26, 94, 76, 4, (0.25, 0.25, 0.27)))
+    L.append(d.noise(w, h, op=22, scale=14))
+    L += d.spots(w, h, 10, (0.05, 0.05, 0.05), size=(2, 6), op=(20, 45))
+    return L
+
+
+def p_busker_sign(d, w, h):
+    """a cardboard sign propped in a guitar case"""
+    L = [d.rect(0, 0, w, h, (0.62, 0.48, 0.30)), d.noise(w, h, op=30, scale=10)]
+    L.append(d.rect(4, 4, w - 8, h - 8, (0.68, 0.53, 0.34)))
+    L.append(d.text(w / 2, 40, "SONGS", 26, (0.08, 0.06, 0.05), font=("Impact", "Regular")))
+    L.append(d.text(w / 2, 66, "for the", 15, (0.08, 0.06, 0.05), font=("Georgia", "Bold")))
+    L.append(d.text(w / 2, 96, "COLD", 28, (0.55, 0.08, 0.05), font=("Impact", "Regular")))
+    L.append(d.text(w / 2, 118, "thank you :)", 12, (0.08, 0.06, 0.05), font=("Georgia", "Bold")))
+    L += d.spots(w, h, 8, (0.35, 0.25, 0.14), size=(4, 12), op=(20, 40))
+    return L
+
+
+def p_newspaper(d, w, h):
+    """newsprint: a masthead, a cold-weather headline, columns of grey text"""
+    L = [d.rect(0, 0, w, h, (0.86, 0.84, 0.78)), d.noise(w, h, op=16, scale=8)]
+    L.append(d.text(w / 2, 16, "The Evening Ledger", 12, BLACK, font=("Georgia", "Bold")))
+    L.append(d.rect(6, 20, w - 12, 1.5, BLACK))
+    L.append(d.text(w / 2, 40, "COLD SNAP", 22, BLACK, font=("Impact", "Regular")))
+    L.append(d.text(w / 2, 52, "First frost in the park", 9, (0.2, 0.2, 0.2), font=("Georgia", "Bold")))
+    L.append(d.rect(8, 58, 52, 34, (0.45, 0.44, 0.42)))                                 # photo
+    L.append(d.ellipse(34, 80, 30, 14, (0.3, 0.3, 0.29)))
+    for col, (x0, x1) in enumerate(((66, 120), (8, 60), (66, 120))):
+        y0 = 60 if col == 0 else 96 if col == 1 else 96
+        for y in range(int(y0), h - 6, 5):
+            L.append(d.rect(x0, y, (x1 - x0) * d.rng.uniform(0.7, 1.0), 2, (0.35, 0.35, 0.34), op=80))
+    return L
+
+
+def p_passage_view(d, w, h):
+    """looking into the passage at the top of the platform stairs: tiled walls running away to a lit end"""
+    cx, cy, ew, eh = w / 2, h * 0.46, w * 0.26, h * 0.3          # the far end
+    x0, y0, x1, y1 = cx - ew / 2, cy - eh / 2, cx + ew / 2, cy + eh / 2
+    L = [d.rect(0, 0, w, h, (0.55, 0.53, 0.48))]
+    L.append(d.poly([(0, 0), (w, 0), (x1, y0), (x0, y0)], (0.62, 0.6, 0.55)))                       # ceiling
+    L.append(d.poly([(0, h), (w, h), (x1, y1), (x0, y1)], (0.36, 0.35, 0.33)))                      # floor
+    for side, (a, b) in (("l", ((0, 0), (0, h))), ("r", ((w, 0), (w, h)))):                         # walls
+        xa, xb = (x0, x0) if side == "l" else (x1, x1)
+        L.append(d.poly([a, (xa, y0), (xb, y1), b], (0.8, 0.79, 0.74), grad=d.lin(a[0], 0, xa, 0, [(0, (0.86, 0.85, 0.8)), (1, (0.62, 0.6, 0.56))])))
+        for t in (0.25, 0.5, 0.75):                                                                # tile courses
+            ya, yb = a[1] + (b[1] - a[1]) * t, y0 + (y1 - y0) * t
+            L.append(d.line([(a[0], ya), (xa, yb)], (0.55, 0.53, 0.5), 1, op=60))
+        yb0, yb1 = a[1] + (b[1] - a[1]) * 0.62, y0 + (y1 - y0) * 0.62                               # the maroon band
+        L.append(d.poly([(a[0], yb0 - 4), (xa, yb1 - 1.5), (xa, yb1 + 1.5), (a[0], yb0 + 4)], (0.5, 0.12, 0.08)))
+    L.append(d.rect(x0, y0, ew, eh, (1.0, 0.96, 0.86)))                                           # the lit end
+    L.append(d.rect(x0 + ew * 0.2, y0 + eh * 0.45, ew * 0.6, eh * 0.55, (0.75, 0.72, 0.66)))       # stairs up beyond
+    for k in range(4):
+        L.append(d.rect(x0 + ew * 0.2, y0 + eh * (0.5 + k * 0.12), ew * 0.6, 1.2, (0.95, 0.75, 0.15)))
+    L.append(d.rect(cx - 14, 8, 28, 4, (1.0, 1.0, 0.95)))                                         # a ceiling light
+    L.append(d.ellipse(cx, 18, 70, 26, (1.0, 0.97, 0.9), op=25))
+    L.append(d.noise(w, h, op=14, scale=10))
+    return L
+
+
+def p_coat_tweed(d, w, h):
+    """a worn winter coat's wool"""
+    L = [d.rect(0, 0, w, h, (0.30, 0.24, 0.19))]
+    for y in range(0, h, 6):
+        L.append(d.rect(0, y, w, 2, (0.22, 0.17, 0.13), op=60))
+    for x in range(0, w, 6):
+        L.append(d.rect(x, 0, 2, h, (0.38, 0.31, 0.25), op=40))
+    L.append(d.noise(w, h, op=30, scale=6))
+    return L
+
+
 def doc(w, h, layers, name, bg=(0.5, 0.5, 0.5)):
     return {"$schema": "https://jerboa.dev/schemas/fx-composition/editable/v1/document.schema.json", "formatVersion": 1,
             "dimensions": {"width": w, "height": h}, "duration": 3.0, "backgroundColor": list(bg) + [1.0],
@@ -915,6 +1012,7 @@ def build_atlas_doc():
         "sign_exit": lambda d, w, h: p_sign(d, w, h, "Exit to Street", [], arrow=True),
         "sign_entrance": lambda d, w, h: p_sign(d, w, h, "Subway", ["N", "Q", "R", "W"], size=52),
         "hazard": p_hazard, "grime": p_grime,
+        "fare_machine": p_fare_machine, "busker_sign": p_busker_sign, "newspaper": p_newspaper, "coat_tweed": p_coat_tweed, "passage_view": p_passage_view,
     }
     layers = []
     for name, (x, y, w, h) in R.items():

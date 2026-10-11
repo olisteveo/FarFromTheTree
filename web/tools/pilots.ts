@@ -68,7 +68,7 @@ function fly(layer: string, run: number) {
     } else if (mode === "tunnel") {
       // over the uptown track (the downtown trains come at you on the other)
       const q = sub.nearest(p.x, p.z), a = sub.at(q.s + 25);
-      tx = a.x + a.tz * 3.3; tz = a.z - a.tx * 3.3; want = TUNNEL.ceiling - 1.4;
+      tx = a.x + a.tz * 3.3; tz = a.z - a.tx * 3.3; want = TUNNEL.ceiling - 1.4 + city.subwayDip(q.s + 10);
     } else if (mode === "toExit" && target) {
       const e = target.exitPath;
       tx = e ? e[0] : target.x; tz = e ? e[2] : target.z; want = 5; // climb at it: the way out's air does the rest
@@ -103,6 +103,9 @@ function fly(layer: string, run: number) {
       const closed = flow.blockers.barriers.some((b) => Math.hypot(b.x - a.x, b.z - a.z) < b.half + 25);
       // over the roofs where they're low; between tall towers, down the street canyon at ~16 m (like a player)
       want = endNear ? 0 : mode === "street" && !closed ? 5 : H > 42 ? 16 : H + 12;
+      // a closure ahead shuts the street up to its top: climb over it in good time, as a player would
+      for (const b of flow.blockers.barriers) if (!endNear && Math.hypot(b.x - p.x, b.z - p.z) < b.half + 70) want = Math.max(want, b.height + 6);
+      for (const b of flow.blockers.list) if (!endNear && b.shape === "stretch" && Math.hypot(b.x - p.x, b.z - p.z) < b.r + 70) want = Math.max(want, b.height + 6);
     }
     // a building in the way (above ground): over it if it's low, else round it, along its wall toward the target
     if (p.y > -0.4) {

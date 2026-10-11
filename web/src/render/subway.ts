@@ -78,6 +78,9 @@ function nameTablet(name: string) {
   }, false);
 }
 
+// (scratch for the rats, every frame)
+const _rm = new THREE.Matrix4(), _rq = new THREE.Quaternion(), _rs = new THREE.Vector3(1, 1, 1), _rp = new THREE.Vector3(), _rY = new THREE.Vector3(0, 1, 0);
+
 export class SubwayMesh {
   readonly root = new THREE.Group();
   /** the simple versions of what render/subwayArt.ts models properly: hidden once that loads */
@@ -105,7 +108,9 @@ export class SubwayMesh {
     const width = (s: number) => {
       let k = 0;
       for (const st of u.stations) { const d = Math.abs(st.ss - s); if (d < TUNNEL.stationHalfLength + 30) k = Math.max(k, Math.min(1, (TUNNEL.stationHalfLength + 30 - d) / 30)); }
-      return { hw: TUNNEL.halfWidth + (TUNNEL.stationHalfWidth - TUNNEL.halfWidth) * k, ceil: TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k, k };
+      // (between the stations the line dips and rises: world/subwayBend.ts)
+      const dy = u.dip(s);
+      return { hw: TUNNEL.halfWidth + (TUNNEL.stationHalfWidth - TUNNEL.halfWidth) * k, ceil: TUNNEL.ceiling + (TUNNEL.stationCeiling - TUNNEL.ceiling) * k + dy, floor: TUNNEL.floor + dy, k };
     };
     const twallP: number[] = [], twallUv: number[] = [];
     const wall: number[] = [], wallUv: number[] = [], floor: number[] = [], floorUv: number[] = [], ceil: number[] = [];
@@ -118,9 +123,9 @@ export class SubwayMesh {
     // where the stairwells, passages and big vents come through the walls and roof (render/subwayEntrances.ts)
     const cuts = subwayCuts(u);
     /** a wall quad (a: bottom at s, b: bottom at s + step), with doorways cut where passages arrive */
-    const wallQuad = (arr: number[], uv: number[], side: number, s: number, a: number[], b: number[], ca: number, cb: number) => {
+    const wallQuad = (arr: number[], uv: number[], side: number, s: number, a: number[], b: number[], ca: number, cb: number, fa = TUNNEL.floor, fb = TUNNEL.floor) => {
       const hs = cuts.walls.filter((h) => h.side === side && h.s1 > s && h.s0 < s + step);
-      if (!hs.length) { quad(arr, uv, [a[0], TUNNEL.floor, a[2]], [b[0], TUNNEL.floor, b[2]], [b[0], cb, b[2]], [a[0], ca, a[2]], s, s + step, TUNNEL.floor, ca); return; }
+      if (!hs.length) { quad(arr, uv, [a[0], fa, a[2]], [b[0], fb, b[2]], [b[0], cb, b[2]], [a[0], ca, a[2]], s, s + step, fa, ca); return; }
       const ts = [0, 1, ...hs.flatMap((h) => [(h.s0 - s) / step, (h.s1 - s) / step])].filter((t) => t >= 0 && t <= 1).sort((p, q) => p - q);
       const P = (t: number, y: number) => [a[0] + (b[0] - a[0]) * t, y, a[2] + (b[2] - a[2]) * t];
       for (let i = 0; i < ts.length - 1; i++) {
@@ -144,11 +149,11 @@ export class SubwayMesh {
       for (const side of [-1, 1]) {
         const ax = a.x + a.tz * wa.hw * side, az = a.z - a.tx * wa.hw * side;
         const bx = b.x + b.tz * wb.hw * side, bz = b.z - b.tx * wb.hw * side;
-        if (wa.k > 0.4) wallQuad(wall, wallUv, side, s, [ax, 0, az], [bx, 0, bz], wa.ceil, wb.ceil);
-        else wallQuad(twallP, twallUv, side, s, [ax, 0, az], [bx, 0, bz], wa.ceil, wb.ceil);
+        if (wa.k > 0.4) wallQuad(wall, wallUv, side, s, [ax, 0, az], [bx, 0, bz], wa.ceil, wb.ceil, wa.floor, wb.floor);
+        else wallQuad(twallP, twallUv, side, s, [ax, 0, az], [bx, 0, bz], wa.ceil, wb.ceil, wa.floor, wb.floor);
       }
       const L = (p: typeof a, w: number, y: number) => [p.x + p.tz * w, y, p.z - p.tx * w];
-      quad(floor, floorUv, L(a, wa.hw, TUNNEL.floor), L(a, -wa.hw, TUNNEL.floor), L(b, -wb.hw, TUNNEL.floor), L(b, wb.hw, TUNNEL.floor), wa.hw, -wa.hw, s, s + step); // wound to face up
+      quad(floor, floorUv, L(a, wa.hw, wa.floor), L(a, -wa.hw, wa.floor), L(b, -wb.hw, wb.floor), L(b, wb.hw, wb.floor), wa.hw, -wa.hw, s, s + step); // wound to face up
       // the roof, with just the grate's own hole cut out where a vent shaft rises
       const g = ventHoles.find((gr) => Math.abs(gr.ss - (s + step / 2)) < 2.5);
       if (!g) quad(ceil, null, L(a, -wa.hw, wa.ceil), L(b, -wb.hw, wb.ceil), L(b, wb.hw, wb.ceil), L(a, wa.hw, wa.ceil));
@@ -157,6 +162,20 @@ export class SubwayMesh {
         quad(ceil, null, L(a, -wa.hw, wa.ceil), L(b, -wb.hw, wb.ceil), L(b, g0, wb.ceil), L(a, g0, wa.ceil));
         quad(ceil, null, L(a, g1, wa.ceil), L(b, g1, wb.ceil), L(b, wb.hw, wb.ceil), L(a, wa.hw, wa.ceil));
       }
+    }
+    // the end wall where the line starts (Bowling Green's hall runs right up to it): tiled, floor to ceiling
+    {
+      const a = sub.at(u.start), w = width(u.start);
+      const L = (off: number, y: number) => [a.x + a.tz * off, y, a.z - a.tx * off];
+      quad(w.k > 0.4 ? wall : twallP, w.k > 0.4 ? wallUv : twallUv, L(-w.hw, w.floor), L(w.hw, w.floor), L(w.hw, w.ceil), L(-w.hw, w.ceil), -w.hw, w.hw, w.floor, w.ceil);
+      // and a closed box a few metres beyond it, so a camera pushed back against it never looks out into the
+      // void (and the street) behind
+      const D = 4, B = (off: number, y: number) => [a.x - a.tx * D + a.tz * off, y, a.z - a.tz * D - a.tx * off];
+      const wa = w.k > 0.4 ? wall : twallP, wu = w.k > 0.4 ? wallUv : twallUv;
+      quad(wa, wu, B(-w.hw, w.floor), B(w.hw, w.floor), B(w.hw, w.ceil), B(-w.hw, w.ceil), -w.hw, w.hw, w.floor, w.ceil);
+      for (const sd of [-1, 1]) quad(wa, wu, L(sd * w.hw, w.floor), B(sd * w.hw, w.floor), B(sd * w.hw, w.ceil), L(sd * w.hw, w.ceil), 0, -D, w.floor, w.ceil);
+      quad(floor, floorUv, L(-w.hw, w.floor), L(w.hw, w.floor), B(w.hw, w.floor), B(-w.hw, w.floor), -w.hw, w.hw, 0, -D); // (wound to face up)
+      quad(ceil, null, L(-w.hw, w.ceil), B(-w.hw, w.ceil), B(w.hw, w.ceil), L(w.hw, w.ceil));
     }
     const mk = (pos: number[], uv: number[] | null, mat: THREE.Material) => {
       const g = new THREE.BufferGeometry();
@@ -176,6 +195,25 @@ export class SubwayMesh {
       g.setAttribute("position", new THREE.Float32BufferAttribute(ceil, 3));
       const cg = cutRects(g, cuts.ceil);
       cg.computeVertexNormals();
+      // the stations' ceilings are painted a dirty cream and catch the fluorescents (they went black, a hole
+      // over every platform); the tunnels' stay sooty
+      {
+        const P = cg.attributes.position as THREE.BufferAttribute, col = new Float32Array(P.count * 3);
+        let hint = -1;
+        for (let i = 0; i < P.count; i++) {
+          const q = sub.nearest(P.getX(i), P.getZ(i), hint);
+          hint = q.s;
+          const k = width(q.s).k;
+          // (a multiplier on the sooty base colour: 1 in the tunnels, a cream about eight times as bright in the stations)
+          col[i * 3] = 1 + 7.6 * k; col[i * 3 + 1] = 1 + 7.4 * k; col[i * 3 + 2] = 1 + 6.7 * k;
+        }
+        cg.setAttribute("color", new THREE.BufferAttribute(col, 3));
+        ceilMat.vertexColors = true;
+        ceilMat.emissive.set(0x6a6258);
+        ceilMat.emissiveIntensity = 0.35;
+        // (the glow only where it's painted: in the stations)
+        ceilMat.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\n#ifdef USE_COLOR\ntotalEmissiveRadiance *= clamp((vColor.r - 1.0) / 7.6, 0.0, 1.0);\n#endif"); };
+      }
       const m = new THREE.Mesh(cg, ceilMat);
       m.receiveShadow = true;
       m.name = "ceil";
@@ -191,12 +229,13 @@ export class SubwayMesh {
       const a = sub.at(s);
       const yaw = Math.atan2(a.tx, a.tz);
       const w = width(s);
-      for (const off of [-4.05, -2.55, 2.55, 4.05]) rails.push(new THREE.BoxGeometry(0.09, 0.16, 8.05).rotateY(yaw).translate(a.x + a.tz * off, TUNNEL.floor + 0.25, a.z - a.tx * off));
-      for (const off of [-3.3, 3.3]) rails.push(new THREE.BoxGeometry(2.4, 0.12, 0.3).rotateY(yaw).translate(a.x + a.tz * off, TUNNEL.floor + 0.12, a.z - a.tx * off));
+      for (const off of [-4.05, -2.55, 2.55, 4.05]) rails.push(new THREE.BoxGeometry(0.09, 0.16, 8.05).rotateY(yaw).translate(a.x + a.tz * off, w.floor + 0.25, a.z - a.tx * off));
+      for (const off of [-3.3, 3.3]) rails.push(new THREE.BoxGeometry(2.4, 0.12, 0.3).rotateY(yaw).translate(a.x + a.tz * off, w.floor + 0.12, a.z - a.tx * off));
       if (w.k > 0.6) {
         if (s % 8 === 0) for (const off of [-3.3, 3.3, -8.5, 8.5]) {
           stripLights.push(new THREE.BoxGeometry(0.22, 0.06, 2.6).rotateY(yaw).translate(a.x + a.tz * off, w.ceil - 0.05, a.z - a.tx * off));
-          if (off === 3.3 && s % 16 === 0) this.lamps.push({ x: a.x, y: w.ceil - 0.4, z: a.z, station: true });
+          // (the light a little below the tubes: right under the ceiling it burnt a hot spot onto it)
+          if (off === 3.3 && s % 16 === 0) this.lamps.push({ x: a.x, y: w.ceil - 1.3, z: a.z, station: true });
         }
       } else if (s % 32 === 0) {
         const side = (s / 32) % 2 ? 1 : -1;
@@ -229,7 +268,6 @@ export class SubwayMesh {
     const ibeams: THREE.BufferGeometry[] = [], trays: THREE.BufferGeometry[] = [], pipes: THREE.BufferGeometry[] = [];
     const edges: THREE.BufferGeometry[] = [], benches: THREE.BufferGeometry[] = [], trash: THREE.BufferGeometry[] = [];
     const sigRed: THREE.BufferGeometry[] = [], sigGreen: THREE.BufferGeometry[] = [];
-    const people: { x: number; z: number; yaw: number; h: number; c: number }[] = [];
     let seedN = 7;
     const rnd = () => ((seedN = (seedN * 16807) % 2147483647) / 2147483647);
     for (let s = 2; s < u.end; s += TUNNEL.columnEvery) {
@@ -237,23 +275,23 @@ export class SubwayMesh {
       const a = sub.at(s), w = width(s), yaw = Math.atan2(a.tx, a.tz);
       if (w.k < 0.3) {
         // the I-beam row between the tracks
-        const x = a.x, z = a.z, hgt = w.ceil - TUNNEL.floor;
-        ibeams.push(new THREE.BoxGeometry(0.36, hgt, 0.08).rotateY(yaw).translate(x, (w.ceil + TUNNEL.floor) / 2, z));
-        ibeams.push(new THREE.BoxGeometry(0.08, hgt, 0.32).rotateY(yaw).translate(x, (w.ceil + TUNNEL.floor) / 2, z));
+        const x = a.x, z = a.z, hgt = w.ceil - w.floor;
+        ibeams.push(new THREE.BoxGeometry(0.36, hgt, 0.08).rotateY(yaw).translate(x, (w.ceil + w.floor) / 2, z));
+        ibeams.push(new THREE.BoxGeometry(0.08, hgt, 0.32).rotateY(yaw).translate(x, (w.ceil + w.floor) / 2, z));
       }
       if (Math.round(s) % 10 === 2) {
         for (const side of [-1, 1]) {
           const off = (w.hw - 0.25) * side;
           trays.push(new THREE.BoxGeometry(0.5, 0.08, 10.05).rotateY(yaw).translate(a.x + a.tz * off, w.ceil - 0.5, a.z - a.tx * off));
           const po = (w.hw - 0.12) * side;
-          pipes.push(new THREE.CylinderGeometry(0.09, 0.09, 10.05, 6).rotateX(Math.PI / 2).rotateY(yaw).translate(a.x + a.tz * po, TUNNEL.floor + 1.6, a.z - a.tx * po));
-          pipes.push(new THREE.CylinderGeometry(0.06, 0.06, 10.05, 6).rotateX(Math.PI / 2).rotateY(yaw).translate(a.x + a.tz * po, TUNNEL.floor + 1.9, a.z - a.tx * po));
+          pipes.push(new THREE.CylinderGeometry(0.09, 0.09, 10.05, 6).rotateX(Math.PI / 2).rotateY(yaw).translate(a.x + a.tz * po, w.floor + 1.6, a.z - a.tx * po));
+          pipes.push(new THREE.CylinderGeometry(0.06, 0.06, 10.05, 6).rotateX(Math.PI / 2).rotateY(yaw).translate(a.x + a.tz * po, w.floor + 1.9, a.z - a.tx * po));
         }
       }
       if (w.k < 0.3 && Math.round(s) % 120 === 2) {
         for (const side of [-1, 1]) {
           const off = (w.hw - 0.3) * side;
-          const box = new THREE.BoxGeometry(0.2, 0.2, 0.2).rotateY(yaw).translate(a.x + a.tz * off, TUNNEL.floor + 2.6, a.z - a.tx * off);
+          const box = new THREE.BoxGeometry(0.2, 0.2, 0.2).rotateY(yaw).translate(a.x + a.tz * off, w.floor + 2.6, a.z - a.tx * off);
           (rnd() < 0.5 ? sigRed : sigGreen).push(box);
         }
       }
@@ -263,12 +301,6 @@ export class SubwayMesh {
           edges.push(new THREE.BoxGeometry(0.5, 0.02, 5.05).rotateY(yaw).translate(a.x + a.tz * eo, TUNNEL.floor + 1.11, a.z - a.tx * eo));
           if (rnd() < 0.18) { const bo = (w.hw - 1.0) * side; benches.push(new THREE.BoxGeometry(0.5, 0.45, 2.2).rotateY(yaw).translate(a.x + a.tz * bo, TUNNEL.floor + 1.32, a.z - a.tx * bo)); }
           if (rnd() < 0.12) { const to = (w.hw - 0.6) * side; trash.push(new THREE.SphereGeometry(0.35, 7, 5).scale(1, 0.85, 1).translate(a.x + a.tz * to, TUNNEL.floor + 1.4, a.z - a.tx * to)); }
-          const n = rnd() < 0.5 ? Math.floor(rnd() * 3) : 0;
-          for (let i = 0; i < n; i++) {
-            const po = (6.3 + rnd() * (w.hw - 7.5)) * side, ds = (rnd() - 0.5) * 4;
-            const pa = sub.at(s + ds);
-            people.push({ x: pa.x + pa.tz * po, z: pa.z - pa.tx * po, yaw: yaw + (rnd() - 0.5) * 2, h: 1.55 + rnd() * 0.35, c: Math.floor(rnd() * 6) });
-          }
         }
       }
     }
@@ -283,21 +315,8 @@ export class SubwayMesh {
     if (edges.length) this.legacy.add(new THREE.Mesh(mergeGeometries(edges)!, new THREE.MeshStandardMaterial({ color: 0xe0b423, roughness: 0.7 })));
     if (benches.length) this.legacy.add(new THREE.Mesh(mergeGeometries(benches)!, new THREE.MeshStandardMaterial({ color: 0x6b4a2e, roughness: 0.8 })));
     if (trash.length) this.legacy.add(new THREE.Mesh(mergeGeometries(trash.map((g) => g.toNonIndexed()))!, new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.35, metalness: 0.1 })));
-    // people waiting on the platforms: simple winter-coated figures
-    if (people.length) {
-      const body = mergeGeometries([
-        new THREE.CylinderGeometry(0.2, 0.26, 1, 8).translate(0, 0.5, 0),
-        new THREE.SphereGeometry(0.13, 8, 6).translate(0, 1.16, 0),
-      ].map((g) => g.toNonIndexed()))!;
-      const coats = [0x2a2a30, 0x5a2a2a, 0x2a3a5a, 0x6b5a40, 0x1e1e1e, 0x3a4a3a];
-      const im = new THREE.InstancedMesh(body, new THREE.MeshStandardMaterial({ roughness: 0.85 }), people.length);
-      const mm = new THREE.Matrix4(), qq = new THREE.Quaternion(), ss = new THREE.Vector3(), pp = new THREE.Vector3(), YY = new THREE.Vector3(0, 1, 0), cc = new THREE.Color();
-      people.forEach((pe, i) => {
-        im.setMatrixAt(i, mm.compose(pp.set(pe.x, TUNNEL.floor + 1.1, pe.z), qq.setFromAxisAngle(YY, pe.yaw), ss.set(1, pe.h / 1.3, 1)));
-        im.setColorAt(i, cc.set(coats[pe.c]));
-      });
-      this.root.add(im);
-    }
+    // (the people waiting on the platforms are modelled: render/subwayArt.ts, placed and made solid by
+    // world/underground.ts)
 
     // name tablets on the station walls
     for (const st of u.stations) {
@@ -317,14 +336,16 @@ export class SubwayMesh {
     const shaftParts: THREE.BufferGeometry[] = [], grates: THREE.BufferGeometry[] = [];
     for (const s of u.shafts) {
       if (s.kind !== "grate") continue;
-      shaftParts.push(new THREE.BoxGeometry(s.r * 2, -TUNNEL.ceiling + 0.6, s.r * 2).translate(s.x, TUNNEL.ceiling / 2 + 0.3, s.z));
+      const c = TUNNEL.ceiling + u.dip(s.ss);
+      shaftParts.push(new THREE.BoxGeometry(s.r * 2, -c + 0.6, s.r * 2).translate(s.x, c / 2 + 0.3, s.z));
       grates.push(new THREE.PlaneGeometry(s.r * 2, s.r * 2).rotateX(-Math.PI / 2).translate(s.x, 0.06, s.z));
     }
     const beams: THREE.BufferGeometry[] = [], ducts: THREE.BufferGeometry[] = [];
     for (const g of u.shafts) {
       if (g.kind !== "grate") continue;
-      ducts.push(new THREE.CylinderGeometry(g.r * 1.05, g.r * 1.05, -TUNNEL.ceiling + 0.4, 12, 1, true).translate(g.x, TUNNEL.ceiling / 2 + 0.1, g.z));
-      beams.push(new THREE.CylinderGeometry(g.r * 0.9, g.r * 1.6, -TUNNEL.floor, 12, 1, true).translate(g.x, TUNNEL.floor / 2, g.z));
+      const c = TUNNEL.ceiling + u.dip(g.ss), f = TUNNEL.floor + u.dip(g.ss);
+      ducts.push(new THREE.CylinderGeometry(g.r * 1.05, g.r * 1.05, -c + 0.4, 12, 1, true).translate(g.x, c / 2 + 0.1, g.z));
+      beams.push(new THREE.CylinderGeometry(g.r * 0.9, g.r * 1.6, -f, 12, 1, true).translate(g.x, f / 2, g.z));
     }
     this.root.add(new THREE.Mesh(mergeGeometries(ducts)!, new THREE.MeshStandardMaterial({ color: 0x8a9096, metalness: 0.85, roughness: 0.35, side: THREE.DoubleSide })));
     const beamMat = new THREE.ShaderMaterial({
@@ -384,14 +405,14 @@ export class SubwayMesh {
   update(t: number, cam: THREE.Vector3, underground: number) {
     const sub = this.u.city.subway;
     const near = sub.nearest(cam.x, cam.z).s;
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    const m = _rm, q = _rq, sc = _rs, p = _rp, Y = _rY;
     let n = 0;
     if (underground > 0.01) for (const r of this.u.rats) {
       if (Math.abs(r.home - near) > 160 || n >= 200) continue;
       const ra = ratAt(r, t);
       const a = sub.at(ra.ss);
       q.setFromAxisAngle(Y, Math.atan2(a.tx, a.tz) + (ra.dir > 0 ? 0 : Math.PI));
-      this.rats.setMatrixAt(n++, m.compose(p.set(a.x + a.tz * ra.off, TUNNEL.floor + 0.02, a.z - a.tx * ra.off), q, sc));
+      this.rats.setMatrixAt(n++, m.compose(p.set(a.x + a.tz * ra.off, TUNNEL.floor + this.u.dip(ra.ss) + 0.02, a.z - a.tx * ra.off), q, sc));
     }
     this.rats.count = n;
     this.rats.instanceMatrix.needsUpdate = true;

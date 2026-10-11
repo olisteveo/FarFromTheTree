@@ -131,7 +131,7 @@ export class Pilot {
       if (this.mode === "exitSubway" && this.target) {
         tx = this.target.x; tz = this.target.z;
         const d = Math.hypot(tx - pos.x, tz - pos.z);
-        wantY = d < 3 ? 2 : (TUNNEL.floor + TUNNEL.ceiling) / 2 + 1;
+        wantY = d < 3 ? 2 : (TUNNEL.floor + TUNNEL.ceiling) / 2 + 1 + city.subwayDip(sub.s);
         if (d < 4) input.spread = true;
       } else {
         const a = city.subway.at(sub.s + 28 + p.skill * 22); // in a tunnel you watch the curve coming
@@ -150,7 +150,7 @@ export class Pilot {
         this.trackSide = side;
         tx = a.x + a.tz * side; tz = a.z - a.tx * side;
         // good players hug the ceiling: a train can pass underneath
-        wantY = (TUNNEL.floor + TUNNEL.ceiling) / 2 + 0.3 + p.skill * 2.4;
+        wantY = (TUNNEL.floor + TUNNEL.ceiling) / 2 + 0.3 + p.skill * 2.4 + city.subwayDip(sub.s);
       }
     } else if (this.mode === "toSubway" && this.target) {
       tx = this.target.x; tz = this.target.z;
