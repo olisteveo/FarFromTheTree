@@ -90,9 +90,10 @@ The wind is the level design (`src/world/airflow.ts`, `src/world/windFeatures.ts
     its edge.
 - **False leads:** 28 currents peel off the ways and look just as good (streams and gales). They run
   back downtown, toward the edge of the map, or up blind streets.
-- **Crosswinds:** cross streets gust across in pulses. Junction bursts (strong gusts thrown out
-  across the avenue: `AIR.crossBurst`) are built but switched off until they're tuned: at 5–9 m/s
-  they broke the Rooftops way.
+- **Crosswinds:** cross streets gust across in pulses. At junctions they throw bursts out across the
+  avenue (`AIR.crossBurst`, 8 m/s at the peak, growing uptown, below about 11 m). Each burst lives only
+  in the junction box: once it has shoved you into the side street it lets go, so it costs you the line
+  but never carries you away down the side street.
 - **The edge of the map** is a visible wall of wind that blows you back toward the city and on
   uptown. Over the rivers the air drags you into the water.
 - **The subway's streams:** entrances, and the street grates every 110–160 m along the tunnels (two

@@ -30,7 +30,7 @@ export type Lane = "subway" | "street" | "roof";
 export const AIR = {
   avenue: 9.5,        // street tailwind on route-aligned streets (m/s)
   cross: 4.5,         // cross-street gusts
-  crossBurst: 0,      // ...and the bursts they throw out across the avenue at a junction (m/s at their peak, uptown). Off for now: at 5-9 they broke the Rooftops way (pilots 3/3 -> 0-1/3); needs tuning
+  crossBurst: 8,      // ...and the bursts they throw out across the avenue at a junction (m/s at their peak, uptown; only in the junction itself)
   channel: 0.35,      // how strongly an avenue canyon draws you back to its middle (1/s)
   roof: 6.5,          // the wind over the roofs (a quartering tailwind: see roofWind)
   roofGrowth: 0.035,  // stronger with height
@@ -577,6 +577,10 @@ export class Airflow {
       for (const h of [a, b]) {
         if (!isFinite(h.dist) || h.dist > h.w / 2 + 3) continue;
         if (Math.abs(h.tx * rt0.tx + h.tz * rt0.tz) > 0.55) continue; // (the avenues themselves: no)
+        // only in the junction, out over the avenue: once it has shoved you into the side street it lets go
+        // (it blew all the way down the side street, a conveyor away from the route)
+        const av = h === a ? b : a;
+        if (!isFinite(av.dist) || av.dist > av.w / 2 + 2 || Math.abs(av.tx * rt0.tx + av.tz * rt0.tz) < 0.55) continue;
         const burst = Math.max(0, Math.sin(t * 0.45 + h.idx * 2.17)) ** 4;
         if (burst < 0.02) continue;
         const sign = h.d !== 0 ? h.d : (h.idx % 2 ? 1 : -1);

@@ -22,7 +22,9 @@ It runs on PC and phones (touch controls), with a global leaderboard.
   - Wander off a way and the city's air turns across you or quartering back.
   - **False leads** peel off the ways: currents that look just as good but run back downtown, out
     toward the river, or up blind streets.
-- **Crosswinds.** The side streets gust across the avenues in pulses.
+- **Crosswinds.** At junctions the side streets throw bursts of wind across the avenue (a few seconds
+  on, then calm) that shove you off your line toward the side street, harder the further uptown you
+  get. Fly against them.
 - **Street closures** shut the street layer and send you over the roofs, under through the subway,
   or round by another street. None of them cuts a main way:
   - **A burst water main** on Broadway: a geyser from a crater inside the crews' MDF hoarding. Its
