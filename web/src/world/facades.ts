@@ -19,6 +19,8 @@ export interface FacadeProp {
   seed: number;
   /** AC units that blow, cats' swat reach, line sag */
   blows?: boolean;
+  /** what it is, for the "torn apart on ..." message (else by kind) */
+  label?: string;
   /** for lines: the far end */
   x2?: number; y2?: number; z2?: number;
 }

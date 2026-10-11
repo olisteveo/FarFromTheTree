@@ -3,7 +3,7 @@
 // closed streets in red, the park and the meadow where the seed goes, and how far is left.
 // Underground it shows the subway line and its stations instead.
 
-import type { CityData } from "../world/data";
+import type { CityData, Polyline } from "../world/data";
 import type { Blockers } from "../world/blockers";
 import type { Shaft, Underground } from "../world/underground";
 import type { WindFeatures } from "../world/windFeatures";
@@ -79,6 +79,9 @@ export class Minimap {
   }
 
   /** dt; the leaf's position and heading; underground?; the next way in the signs point to */
+  /** the way along the streets (world/course.ts), drawn in place of the route line, which cuts through buildings */
+  path: Polyline | null = null;
+
   update(dt: number, x: number, y: number, z: number, heading: number, underground: boolean, routeS: number, next: Shaft | null) {
     this.acc += dt;
     if (this.acc < 1 / 30) return;
@@ -121,11 +124,11 @@ export class Minimap {
         g.beginPath(); g.arc(this.px(s.x), this.py(s.z), 2.5 * lw, 0, 7); g.fill();
       }
     } else {
-      // the route uptown, ahead of you
-      const r = this.city.route;
+      // the way uptown along the streets, ahead of you
+      const r = this.path ?? this.city.route;
       g.strokeStyle = "rgba(255, 190, 80, 0.85)"; g.lineWidth = 3 * lw; g.setLineDash([8 * lw, 6 * lw]);
       g.beginPath();
-      const from = Math.max(0, Math.floor(routeS / r.step) - 20);
+      const from = Math.max(0, Math.floor((this.path ? this.path.nearest(x, z).s : routeS) / r.step) - 20);
       for (let i = from; i < r.x.length; i += 3) { const X = this.px(r.x[i]), Y = this.py(r.z[i]); if (i === from) g.moveTo(X, Y); else g.lineTo(X, Y); }
       g.stroke(); g.setLineDash([]);
       // closed streets

@@ -219,6 +219,7 @@ stage.scene.add(debris.mesh);
 let lastGust = -1;
 // the minimap, bottom right (top left on touch screens)
 const minimap = new Minimap(hudEl, city, flow.under, flow.blockers, { x: city.raw.landmarks.sheepMeadow[0], z: city.raw.landmarks.sheepMeadow[1] });
+minimap.path = course.path;
 // the wind's secrets: hidden currents (remembered, shown on the minimap once found) and dust devils
 const discoveries = new Discoveries(flow.features);
 minimap.features = flow.features;

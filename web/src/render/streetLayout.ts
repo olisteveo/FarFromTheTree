@@ -1066,6 +1066,7 @@ export function streetLayout(city: CityData, opts: StreetLayoutOptions = {}): St
     const clear = lanes.every((c) => Math.abs(ns.off - c) > 1.95);
     if (!clear || !road.has(v.x, v.z)) continue;
     put("steam_stack", v.x, 0.02, v.z, hp(v.x, v.z, 3) * 6.28);
+    cyl("a steam stack", v.x, v.z, 0, 3.4, 0.45);
     count("steam_stack");
   }
 

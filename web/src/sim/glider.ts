@@ -393,7 +393,8 @@ export class Glider {
       }
     }
     // facade clutter: AC units and balconies are solid; cats swat; washing lines snag
-    if (p.y > 1.5 && p.y < 66) {
+    // (and the rooftop clutter: water towers, bulkheads, chimneys, condensers, up to the tallest roofs)
+    if (p.y > 1.5 && p.y < 330) {
       for (const f of this.flow.facades.grid.at(p.x, p.z)) {
         if (f.kind === "line") {
           if (Facades.lineDistance(f, p.x, p.y, p.z) < r + 0.06 && this.clock - this.lastSnag > 1.2) {
@@ -416,9 +417,10 @@ export class Glider {
         const du = f.hw + r - Math.abs(lu), dh = f.hh + r - Math.abs(ry), dd = f.hd + r - Math.abs(lo);
         if (du <= 0 || dh <= 0 || dd <= 0) continue;
         // push out along the shallowest axis
-        if (dh < du && dh < dd) this.contact(0, Math.sign(ry) || 1, 0, dh, PROP_NAME[f.kind]);
-        else if (dd < du) { const s2 = Math.sign(lo) || 1; this.contact(f.nx * s2, 0, f.nz * s2, dd, PROP_NAME[f.kind]); }
-        else { const s2 = Math.sign(lu) || 1; this.contact(f.tx * s2, 0, f.tz * s2, du, PROP_NAME[f.kind]); }
+        const what = f.label ?? PROP_NAME[f.kind];
+        if (dh < du && dh < dd) this.contact(0, Math.sign(ry) || 1, 0, dh, what);
+        else if (dd < du) { const s2 = Math.sign(lo) || 1; this.contact(f.nx * s2, 0, f.nz * s2, dd, what); }
+        else { const s2 = Math.sign(lu) || 1; this.contact(f.tx * s2, 0, f.tz * s2, du, what); }
       }
     }
     // blockers: lantern curtains and crowd barriers close the street layer (paper lanterns, plastic

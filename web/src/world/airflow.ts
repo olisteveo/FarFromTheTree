@@ -29,7 +29,7 @@ export const AIR = {
   avenue: 9.5,        // street tailwind on route-aligned streets (m/s)
   cross: 4.5,         // cross-street gusts
   channel: 0.35,      // how strongly an avenue canyon draws you back to its middle (1/s)
-  roof: 8.5,          // the north-westerly over the roofs
+  roof: 6.5,          // the wind over the roofs (a quartering tailwind: see roofWind)
   roofGrowth: 0.035,  // stronger with height
   tunnel: 11,         // the tunnel's standing draught
   station: 7,
@@ -66,7 +66,7 @@ export interface AirSample {
 
 /** The winter wind's direction over the roofs: from the north-west, so it blows to the
  *  south-east, which in the grid frame (east = -x) is across the route and slightly against. */
-const NW = { x: -0.96, z: -0.28 };
+// (the roof wind is set along the route: see the rooftops in sample)
 /** how far across a station the ways out by the stairs reach to draw you in */
 const EXIT_REACH = 10;
 
@@ -426,9 +426,15 @@ export class Airflow {
     const above = Math.max(0, y - H);
     const gust = 1 + 0.45 * noise3(x / 90, y / 60, z / 90 - t * 0.25, 3) + 0.5 * Math.max(0, Math.sin(t * 0.52 + x * 0.004)) ** 6;
     const roofSpeed = (AIR.roof + Math.min(8, above * AIR.roofGrowth)) * gust;
-    const veer = 0.35 * noise3(x / 400, 0, z / 400 + t / 90, 9);
+    // The wind over the roofs blows uptown, quartering: it comes at an angle that swings from one side
+    // of the route to the other every kilometre or so (and wanders a little), so up there you're carried
+    // along but always crabbing, and which side the city's edge is coming at you from keeps changing.
+    // (It was a fixed north-westerly, which along this route is a cross- and headwind: past Chinatown
+    // it blew every leaf backwards and sideways into the edge of the map.)
+    const veer = 0.62 * Math.sin(n.s / 900 + 0.7) + 0.25 * noise3(x / 400, 0, z / 400 + t / 90, 9);
     const c = Math.cos(veer), s = Math.sin(veer);
-    let rx = (NW.x * c - NW.z * s) * roofSpeed, rz = (NW.x * s + NW.z * c) * roofSpeed;
+    let rx = (rt.tx * c + rt.tz * s) * roofSpeed, rz = (rt.tz * c - rt.tx * s) * roofSpeed;
+    const wdx = rx / (roofSpeed || 1), wdz = rz / (roofSpeed || 1); // its direction
     let ry = 1.2 * noise3(x / 30, y / 20, z / 30 + t * 0.6, 11);
     // thermals over dark roofs and lift where the wind hits a wall
     if (!streetLevel || y > 6) {
@@ -441,7 +447,7 @@ export class Airflow {
           tmpE.d = e.d;
           if (e.d < 9) {
             // windward face (its outward normal points into the wind): the air rides up the wall
-            const into = -(e.nx * NW.x + e.nz * NW.z);
+            const into = -(e.nx * wdx + e.nz * wdz);
             if (into > 0.2) ry += roofSpeed * 0.75 * into * (1 - e.d / 9) * smoothstep(b.h * 0.4, b.h * 0.8, y);
             // leeward: a curl of downdraught off the roof edge
             else if (into < -0.3 && y > b.h - 4) ry -= roofSpeed * 0.35 * -into * (1 - e.d / 9);
@@ -670,8 +676,9 @@ export class Airflow {
         const k = Math.min(1, edge / AIR.wallDepth);
         const nx = (rt.x - x) / n.d, nz = (rt.z - z) / n.d;
         const churn = noise3(x / 14, y / 10, z / 14 + t * 1.5, 71);
-        wx = wx * (1 - 0.7 * k) + (nx * AIR.wallSpeed + -nz * churn * 5) * k;
-        wz = wz * (1 - 0.7 * k) + (nz * AIR.wallSpeed + nx * churn * 5) * k;
+        // (and on uptown along it, so it never just pins you against it)
+        wx = wx * (1 - 0.7 * k) + (nx * AIR.wallSpeed + rt.tx * 7 + -nz * churn * 5) * k;
+        wz = wz * (1 - 0.7 * k) + (nz * AIR.wallSpeed + rt.tz * 7 + nx * churn * 5) * k;
         wy += (2 + 3 * churn) * k;
         out.guide = Math.max(out.guide ?? 0, 0.75 * k);
       }

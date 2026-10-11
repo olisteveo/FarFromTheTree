@@ -9,6 +9,11 @@ import type { Glider, LeafInput } from "./glider";
 import type { Airflow } from "../world/airflow";
 import type { CityData } from "../world/data";
 import { TUNNEL, type Shaft } from "../world/underground";
+import { makeCourse } from "../world/course";
+import type { Polyline } from "../world/data";
+
+/** the way along the streets (world/course.ts): the route line itself cuts through buildings in places */
+const paths = new WeakMap<CityData, Polyline>();
 
 export interface Profile {
   name: string;
@@ -53,7 +58,9 @@ export class Pilot {
   /** what the pilot is doing, for the report */
   log: string[] = [];
 
+  private path: Polyline;
   constructor(readonly city: CityData, readonly flow: Airflow, readonly leaf: Glider, readonly p: Profile, seed: number) {
+    this.path = paths.get(city) ?? paths.set(city, makeCourse(city).path).get(city)!;
     this.rng = new Rand(seed * 7919 + 13);
     this.heightBias = this.rng.gauss() * (1 - p.skill) * 2.5;
     this.wobblePhase = this.rng.next() * 100;
@@ -154,14 +161,14 @@ export class Pilot {
     } else if (this.flow.blockers.near(pos.x, pos.z) && !under) {
       // a closed street: hop the barrier (it's only so high), or over the roofs if they're low
       const look = 22 + p.skill * 18;
-      const a = city.route.at(route.s + look);
+      const a = this.path.at(this.path.nearest(pos.x, pos.z).s + look);
       tx = a.x; tz = a.z;
       const bl = this.flow.blockers.near(pos.x, pos.z)!;
       const roofs = city.canopy(pos.x, pos.z, 30);
       wantY = roofs < 25 ? roofs + 8 : bl.height + 4;
     } else {
       const look = 22 + p.skill * 18;
-      const a = city.route.at(route.s + look);
+      const a = this.path.at(this.path.nearest(pos.x, pos.z).s + look);
       tx = a.x; tz = a.z;
       const H = city.canopy(pos.x, pos.z, 16);
       // street flyers keep above the traffic and the parked cars (and below the lamp arms)

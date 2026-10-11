@@ -327,6 +327,18 @@ export interface FrontEdge {
   L: number; u0: number; y0: number; top: number; gH: number; ground: Ground; shopOff: number; kind: EdgeKind; tier: number; district: string;
 }
 
+/** The rooftop pieces the leaf can hit: half sizes along x, up, along z at scale 1 (from architectureKit), and
+ *  what they're called when they tear you. */
+const ROOF_SOLIDS: Record<string, [number, number, number, string]> = {
+  bulkhead: [1.5, 1.3, 1.7, "a stair bulkhead"],
+  elevator: [2.5, 2.25, 2.5, "a lift penthouse"],
+  water_tower: [1.15, 3.5, 1.15, "a water tower"],
+  steel_tank: [1.4, 2.7, 1.4, "a water tank"],
+  chimney: [0.45, 1.25, 0.35, "a chimney"],
+  condenser: [0.5, 0.5, 0.5, "an air conditioner"],
+  coop: [1.2, 1.25, 0.8, "a pigeon coop"],
+};
+
 export interface RoofSpot { b: Building; poly: Poly; y: number; district: string; party: FrontEdge[] }
 
 const tmpC = new THREE.Color();
@@ -659,8 +671,16 @@ export class BuildingsMesh {
           }
           if (!fits(x, z, fp)) continue;
           placed.push([x, z, fp]);
-          q.setFromAxisAngle(Y, yaw ?? yawBase + (r(k * 29 + tries) < 0.5 ? 0 : Math.PI / 2));
+          const yw = yaw ?? yawBase + (r(k * 29 + tries) < 0.5 ? 0 : Math.PI / 2);
+          q.setFromAxisAngle(Y, yw);
           K.add(it, m.compose(p.set(x, y, z), q, scale), colour);
+          // the big pieces are solid: you land on them or bounce off them, you don't fly through them
+          const box = ROOF_SOLIDS[it];
+          if (box) {
+            const [hw, hh, hd, label] = box;
+            const cx = Math.cos(yw), sx = Math.sin(yw);
+            this.solids.push({ kind: "solid", x, y: y + hh * scale.y, z, tx: cx, tz: -sx, nx: sx, nz: cx, hw: hw * scale.x, hh: hh * scale.y, hd: hd * scale.z, seed: 0, label });
+          }
           return true;
         }
         return false;
