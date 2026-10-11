@@ -560,8 +560,11 @@ export class Airflow {
           const into = Math.min(0, (sx * bar.nx + sz * bar.nz) * side);
           sx -= bar.nx * side * into; sz -= bar.nz * side * into;
           sy = sy * (1 - k) + 13 * k * (1 - over * 0.6);
-          sx = sx * (1 - 0.7 * k) + bar.nx * side * (over ? -6 : 1.5) * k;
-          sz = sz * (1 - 0.7 * k) + bar.nz * side * (over ? -6 : 1.5) * k;
+          // (over the top it carries you across uptown, whichever side you're on: across "to the other side"
+          // flipped the moment you crossed the line and held you hovering over the barrier)
+          const upAcross = rt.tx * bar.nx + rt.tz * bar.nz >= 0 ? 1 : -1;
+          sx = sx * (1 - 0.7 * k) + bar.nx * (over ? 6 * upAcross : 1.5 * side) * k;
+          sz = sz * (1 - 0.7 * k) + bar.nz * (over ? 6 * upAcross : 1.5 * side) * k;
           lift = Math.max(lift, k * 0.7);
         }
       }

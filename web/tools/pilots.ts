@@ -65,7 +65,8 @@ function fly(layer: string, run: number) {
       tx = e ? e[0] : target.x; tz = e ? e[2] : target.z; want = 5; // climb at it: the way out's air does the rest
     } else {
       const pn = course.path.nearest(p.x, p.z);
-      const a = course.path.at(Math.min(course.path.length, pn.s + 40));
+      // drifted off down a side street: back to the path first (aiming far ahead steers you into the corner)
+      const a = course.path.at(Math.min(course.path.length, pn.s + (pn.d > 10 ? 6 : 40)));
       tx = a.x; tz = a.z;
       const H = Math.max(city.canopy(p.x, p.z, 25), city.canopy(a.x, a.z, 25));
       // the street pilot climbs over a closed street ahead (its air lifts you)
@@ -74,14 +75,15 @@ function fly(layer: string, run: number) {
       want = endNear ? 0 : mode === "street" && !closed ? 5 : H > 42 ? 16 : H + 12;
     }
     let d = Math.atan2(tx - p.x, tz - p.z) - g.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
-    const pitch = clamp((p.y - want) * 0.15 - g.vel.y * 0.12, -1, 1);
+    // sitting on something (a roof, a ledge) away from the meadow: flare and hop off it, as a player would
+    const pitch = g.grounded && !course.inMeadow(p.x, p.z) ? -1 : clamp((p.y - want) * 0.15 - g.vel.y * 0.12, -1, 1);
     g.step(dt, { pitch, roll: clamp(-d * 2, -1, 1), spread: p.y < want - 4, curl: false, corkscrew: 0, loop: false });
     if (g.grounded && course.inMeadow(p.x, p.z) && Math.hypot(g.vel.x, g.vel.z) < 2.5) g.plant();
     if (i % 1200 === 0) {
       maxS = Math.max(maxS, n.s);
       stuck = Math.abs(n.s - lastS) < 5 ? stuck + 10 : 0;
       lastS = n.s;
-      log.push(`${Math.round(g.time)}s s${n.s.toFixed(0)} y${p.y.toFixed(0)} ${mode}`);
+      log.push(`${Math.round(g.time)}s s${n.s.toFixed(0)} (${p.x.toFixed(0)},${p.y.toFixed(0)},${p.z.toFixed(0)}) ${mode}`);
       if (stuck > 90) break;
     }
   }

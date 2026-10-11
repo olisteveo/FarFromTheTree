@@ -386,7 +386,11 @@ export class Glider {
       const ed = nearestEdge(b.poly, p.x, p.z);
       if (inside) {
         const toRoof = b.h + r - p.y;
-        if (toRoof < ed.d + r) this.contact(0, 1, 0, toRoof, "a rooftop");
+        // out through the nearest wall, unless that's a wall it shares with the building next door (the
+        // data has neighbours that overlap): then up onto the roof, or it's pushed from one into the other
+        const ox = p.x + ed.nx * (ed.d + r + 0.3), oz = p.z + ed.nz * (ed.d + r + 0.3);
+        const next = this.city.buildingAt(ox, oz);
+        if (toRoof < ed.d + r || (next && next !== b && next.h > p.y)) this.contact(0, 1, 0, toRoof, "a rooftop");
         else this.contact(ed.nx, 0, ed.nz, ed.d + r, "a wall");
       } else if (ed.d < r && p.y < b.h) {
         this.contact(ed.nx, 0, ed.nz, r - ed.d, "a wall");
