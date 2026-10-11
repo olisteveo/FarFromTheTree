@@ -177,7 +177,10 @@ export class Underground {
       if (s.out) s.exitPath = p;
       else {
         // the same line run backwards, from a few metres out in the street down into the station
-        const n = p.length / 3, rev: number[] = [s.x - s.ux * (STAIRS.half + 5), 2.4, s.z - s.uz * (STAIRS.half + 5)];
+        // (from a few metres out in the street, if that's open street: not inside a building or against its wall)
+        const ax = s.x - s.ux * (STAIRS.half + 5), az = s.z - s.uz * (STAIRS.half + 5);
+        const open = !this.city.buildingAt(ax, az) && !this.city.buildingAt(s.x - s.ux * (STAIRS.half + 2.5), s.z - s.uz * (STAIRS.half + 2.5));
+        const n = p.length / 3, rev: number[] = open ? [ax, 2.4, az] : [];
         for (let i = n - 1; i >= 0; i--) rev.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
         // and on down over the tracks on this side, turning uptown into the tunnel's draught
         const q = sub.nearest(p[0], p[2]), side = q.off >= 0 ? 1 : -1, lane = side * TRAIN.track;
@@ -233,8 +236,11 @@ export class Underground {
       const ceil = a < STAIRS.half ? floor + 4 : Math.min(STAIRS.roofUnder, floor + STAIRS.headroom);
       pts.push([a, Math.min(floor + 1.3, (floor + ceil) / 2)]);
     }
-    // and out: up past the railings into the street
-    pts.push([-STAIRS.half + 0.4, 1.6], [-STAIRS.half - 0.5, 3.2]);
+    // and out: up past the railings into the street (straight up out of the opening, if the street beyond
+    // the stairs' open end is a building: some entrances face a wall, and the stream held you against it)
+    const ox = s.x - s.ux * (STAIRS.half + 1.5), oz = s.z - s.uz * (STAIRS.half + 1.5);
+    if (this.city.buildingAt(ox, oz)) pts.push([-STAIRS.half + 1.2, 1.6], [-STAIRS.half + 1.2, 5]);
+    else pts.push([-STAIRS.half + 0.4, 1.6], [-STAIRS.half - 0.5, 3.2]);
     // the clearest height near a planned one (above ground the street is open air)
     const clearAt = (x: number, y0: number, z: number): [number, number] => {
       if (y0 > 0.3) return [y0, 9];
@@ -268,21 +274,33 @@ export class Underground {
     return out.length >= 12 ? new Float32Array(out) : undefined;
   }
 
-  /** Slide a stair opening (nudging it up to 3.5 m) until its whole square sits in one sidewalk. */
+  /** Place a stair opening: clear of every building (the opening, and a few metres of street in front of
+   *  its open end, where you come in and go out), as near the real entrance as can be (up to 10 m),
+   *  in one sidewalk if it can be. (The real entrances are often built into building fronts: drawn as
+   *  open stairwells they cut into the buildings, and the walls blocked their way in and out.) */
   private fitSidewalk(x: number, z: number, ux: number, uz: number): [number, number] {
     const walks = this.city.raw.sidewalk;
-    const fits = (cx: number, cz: number) => {
+    const P = (cx: number, cz: number, a: number, b: number): [number, number] => [cx + ux * a + uz * b, cz + uz * a - ux * b];
+    const onWalk = (cx: number, cz: number) => {
       const h = STAIRS.half + 0.15, w = STAIRS.halfWidth + 0.15;
-      const corners = [[-h, -w], [-h, w], [h, w], [h, -w]].map(([a, b]) => [cx + ux * a + uz * b, cz + uz * a - ux * b]);
+      const corners = [[-h, -w], [-h, w], [h, w], [h, -w]].map(([a, b]) => P(cx, cz, a, b));
       return walks.some((p) => corners.every(([px, pz]) => inRing(p[0], px, pz) && !p.slice(1).some((hole) => inRing(hole, px, pz))));
     };
-    if (fits(x, z)) return [x, z];
+    const clear = (cx: number, cz: number) => {
+      for (let a = -STAIRS.half - 4; a <= STAIRS.half + 0.4; a += 0.8)
+        for (const b of a < -STAIRS.half ? [-1.4, 0, 1.4] : [-STAIRS.halfWidth - 0.3, 0, STAIRS.halfWidth + 0.3])
+          if (this.city.buildingAt(...P(cx, cz, a, b))) return false;
+      return true;
+    };
+    if (clear(x, z) && onWalk(x, z)) return [x, z];
     let best: [number, number] | null = null, bd = Infinity;
-    for (let da = -3.5; da <= 3.5; da += 0.5) for (let db = -3.5; db <= 3.5; db += 0.5) {
+    for (let da = -10; da <= 10; da += 0.5) for (let db = -10; db <= 10; db += 0.5) {
       const d = Math.hypot(da, db);
       if (d >= bd) continue;
-      const cx = x + ux * da + uz * db, cz = z + uz * da - ux * db;
-      if (fits(cx, cz)) { best = [cx, cz]; bd = d; }
+      const [cx, cz] = P(x, z, da, db);
+      if (!clear(cx, cz)) continue;
+      const cost = d + (onWalk(cx, cz) ? 0 : 6);
+      if (cost < bd) { best = [cx, cz]; bd = cost; }
     }
     return best ?? [x, z];
   }

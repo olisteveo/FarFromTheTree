@@ -590,16 +590,24 @@ export class Airflow {
     // Near a wall the part of the wind blowing into it turns along the wall and up it, so a leaf
     // is never pinned against a building, and windward faces give lift.
     {
-      let best = 6, nx = 0, nz = 0;
+      // (and a leaf that's been shoved a little way into a wall is blown back out of it, not on in:
+      // a strong street wind straight at a wall used to hold leaves there for good)
+      let best = 6, nx = 0, nz = 0, inside = false;
       for (const b of city.bgrid.around(x, z, 6, this.bl)) {
         if (y > b.h + 1 || x < b.x0 - 6 || x > b.x1 + 6 || z < b.z0 - 6 || z > b.z1 + 6) continue;
         const e = nearestEdge(b.poly, x, z);
-        if (e.d < best && !inPoly(b.poly, x, z)) { best = e.d; nx = e.nx; nz = e.nz; }
+        const isIn = inPoly(b.poly, x, z);
+        if (isIn && y < b.h) { if (!inside || e.d < best) { best = e.d; nx = e.nx; nz = e.nz; inside = true; } }
+        else if (!inside && e.d < best) { best = e.d; nx = e.nx; nz = e.nz; }
       }
-      if (best < 6) {
+      if (inside) {
+        const into = -(wx * nx + wz * nz);
+        if (into > 0) { wx += nx * into; wz += nz * into; wy += into * 0.7; }
+        wx += nx * 3; wz += nz * 3;
+      } else if (best < 6) {
         const into = -(wx * nx + wz * nz);
         if (into > 0) {
-          const k = 1 - best / 6;
+          const k = Math.min(1, 1.15 * (1 - best / 6));
           wx += nx * into * k; wz += nz * into * k;
           wy += into * k * 0.7;
         }

@@ -94,6 +94,12 @@ export class WindFeatures {
           cut = Math.max(2, k - 2); break;
         }
       }
+      // and stops short of the first building it would run into (a current that carries you takes you
+      // into the wall and holds you there)
+      for (let k = 2; k < cut - 2; k++) {
+        const b = this.city.buildingAt(p[k * 3], p[k * 3 + 2]);
+        if (b && p[k * 3 + 1] < b.h + 2) { cut = Math.max(2, k - 2); break; }
+      }
       if (cut < n) { j.pts = p.slice(0, cut * 3); j.length = (cut - 1) * STEP; }
     }
     this.jets.splice(0, this.jets.length, ...this.jets.filter((j) => j.length > 40));
