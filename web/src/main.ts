@@ -53,6 +53,7 @@ import { Recorder, sampleAt, type RunLog } from "./game/recorder";
 import { Tutorial } from "./game/tutorial";
 import { playIntro, playEnding } from "./game/intro";
 import { LeafMeter } from "./game/leafmeter";
+import { HitFlash } from "./game/hitFlash";
 import { SnapshotCard } from "./game/snapshotCard";
 import { AchievementGallery } from "./game/achievementGallery";
 import { clamp } from "./core/rng";
@@ -242,6 +243,7 @@ discoveries.onFind = (html, kind) => {
   audio.play(kind === "devil" ? "corkscrew_whoosh" : "whoosh_drop", { vol: html ? 0.85 : 0.45 });
 };
 const leafMeter = new LeafMeter(hudEl);
+const hitFlash = new HitFlash(leafMeter.el); // every bump shows: a flash and a knock
 pigeons.onScatter = (x, y, z) => audio.play("pigeon_flap", { at: [x, y + 1, z], vol: 1, world: true });
 const recorder = new Recorder(canvas, stage.quality);
 if (touch) useTouchWording();
@@ -589,6 +591,7 @@ function tick(dt: number, render: boolean) {
   if (leaf.state === "planted" && !replay && !endingPlaying) leaderboard.showWon(leaf.time, durabilityPct(leaf.integrity));
   leaderboard.showMini(leaf.state === "attached" && !introPlaying);
   leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall, leaf.wet);
+  if (!replay) hitFlash.update(dt, leaf);
   // the leaf meter only once you're off the tree (it sat over the title screen's text)
   leafMeter.el.classList.toggle("away", leaf.state === "attached");
   audio.musicHold = introPlaying || (endingPlaying && endingSound); // (the films carry their own music)
@@ -618,6 +621,7 @@ function restartRun() {
   achievements.reset();
   discoveries.reset();
   leaf.reset();
+  hitFlash.reset();
   hud.reset();
   leaderboard.hide();
   audio.reset();

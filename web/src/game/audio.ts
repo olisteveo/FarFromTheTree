@@ -47,6 +47,7 @@ export class Audio {
   private sfxBus!: GainNode;
   private loops = new Map<string, Loop>();
   private lastIntegrity = 1;
+  private lastBumps = 0;
   private lastBoost = -99;
   private lastTrick = -99;
   private lastState = "";
@@ -258,7 +259,7 @@ export class Audio {
     return { src, panner };
   }
 
-  reset() { this.lastIntegrity = 1; this.lastState = ""; this.lastDrops = 0; }
+  reset() { this.lastIntegrity = 1; this.lastState = ""; this.lastDrops = 0; this.lastBumps = 0; }
 
   // ---------------------------------------------------------------- Central Park's rain
   /** the music ducks a little under the downpour (x this) */
@@ -467,6 +468,11 @@ export class Audio {
     }
 
     // ---------------------------------------------------------------- what the leaf does
+    // a bump that didn't hurt: still a knock you can hear
+    if (leaf.bumps !== this.lastBumps) {
+      if (leaf.bumps > this.lastBumps && leaf.integrity >= this.lastIntegrity - 0.02) this.play("leaf_hit_wall", { vol: 0.22 + 0.45 * leaf.bumpK });
+      this.lastBumps = leaf.bumps;
+    }
     if (leaf.integrity < this.lastIntegrity - 0.02) {
       const dmg = this.lastIntegrity - leaf.integrity;
       this.play(dmg > 0.15 ? "leaf_tear_big" : "leaf_tear_small", { vol: 0.9 });

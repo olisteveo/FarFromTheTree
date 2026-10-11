@@ -55,19 +55,80 @@ let you go roof to street to subway in one dive.
 updraft, rooftop thermals, wind deflecting up building faces.
 **Going down:** roof gaps and edges, curling into a dive, grates and stairs.
 
-**Blockers force layer changes.** Each section closes one layer at least once, so no
-single layer goes the whole way. Authored by `s`:
+**Closures force choices** (`src/world/blockers.ts`). Each one shuts the street layer up to the
+roofline and sends you over the roofs, under through the subway, or round by another street. They
+must make sense in the city, and they never cut one of the main ways through (below). Where a way
+has to cross one, a tight emergency lane stays open.
 
-| Section | Blocker |
+| Where | Closure |
 |---|---|
 | Battery Park | Tutorial: street only, then the first choices at Bowling Green |
-| Financial District | Roofs: the towers are too tall to stay over. Street: a water main break on Broadway throws a 9 m curtain of spray across it (hop it high, or duck into the subway). |
-| City Hall / Chinatown | Street: the festival lantern canopy and crowds on Mott St. Up to the low roofs or down at Canal St. |
-| SoHo | Subway: Prince St is flooded (water main break). Up the vent. |
-| Union Sq / Flatiron | Street: the Union Square Holiday Market's stalls and strings of lights close 14th St to Broadway (8 m). Roofs: the square itself is open, nothing to stand on. The Flatiron wind (23rd St) is a street-level gift. |
-| Herald / Times Sq | Street: the Times Square crowds and the TKTS steps. Roofs or subway. |
-| Columbus Circle | Subway: the line ends at 57 St. Roofs: Billionaires' Row is too tall. The street takes you into the park, over the Thanksgiving parade's 7 m barriers and under (or round) its giant turkey balloon, which boings you away. |
-| Central Park | Canopy, lawn and paths. Kids and dogs. Plant the seed. |
+| Broadway, FiDi | A water main break: a geyser (about 26 m) from a crater, fenced by the crews' MDF hoarding, with FDNY, DEP and NYPD trucks. Its column and fall of spray soak you and blast you back. It sits over the subway, so going under is the way past. |
+| Centre St (courthouses) and E 15th (off Union Sq) | Building sites: the scaffold and netting stay on the building, with a tower crane. The street is shut by a sidewalk-shed deck, hoarding and jersey barriers. Above it the concrete pump's boom, the crane's cable and its swinging load are solid. |
+| Mulberry St | The festival: curtains of lanterns wall to wall up to the roofline. They snag and tear. |
+| Times Square | Packed: NYPD and DSNY trucks, barricades stacked three high, and a web of lights and holiday banners up to 36 m. |
+| Columbus Circle | The Thanksgiving parade: grandstands, sawhorses, bunting, and the giant turkey balloon. |
+| Central Park | Rain, puddles, kids and dogs. Plant the seed in Sheep Meadow. |
+
+## The ways through, currents and crosswinds
+
+The wind is the level design (`src/world/airflow.ts`, `src/world/windFeatures.ts`).
+
+- **A few set ways through:**
+  - **the Rooftops**, along the course path above the roofline;
+  - **the West Side** and **the East Side**, at street level (16 m) along the avenues;
+  - **the subway.**
+- **Only on the ways does the air carry you uptown.** Off them (beyond about 60 m, fading by 140 m)
+  the city's air turns across you or quartering back, in patches a few blocks wide, and slows. That
+  costs you time without trapping you.
+- **Currents** (jets) run along the ways in links of 160–290 m, with gaps:
+  - About 64% of the Rooftops is covered, and over 80% of the side ways. There are never gaps on
+    crosstown legs.
+  - Grades: breeze, stream or gale.
+  - A current is a fast tailwind core with a soft hold in its middle and a churning shear edge that
+    throws you out. It never steers you: staying in is work, and leaving is a matter of flying for
+    its edge.
+- **False leads:** 28 currents peel off the ways and look just as good (streams and gales). They run
+  back downtown, toward the edge of the map, or up blind streets.
+- **Crosswinds:** cross streets gust across in pulses. Junction bursts (strong gusts thrown out
+  across the avenue: `AIR.crossBurst`) are built but switched off until they're tuned: at 5–9 m/s
+  they broke the Rooftops way.
+- **The edge of the map** is a visible wall of wind that blows you back toward the city and on
+  uptown. Over the rivers the air drags you into the water.
+- **The subway's streams:** entrances draw you down onto the uptown track just above the train
+  roofs. Exits lift you out when you turn or slow toward them.
+  Tunnels curve and dip gently between stations (`subwayBend.ts`); the stations stay straight.
+
+## Central Park and the rain
+
+- **The rain** (`src/world/rain.ts`, `src/render/rain.ts`) builds as you enter the park.
+- **Wetness** rises over time (fastest spread, slowest curled), and raindrops hit and wear the leaf.
+  A wet leaf is heavier and lifts less. Past 70% wet the damage climbs, and at 100% you're soaked
+  through. The leaf doesn't mend in the rain.
+- **Puddles** spread over the paths after a few seconds of rain, and coming down in one drowns you.
+  Each path always keeps a dry strip, and there are none near the gates or the meadow.
+- **Getting back up off the grass:** in the rain a flare or spread on the ground gives a harder pop.
+- **The music** switches to "The Rain" and ducks under the downpour.
+- **Sheep Meadow** is ringed in soft green, with a light column. Both fade as you come down to land.
+
+## Damage
+
+- **Walls:** a hit harder than 4.5 m/s tears the leaf (glancing off a tunnel wall hurts less). Every
+  bump shows, harmless or not: a flash at the screen's edges, a knock, and a shake of the leaf meter.
+  The flash is red when it hurt.
+- **Mending:** the leaf mends while you fly clean, after 4 s at 3% per second, but every hit leaves
+  a scar that lowers the ceiling.
+- **Trains:** a brutal hit, not instant death. Head-on from a downtown train tears 50% of the leaf,
+  and the uptown train from behind 35%. They fling you along with the train and out into the gap
+  between the tracks.
+- **Other hazards:** cabs, washing lines, lanterns, the geyser, kids and rats.
+- **Durability:** the leaf left at the finish is recorded on the leaderboard.
+
+## Achievements
+
+There are 27 (`src/game/achievements.ts`), most for landing on landmarks and famous spots. Each one
+is a pixel-art polaroid of the moment (`tools/achievements/snapshots.py`), shown on a card when it
+unlocks and collected in a pixel photo album that you open from the title screen or the pause menu.
 
 ## Flight model (the whole game)
 
@@ -126,3 +187,7 @@ PS2 Spider-Man 2 as the floor, with modern light on top:
 - `src/render`: meshes, materials, sky and post.
 - `src/game`: loop, camera, input, HUD, tutorial, audio.
 - `tools/fly.ts`: headless test flights per layer (regression for feel and speeds).
+- `tools/pilots.ts`: skilled bot pilots fly each way through, tree to meadow. A way must stay
+  winnable; the Rooftops way should plant at least 1 run in 3.
+- The s&box port: `docs/SBOX_MIGRATION.md` at the repo root. `npm run build` enforces that
+  `src/world`, `src/sim` and `src/core` stay portable.

@@ -55,6 +55,8 @@ export const FLIGHT = {
   dropChain: 1.35,
   heal: 0.03,         // integrity per second regained while flying clean...
   healDelay: 4,       // ...starting this long after the last hit
+  /** a train hit: the share of the leaf it tears (head-on, from a downtown train; from behind, the uptown one) */
+  trainHeadOn: 0.5, trainBehind: 0.35,
   scar: 0.3,          // ...but each hit lowers the ceiling by this share of its damage
 };
 
@@ -133,6 +135,7 @@ export class Glider {
     this.boost = { t: -99, amount: 0, kind: "" };
     this.events = [];
     this.wet = 0; this.rain = 0; this.rainFor = 0; this.drops = 0; this.dropBucket = -1; this.wetSaid = 0;
+    this.bumpT = -99; this.bumpK = 0; this.bumps = 0; this.trainHitT = -99;
     this.updateQuat(0);
   }
 
@@ -212,9 +215,11 @@ export class Glider {
     if (this.grounded) {
       this.heading -= clamp(input.roll, -1, 1) * 2.2 * dt;
       const ws = Math.hypot(W.x, W.z);
-      if ((input.pitch < -0.3 || input.spread) && this.clock - this.lastHop > 0.7) {
+      // (in Central Park's rain a sodden leaf on the grass needs a harder pop to get back up: it's a setback, not
+      // a trap)
+      if ((input.pitch < -0.3 || input.spread) && this.clock - this.lastHop > (this.rain > 0.2 ? 0.45 : 0.7)) {
         this.lastHop = this.clock;
-        this.vel.y = 3.2 + Math.min(4, ws * 0.45) + (input.spread ? 1 : 0);
+        this.vel.y = (3.2 + Math.min(4, ws * 0.45) + (input.spread ? 1 : 0)) * (1 + 0.55 * this.rain);
         this.vel.x += W.x * 0.35 + Math.sin(this.heading) * 1.5;
         this.vel.z += W.z * 0.35 + Math.cos(this.heading) * 1.5;
       }
@@ -330,7 +335,24 @@ export class Glider {
     }
     // (a leaf doesn't mend in the rain)
     if (this.clock - this.lastHit > T.healDelay && this.integrity < this.maxIntegrity && this.rain < 0.2) this.integrity = Math.min(this.maxIntegrity, this.integrity + T.heal * dt);
-    if (this.air.train) this.fail(this.air.trainDir! > 0 ? "Caught by the uptown train" : "Hit head-on by a downtown train");
+    // a train: a brutal hit, not instant death. It flings you along with it and out sideways into the gap between
+    // the tracks, and tears a good part of the leaf (head-on worst); only a leaf already badly torn dies
+    if (this.air.train && this.clock - this.trainHitT > 1.2) {
+      this.trainHitT = this.clock;
+      this.lastHit = this.clock;
+      const dir = this.air.trainDir! > 0 ? 1 : -1, headOn = dir < 0;
+      const dmg = headOn ? FLIGHT.trainHeadOn : FLIGHT.trainBehind;
+      this.integrity -= dmg;
+      this.maxIntegrity -= dmg * FLIGHT.scar;
+      const sub = this.city.subway, a = sub.at(sub.nearest(this.pos.x, this.pos.z).s);
+      const nx = a.tz, nz = -a.tx, off = (this.pos.x - a.x) * nx + (this.pos.z - a.z) * nz, toward = off > 0 ? -1 : 1;
+      if (this.trick) { this.trick = null; this.spin = 0; this.flip = 0; }
+      this.vel.set(a.tx * dir * 17 + nx * toward * 7, 1.5, a.tz * dir * 17 + nz * toward * 7);
+      this.pos.x += nx * toward * 1.2; this.pos.z += nz * toward * 1.2;
+      this.bumpT = this.clock; this.bumpK = 1; this.bumps++;
+      this.events.push(`t${this.time.toFixed(1)} ${headOn ? "hit head-on by a downtown train" : "caught by the uptown train"} -> ${this.integrity.toFixed(2)}`);
+      if (this.integrity <= 0) this.fail(headOn ? "Hit head-on by a downtown train" : "Caught by the uptown train");
+    }
     this.fate();
     this.updateQuat(0);
   }
@@ -399,12 +421,17 @@ export class Glider {
   // ------------------------------------------------------------------ collisions
   /** street furniture and park things: you mostly glance off them */
   private soft = false;
+  /** the last bump against something solid (any wall, prop or ceiling; not the ground): when, how hard 0..1, how many */
+  bumpT = -99; bumpK = 0; bumps = 0;
+  private trainHitT = -99;
   private contact(nx: number, ny: number, nz: number, depth: number, what: string) {
     this.pos.x += nx * depth; this.pos.y += ny * depth; this.pos.z += nz * depth;
     const vn = this.vel.x * nx + this.vel.y * ny + this.vel.z * nz;
     if (vn >= 0) return;
     if (this.trick) { this.trick = null; this.spin = 0; this.flip = 0; }
     const impact = -vn;
+    // every real bump shows (a flash and a knock: game/hitFlash.ts, game/audio.ts), harmless or not
+    if (ny <= 0.7 && impact > 1.2 && this.clock - this.bumpT > 0.12) { this.bumpT = this.clock; this.bumpK = Math.min(1, impact / 12); this.bumps++; }
     // settling onto the ground is gentle; walls and ceilings are what tear a leaf
     // settling onto the ground barely hurts; glancing off a tunnel wall hurts less than a building
     const safe = ny > 0.7 ? 14 : this.soft ? FLIGHT.safeImpact * 2 : what.startsWith("the tunnel") ? FLIGHT.safeImpact * 1.6 : FLIGHT.safeImpact;

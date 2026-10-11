@@ -30,6 +30,7 @@ export type Lane = "subway" | "street" | "roof";
 export const AIR = {
   avenue: 9.5,        // street tailwind on route-aligned streets (m/s)
   cross: 4.5,         // cross-street gusts
+  crossBurst: 0,      // ...and the bursts they throw out across the avenue at a junction (m/s at their peak, uptown). Off for now: at 5-9 they broke the Rooftops way (pilots 3/3 -> 0-1/3); needs tuning
   channel: 0.35,      // how strongly an avenue canyon draws you back to its middle (1/s)
   roof: 6.5,          // the wind over the roofs (a quartering tailwind: see roofWind)
   roofGrowth: 0.035,  // stronger with height
@@ -562,6 +563,19 @@ export class Airflow {
       const wa = isFinite(db) ? clamp((db - da) / 8 + 0.5, 0.5, 1) : 1;
       streetDir(a, wa);
       if (wa < 1) streetDir(b, 1 - wa);
+      // cross-street bursts: at a junction the side street's air bursts out across the avenue in gusts (a few
+      // seconds on, then calm), hard enough to shove a leaf off its line and down the side street if it's not
+      // flown against. They grow as the city gets denser uptown.
+      const prog = Math.min(1, n.s / city.route.length);
+      for (const h of [a, b]) {
+        if (!isFinite(h.dist) || h.dist > h.w / 2 + 3) continue;
+        if (Math.abs(h.tx * rt0.tx + h.tz * rt0.tz) > 0.55) continue; // (the avenues themselves: no)
+        const burst = Math.max(0, Math.sin(t * 0.45 + h.idx * 2.17)) ** 4;
+        if (burst < 0.02) continue;
+        const sign = h.d !== 0 ? h.d : (h.idx % 2 ? 1 : -1);
+        const k = burst * AIR.crossBurst * (0.45 + 0.75 * prog) * (1 - smoothstep(Math.min(7, H * 0.5), Math.min(11, H * 0.7 + 1), y)) * smoothstep(0.3, 2, y); // (down in the street, where you fly it)
+        sx += h.tx * sign * k; sz += h.tz * sign * k;
+      }
       const inCanyon = a.dist < a.w / 2 + 6;
       // courtyards, lots and squares: sheltered, but never dead calm - a breeze always runs uptown
       if (!inCanyon) { sx = sx * 0.3 + rt.tx * 5; sz = sz * 0.3 + rt.tz * 5; }
