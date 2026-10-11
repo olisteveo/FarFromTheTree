@@ -15,7 +15,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { FARE, PLATFORM_STAIR, STAIRS, TRAIN, TUNNEL, type FareArea, type Train, type Underground } from "../world/underground";
-import { entranceStyle } from "./subwayEntrances";
+import { cutRects, entranceStyle, subwayCuts } from "./subwayEntrances";
 
 /** heights the art is built to (world y) */
 export const SUBWAY_ART = {
@@ -418,9 +418,10 @@ export class SubwayArt {
     for (let s = 0; s < u.end; s += 8) {
       if (u.isBlocked(s)) continue;
       const w = this.width(s);
-      if (w.k > 0.6) {
-        // (a few tubes in every station are on their way out: they buzz and stutter now and then)
-        for (const off of [-3.3, 3.3, -8.5, 8.5]) ((Math.round(s / 8) * 7919 + Math.round(off * 10) * 13) % 41 === 0 ? flicker : fluor).push({ ss: s, m: this.at(s, off, w.ceil, 0) });
+      if (w.k > 0.999) {
+        // (the stations proper: their fixtures hang from the girders, see buildStations)
+      } else if (w.k > 0.6) {
+        for (const off of [-3.3, 3.3, -8.5, 8.5]) fluor.push({ ss: s, m: this.at(s, off, w.ceil, 0) });
       } else if (s % 32 === 0) {
         const side = (s / 32) % 2 ? 1 : -1;
         work.push({ ss: s, m: this.at(s, w.hw * side, w.ceil - 1.2, side > 0 ? Math.PI : 0) });
@@ -435,7 +436,9 @@ export class SubwayArt {
     this.strip("work_light", work, 110);
     this.strip("fluor", fluor, 110);
     this.flickerMat = this.materials.glow.clone();
-    this.strip("fluor_flicker", flicker, 110, true, [], "fluor", { glow: this.flickerMat });
+    // (a few tubes in every station are on their way out: they buzz and stutter now and then)
+    for (const h of u.hangers) if (h.kind === "fluor" && h.flicker) flicker.push({ ss: h.s, m: this.at(h.s, h.off, this.width(h.s).ceil, 0) });
+    this.strip("fluor_flicker", flicker, 110, true, [], "fluor_hung", { glow: this.flickerMat });
     this.strip("signal_red", sigR, 130);
     this.strip("signal_green", sigG, 130);
     this.strip("blue_light", blue, 120);
@@ -466,7 +469,6 @@ export class SubwayArt {
       // (worked out in world/underground.ts, which makes them solid)
       const areas = u.fareAreas.filter((a) => a.station === st.name);
       for (const fa of areas) { this.fareArea(put, fa); this.fareAreas.push({ s: fa.s, side: fa.side, station: st.name }); }
-      const clear = (s: number, side: number, r = 11) => !areas.some((a) => a.side === side && Math.abs(a.s - s) < r);
       // (Bowling Green's platform would run on past where the line starts: nothing goes out there)
       const inLine = (s: number) => s > u.start + 2 && s < u.end - 2;
 
@@ -490,21 +492,28 @@ export class SubwayArt {
             put("ad_frame", s, wall, PY, away, ad === "ad_soup" ? undefined : [["ad_soup", ad]]);
           } else put("plaque", s, wall, F + 3.65, away);
         }
-        // hanging signs: which way the trains on this side go
-        const dirSign: [string, string][] = side > 0 ? [] : [["sign_uptown", "sign_downtown"]];
-        for (const ds of [-42, 0, 42]) {
-          const s = st.ss + ds;
-          if (!clear(s, side, 6) || !inLine(s)) continue;
-          put("sign_hang", s, 6.2 * side, this.width(s).ceil, 0, dirSign.length ? dirSign : undefined);
+      }
+      // the ceiling: girders on every column line (in 2.5 m lengths, none across a stair's opening), conduit along
+      // both walls, and what hangs from them (world/underground.ts: placed there, solid there)
+      const C = this.width(st.ss).ceil;
+      const open = (s: number, off: number) => { const a = u.city.subway.at(s), x = a.x + a.tz * off, z = a.z - a.tx * off; return u.sdf(x, C + 0.2, z) > 0 || u.ceilingClear(x, z); };
+      for (let j = -8; j <= 8; j++) {
+        const s = st.ss + j * 9;
+        if (!inLine(s)) continue;
+        const hw = this.width(s).hw;
+        // (from each wall to its column line, as the old stations have them: none over the tracks)
+        for (const off of [-hw + 1.25, -hw + 3.75, hw - 3.75, hw - 1.25]) {
+          if (open(s, off) || open(s, off - 1.2) || open(s, off + 1.2)) continue;
+          put("girder", s, off, C);
         }
-        // "Exit to Street" only where there is a way out (a way in's passage blows you back down to the
-        // platform): over each fare control a way out comes down to, and over where each way out's air starts
-        const exits = u.shafts.filter((sh) => sh.out && sh.exitPath && sh.kind === "stairs" && Math.abs(sh.ss - st.ss) < TUNNEL.stationHalfLength + 40)
-          .map((sh) => u.city.subway.nearest(sh.exitPath![0], sh.exitPath![2])).filter((q) => (q.off >= 0 ? 1 : -1) === side);
-        const signs: number[] = [];
-        for (const a of areas) if (a.side === side && exits.some((q) => Math.abs(q.s - a.s) < 30)) for (const d of [-12, 12]) signs.push(a.s + d);
-        for (const q of exits) if (!signs.some((x) => Math.abs(x - q.s) < 9) && this.width(q.s).k > 0.6) signs.push(q.s);
-        for (const x of signs) put("sign_hang", x, 6.2 * side, this.width(x).ceil, 0, [["sign_uptown", "sign_exit"]]);
+      }
+      for (const side of [1, -1]) for (let s = st.ss - 70.5; s <= st.ss + 70.5; s += 3) if (inLine(s) && !open(s, 10.2 * side)) put("conduit", s, 10.2 * side, C, side > 0 ? Math.PI : 0);
+      for (const h of u.hangers) {
+        if (h.station !== st.name) continue;
+        if (h.kind === "fluor" && !h.flicker) put("fluor_hung", h.s, h.off, C);
+        else if (h.kind === "cctv" || h.kind === "speaker") put(h.kind, h.s, h.off, C, h.off > 0 ? -Math.PI / 2 : Math.PI / 2);
+        else if (h.kind === "sign_dir") put("sign_hang", h.s, h.off, C, 0, h.side > 0 ? undefined : [["sign_uptown", "sign_downtown"]]);
+        else if (h.kind === "sign_exit") put("sign_hang", h.s, h.off, C, 0, [["sign_uptown", "sign_exit"]]);
       }
       // the furniture the leaf can hit (world/underground.ts places it and makes it solid): benches, trash
       // cans, the fare-card machines, someone asleep on a bench, a busker
@@ -567,11 +576,67 @@ export class SubwayArt {
       mesh.receiveShadow = true;
       g.add(mesh);
     }
-    // platform tops (from the tactile strip to the wall) and the mosaic name tablets
+    // platform tops (from the tactile strip to the wall) and the mosaic name tablets; the vaulted ceiling
     g.add(this.platformTops(st.ss));
+    g.add(this.stationCeiling(st.ss));
     g.add(this.tablets(st));
     this.root.add(g);
     return g;
+  }
+
+  /** The station's ceiling over its full width: shallow jack arches between the girder lines (rising 0.3 m over
+   *  the ceiling line, so nothing of them hangs down), painted over the platforms and sooty over the tracks,
+   *  and a moulded cornice where they meet the walls. The stairs' openings are cut out. (subway.ts leaves its
+   *  flat ceiling out here.) */
+  private stationCeiling(ss: number): THREE.Mesh {
+    const sub = this.u.city.subway, R = TUNNEL.stationHalfLength;
+    const pos: number[] = [], uv: number[] = [];
+    const lines = [-R, ...Array.from({ length: 17 }, (_, i) => (i - 8) * 9), R].map((d) => ss + d);
+    const rect = (n: string) => this.uvRect(n);
+    const tri = (a: number[], b: number[], c: number[], ua: number[], ub: number[], uc: number[], down: boolean) => {
+      // wound to face down (seen from the platform) or into the hall (the cornice)
+      const nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+      const flip = down ? ny > 0 : false;
+      void nx;
+      if (flip) { pos.push(...a, ...c, ...b); uv.push(...ua, ...uc, ...ub); } else { pos.push(...a, ...b, ...c); uv.push(...ua, ...ub, ...uc); }
+    };
+    const quad = (p: number[][], t: number[][], down: boolean) => { tri(p[0], p[1], p[2], t[0], t[1], t[2], down); tri(p[0], p[2], p[3], t[0], t[2], t[3], down); };
+    const P = (s: number, off: number, y: number) => { const a = sub.at(s); return [a.x + a.tz * off, y, a.z - a.tx * off]; };
+    const lerpUV = (r: { u0: number; v0: number; u1: number; v1: number }, a: number, b: number) => [r.u0 + (r.u1 - r.u0) * (0.01 + 0.98 * a), r.v0 + (r.v1 - r.v0) * (0.02 + 0.96 * b)];
+    for (let b = 0; b < lines.length - 1; b++) {
+      const s0 = Math.max(lines[b], this.u.start + 0.01), s1 = Math.min(lines[b + 1], this.u.end - 0.01);
+      if (s1 - s0 < 0.2) continue;
+      const span = lines[b + 1] - lines[b], rise = 0.3 * Math.min(1, span / 9), n = Math.max(2, Math.ceil((s1 - s0) / 1));
+      const C = (s: number) => this.width(s).ceil + rise * Math.sin(Math.PI * Math.min(1, Math.max(0, (s - lines[b]) / span)));
+      for (let i = 0; i < n; i++) {
+        const sa = s0 + ((s1 - s0) * i) / n, sb = s0 + ((s1 - s0) * (i + 1)) / n;
+        const ta = (sa - lines[b]) / span, tb = (sb - lines[b]) / span;
+        const hw = this.width(sa).hw;
+        // over each platform and over the tracks
+        for (const [o0, o1, name] of [[-hw, -5.2, "vault_paint"], [-5.2, 5.2, "vault_soot"], [5.2, hw, "vault_paint"]] as const) {
+          const r = rect(name), va = (x: number) => (x - o0) / (o1 - o0);
+          quad([P(sa, o0, C(sa)), P(sb, o0, C(sb)), P(sb, o1, C(sb)), P(sa, o1, C(sa))],
+            [lerpUV(r, ta, va(o0)), lerpUV(r, tb, va(o0)), lerpUV(r, tb, va(o1)), lerpUV(r, ta, va(o1))], true);
+        }
+        // the cornice down each wall: from 0.3 m under the ceiling line up into the arch
+        const r = rect("cornice");
+        for (const side of [1, -1]) {
+          const o = (hw - 0.02) * side, ua = ((sa - ss) / 3) % 1, ub = ua + (sb - sa) / 3;
+          quad([P(sa, o, C(sa)), P(sb, o, C(sb)), P(sb, o, this.width(sb).ceil - 0.3), P(sa, o, this.width(sa).ceil - 0.3)],
+            [lerpUV(r, Math.abs(ua), 0), lerpUV(r, Math.abs(ub) > 1 ? 1 : Math.abs(ub), 0), lerpUV(r, Math.abs(ub) > 1 ? 1 : Math.abs(ub), 1), lerpUV(r, Math.abs(ua), 1)], false);
+        }
+      }
+    }
+    let g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+    g = cutRects(g, subwayCuts(this.u).ceil);
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, this.materials.atlas);
+    m.name = "stationCeiling";
+    m.receiveShadow = true;
+    // (the cornice faces into the hall from both walls: drawn both sides)
+    return m;
   }
 
   private platformTops(ss: number): THREE.Mesh {

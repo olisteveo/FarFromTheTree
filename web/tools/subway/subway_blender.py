@@ -626,6 +626,61 @@ def build_emergency_light():
     return B
 
 
+def build_fluor_hung():
+    """a station fluorescent fixture hung on two drop rods: the rods run 0.5 m up from its top (into the vault
+    over the ceiling line); the fixture's underside is 0.42 m under the origin (the ceiling line)"""
+    B = Builder()
+    box(B, (0, -0.33, 0), (0.3, 0.1, 2.4), "atlas", "white")
+    B.quad((-0.12, -0.382, -1.15), (0.12, -0.382, -1.15), (0.12, -0.382, 1.15), (-0.12, -0.382, 1.15), "glow", "fluor_tube",
+           ((0, 0), (0, 1), (1, 1), (1, 0)), out=(0, -1, 0))
+    for z in (-0.9, 0.9):
+        tube(B, (0, -0.28, z), (0, 0.3, z), 0.012, "atlas", "steel_dark", 4)
+    return B
+
+
+def build_girder():
+    """2.5 m of riveted steel I-beam girder running along X, its top at the origin (the ceiling line), 0.32 deep"""
+    B = Builder()
+    Lg, D, F = 2.5, 0.32, 0.26
+    box(B, (0, -0.02, 0), (Lg, 0.04, F), "atlas", "column_paint", skip=("nx", "px"))
+    box(B, (0, -D + 0.02, 0), (Lg, 0.04, F), "atlas", "column_paint", skip=("nx", "px"))
+    box(B, (0, -D / 2, 0), (Lg, D - 0.08, 0.03), "atlas", "column_paint", skip=("nx", "px", "py", "ny"))
+    return B
+
+
+def build_conduit():
+    """3 m of ceiling services along Z: a cable tray, two conduits, a rusty pipe and a junction box, on a strap.
+    Origin at the ceiling line; nothing hangs more than 0.24 m under it"""
+    B = Builder()
+    box(B, (0, -0.12, 0), (0.4, 0.05, 3.0), "atlas", "tray", skip=("nz", "pz"))
+    for x in (-0.28, -0.22):
+        cyl(B, (x, -0.08, -1.5), (x, -0.08, 1.5), 0.022, 6, "metal", "steel_plain", caps=False)
+    cyl(B, (0.3, -0.1, -1.5), (0.3, -0.1, 1.5), 0.05, 8, "atlas", "pipe_rust", caps=False)
+    box(B, (-0.25, -0.12, 0.6), (0.16, 0.16, 0.12), "atlas", "steel_dark")
+    for z in (-1.0, 1.0):
+        box(B, (0, -0.07, z), (0.75, 0.02, 0.04), "atlas", "steel_dark")
+        for x in (-0.36, 0.36):
+            tube(B, (x, 0, z), (x, -0.07, z), 0.008, "atlas", "steel_dark", 3)
+    return B
+
+
+def build_cctv():
+    """a CCTV dome on a short bracket, and the origin at the ceiling (0.3 m down)"""
+    B = Builder()
+    box(B, (0, -0.05, 0), (0.06, 0.1, 0.06), "atlas", "steel_dark")
+    box(B, (0, -0.12, 0), (0.22, 0.04, 0.22), "atlas", "white")
+    sphere(B, (0, -0.14, 0), 0.1, "atlas", "glass_booth", segs=10, rings=4)
+    return B
+
+
+def build_speaker():
+    """a PA horn speaker on a bracket, pointing along +Z and down a little"""
+    B = Builder()
+    box(B, (0, -0.06, 0), (0.05, 0.12, 0.05), "atlas", "steel_dark")
+    cyl(B, (0, -0.16, -0.12), (0, -0.2, 0.18), 0.05, 8, "atlas", "paint_grey", r2=0.16)
+    return B
+
+
 def build_fluor():
     """station fluorescent fixture, 2.6 m long. origin at the ceiling"""
     B = Builder()
@@ -779,7 +834,7 @@ def build_sign_hang():
     """hanging wayfinding sign, readable from both ends of the platform. origin: ceiling"""
     B = Builder()
     w, h = 2.4, 0.6
-    yc = -1.2
+    yc = -0.72   # (hung from a girder: its foot is the ceiling line; the sign's underside 1.05 m under it)
     for x in (-0.9, 0.9):
         tube(B, (x, 0, 0), (x, yc + h / 2, 0), 0.015, "atlas", "steel_dark", 4)
     box(B, (0, yc, 0), (w + 0.06, h + 0.06, 0.1), "atlas", "paint_black", skip=("pz", "nz"))
@@ -1116,6 +1171,7 @@ BUILDERS = [
     ("sign_hang", build_sign_hang), ("ad_frame", build_ad_frame), ("map_frame", build_map_frame), ("plaque", build_plaque),
     ("platform_stair_a", lambda: build_platform_stair(-1)), ("platform_stair_b", lambda: build_platform_stair(1)),
     ("barrier", build_barrier), ("street_entrance", build_street_entrance),
+    ("fluor_hung", build_fluor_hung), ("girder", build_girder), ("conduit", build_conduit), ("cctv", build_cctv), ("speaker", build_speaker),
     ("fare_machine", build_fare_machine), ("sleeper", build_sleeper), ("busker", build_busker),
     ("commuter_a", build_commuter_a), ("commuter_b", build_commuter_b),
 ]

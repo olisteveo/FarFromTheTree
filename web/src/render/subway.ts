@@ -154,6 +154,8 @@ export class SubwayMesh {
       }
       const L = (p: typeof a, w: number, y: number) => [p.x + p.tz * w, y, p.z - p.tx * w];
       quad(floor, floorUv, L(a, wa.hw, wa.floor), L(a, -wa.hw, wa.floor), L(b, -wb.hw, wb.floor), L(b, wb.hw, wb.floor), wa.hw, -wa.hw, s, s + step); // wound to face up
+      // (over the stations proper the vaulted ceiling is render/subwayArt.ts's)
+      if (wa.k >= 0.999 && wb.k >= 0.999) continue;
       // the roof, with just the grate's own hole cut out where a vent shaft rises
       const g = ventHoles.find((gr) => Math.abs(gr.ss - (s + step / 2)) < 2.5);
       if (!g) quad(ceil, null, L(a, -wa.hw, wa.ceil), L(b, -wb.hw, wb.ceil), L(b, wb.hw, wb.ceil), L(a, wa.hw, wa.ceil));

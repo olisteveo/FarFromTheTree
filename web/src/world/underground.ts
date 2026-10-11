@@ -83,6 +83,17 @@ export const FARE = { line: 4.2, s0: -8.6, s1: 4.6, gates: [-0.1, 1.6], turnstil
 export interface StationProp { s: number; off: number; side: number; kind: "bench" | "trash" | "fare_machine" | "sleeper" | "busker" | "commuter"; station: string;
   /** commuters: which of the two, and which way they face (0 the tracks, +-1 along the line) */
   variant?: number; turn?: number }
+/** The station ceilings (render/subwayArt.ts draws them; here they're solid where they hang down): riveted
+ *  girders across the hall on every column line (ss + 9k), 0.32 m deep, jack arches between them (over the
+ *  ceiling line, so nothing of them hangs down), and hung from them fluorescent fixtures, conduit runs, CCTV
+ *  domes, PA horns and the signs. Drops are below the ceiling line. Only over the full width of a station. */
+export const CEIL = { reach: 72, girderHalf: 0.13, girderDrop: 0.32, conduitOff: 10.2, conduitHalf: 0.42, conduitDrop: 0.24 };
+export interface Hanger { s: number; off: number; side: number; kind: "fluor" | "cctv" | "speaker" | "sign_dir" | "sign_exit"; station: string; flicker?: boolean }
+/** each hanger's solid box: half along s, half across, drop below the ceiling line */
+const HANG_BOX: Record<Hanger["kind"], [number, number, number]> = {
+  fluor: [1.22, 0.16, 0.42], cctv: [0.13, 0.13, 0.27], speaker: [0.2, 0.17, 0.27], sign_dir: [0.07, 1.24, 1.05], sign_exit: [0.07, 1.24, 1.05],
+};
+
 /** Flat on a station wall (render/subwayArt.ts): a poster, the map, a mosaic plaque. j: its slot (picks the poster). */
 export interface WallProp { s: number; side: number; kind: "ad" | "map" | "plaque" | "tablet"; j: number }
 /** where a prop is solid, in (along s, out from the wall o = hw - |off|, up from the platform top): boxes */
@@ -100,6 +111,11 @@ export class Underground {
   readonly shafts: Shaft[] = [];
   readonly fareAreas: FareArea[] = [];
   readonly stationProps: StationProp[] = [];
+  readonly hangers: Hanger[] = [];
+  /** where a way in's or way out's air runs up near a station's ceiling: no girder or conduit there */
+  private airNearCeiling = new Grid<[number, number]>(8);
+  private airNearReady = false;
+  private hangGrid = new Grid<Hanger>(16);
   private propGrid = new Grid<StationProp>(16);
   /** wisps of steam rising off the track bed by the stations (render/life.ts's SteamView) */
   readonly steam: { x: number; z: number; y: number; ss: number }[] = [];
@@ -308,6 +324,12 @@ export class Underground {
       }
     }
     this.placeStationProps();
+    for (const sh of this.shafts) for (const p of [sh.entryPath, sh.exitPath]) if (p) for (let i = 0; i < p.length; i += 3) {
+      const x = p[i], y = p[i + 1], z = p[i + 2];
+      if (y < -0.4 && y > this.shape(sub.nearest(x, z).s).ceil - 1.4) this.airNearCeiling.add([x, z], x - 2.6, z - 2.6, x + 2.6, z + 2.6);
+    }
+    this.airNearReady = true;
+    this.placeHangers();
     this.rats = makeRats(this);
   }
 
@@ -452,6 +474,56 @@ export class Underground {
     }
   }
 
+  /** What hangs from the station ceilings: a fixture over each track and each platform in every bay, conduit
+   *  (a continuous band, see sdf), two CCTV domes and two PA horns per station, the signs (the way the trains
+   *  go, and "Exit to Street" where a way out comes down), all on the girder lines or between them. Nothing
+   *  goes in a stair's opening or within 0.8 m of any way in's or way out's air. */
+  private placeHangers() {
+    const sub = this.city.subway;
+    const paths = this.shafts.flatMap((sh) => [sh.entryPath, sh.exitPath].filter((p): p is Float32Array => !!p));
+    const nearAir = (x: number, y: number, z: number, r: number) => paths.some((p) => { for (let i = 0; i < p.length; i += 3) if (Math.hypot(p[i] - x, p[i + 1] - y, p[i + 2] - z) < r) return true; return false; });
+    for (const st of this.stations) {
+      if (this.isBlocked(st.ss)) continue;
+      const list: Hanger[] = [];
+      const ok = (s: number, off: number, kind: Hanger["kind"]) => {
+        if (s < this.start + 3 || s > this.end - 3 || Math.abs(s - st.ss) > CEIL.reach + 2) return false;
+        const a = sub.at(s), x = a.x + a.tz * off, z = a.z - a.tx * off, c = this.shape(s).ceil;
+        // (not in a stair's opening: there's air over the ceiling line there)
+        if (this.sdf(x, c + 0.2, z) > 0) return false;
+        return !nearAir(x, c - HANG_BOX[kind][2] / 2, z, 0.8 + HANG_BOX[kind][1]);
+      };
+      const put = (s: number, off: number, kind: Hanger["kind"], flicker = false) => { if (ok(s, off, kind)) list.push({ s, off, side: off >= 0 ? 1 : -1, kind, station: st.name, flicker }); };
+      const bay = PLATFORM.columnEvery;
+      let f = 0;
+      for (let k = -8; k < 8; k++) {
+        const s = st.ss + bay * (k + 0.5);
+        for (const off of [-8.5, 0, 8.5]) put(s, off, "fluor", (Math.round(st.ss) * 7 + k * 13 + Math.round(off * 10)) % 23 === 0 && f++ < 3);
+      }
+      for (const [ds, off, kind] of [[-27, 9.5, "cctv"], [36, -9.5, "cctv"], [-9, -9.5, "speaker"], [18, 9.5, "speaker"]] as const) put(st.ss + ds, off, kind);
+      // the signs, on the girder lines: the way the trains on this side go, and the way out
+      const line = (s: number) => st.ss + Math.round((s - st.ss) / bay) * bay;
+      const areas = this.fareAreas.filter((a) => a.station === st.name);
+      for (const side of [1, -1]) {
+        const exits = this.shafts.filter((sh) => sh.out && sh.exitPath && sh.kind === "stairs" && Math.abs(sh.ss - st.ss) < TUNNEL.stationHalfLength + 40)
+          .map((sh) => sub.nearest(sh.exitPath![0], sh.exitPath![2])).filter((q) => (q.off >= 0 ? 1 : -1) === side);
+        const signs: number[] = [];
+        for (const a of areas) if (a.side === side && exits.some((q) => Math.abs(q.s - a.s) < 30)) for (const d of [-12, 12]) signs.push(line(a.s + d));
+        for (const q of exits) if (!signs.some((x) => Math.abs(x - q.s) < 9)) signs.push(line(q.s));
+        for (const x of [...new Set(signs)]) put(x, 8.6 * side, "sign_exit");
+        for (const ds of [-45, 0, 45]) {
+          const x = line(st.ss + ds);
+          if (signs.includes(x) || areas.some((a) => a.side === side && Math.abs(a.s - x) < 6)) continue;
+          put(x, 8.6 * side, "sign_dir");
+        }
+      }
+      for (const h of list) {
+        this.hangers.push(h);
+        const a = sub.at(h.s), x = a.x + a.tz * h.off, z = a.z - a.tx * h.off;
+        this.hangGrid.add(h, x - 3, z - 3, x + 3, z + 3);
+      }
+    }
+  }
+
   /** The way out from a station by these stairs: in from the platform, through the doorway or the
    *  opening in the station ceiling, up the middle of the stairs and out over the street. Points are
    *  nudged up or down until they're well clear of the walls. */
@@ -555,6 +627,13 @@ export class Underground {
     // the whole footprint: the shaft and the passage that runs from it to the tunnel
     const x1 = s.x + s.tx, z1 = s.z + s.tz;
     this.shaftGrid.add(s, Math.min(s.x, x1) - 4, Math.min(s.z, z1) - 4, Math.max(s.x, x1) + 4, Math.max(s.z, z1) + 4);
+  }
+
+  /** Is the ceiling kept clear here (a way in's or out's air runs close under it)? */
+  ceilingClear(x: number, z: number) {
+    if (!this.airNearReady) return false;
+    for (const [px, pz] of this.airNearCeiling.at(x, z)) if (Math.hypot(px - x, pz - z) < 2.6) return true;
+    return false;
   }
 
   /** Take shafts out (after the fact: Airflow drops the vents inside closed streets). */
@@ -680,6 +759,22 @@ export class Underground {
           best = Math.min(best, box2(FARE.s0, FARE.s1, FARE.line - 0.25, FARE.line + 0.25, top + 1.1)); // turnstiles and rails
           best = Math.min(best, box2(FARE.gates[0] - 0.85, FARE.gates[1] + 0.85, FARE.line - 0.85, FARE.line + 0.85, top + 2.4)); // the full-height exit gates
           best = Math.min(best, box2(FARE.booth - 1.2, FARE.booth + 1.2, 0.4, 2.4, top + 2.7)); // the booth
+        }
+      }
+      // the ceiling's girders (a band under the ceiling line on every column line) and what hangs from it
+      if (k > 0.999 && !this.ceilingClear(x, z)) {
+        for (const st of this.stations) {
+          const ds = n.s - st.ss;
+          if (Math.abs(ds) > CEIL.reach + 1) continue;
+          const j = Math.round(ds / PLATFORM.columnEvery);
+          // (from each wall to its column line: none over the tracks, where the leaf rides)
+          if (Math.abs(j * PLATFORM.columnEvery) <= CEIL.reach && n.d > PLATFORM.columnOff - 0.2) best = Math.min(best, Math.max(Math.abs(ds - j * PLATFORM.columnEvery) - CEIL.girderHalf, ceil - CEIL.girderDrop - y));
+          // the conduit runs along both walls
+          best = Math.min(best, Math.max(Math.abs(n.d - CEIL.conduitOff) - CEIL.conduitHalf, ceil - CEIL.conduitDrop - y));
+        }
+        for (const h of this.hangGrid.at(x, z)) {
+          const [ha, hb, drop] = HANG_BOX[h.kind];
+          best = Math.min(best, Math.max(Math.abs(n.s - h.s) - ha, Math.abs(n.off - h.off) - hb, ceil - drop - y));
         }
       }
       // the platforms' furniture

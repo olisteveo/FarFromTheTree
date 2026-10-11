@@ -100,7 +100,10 @@ The wind is the level design (`src/world/airflow.ts`, `src/world/windFeatures.ts
   in for every one out), draw you down onto the uptown track just above the train roofs.
 - **Stations:** each platform stair is built from the same shaft data as the corridor the leaf comes
   down, so it meets the corridor's end exactly, with a barrier across its foot. Name tablets sit on
-  the walls across the tracks, and props are laid out by one placement pass (`placeStationProps`). Exits lift you out when you turn or slow toward them.
+  the walls across the tracks, and props are laid out by one placement pass (`placeStationProps`).
+  The ceilings have riveted girders from each wall to its column line, painted jack arches (sooty
+  over the tracks), conduit and pipes, fixtures on drop rods and girder-hung signs, all with colliders
+  and kept clear of the streams. Exits lift you out when you turn or slow toward them.
   Tunnels curve and dip gently between stations (`subwayBend.ts`); the stations stay straight.
 
 ## Central Park and the rain

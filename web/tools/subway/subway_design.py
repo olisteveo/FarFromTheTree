@@ -92,6 +92,10 @@ R["fare_machine"] = (0, 1920, 128, 128)
 R["busker_sign"] = (128, 1920, 128, 128)
 R["newspaper"] = (256, 1920, 128, 128)
 R["coat_tweed"] = (384, 1920, 128, 128)
+# the station ceilings: the painted jack arches over the platforms, the sooty ones over the tracks, the cornice
+R["vault_paint"] = (512, 1920, 256, 128)
+R["vault_soot"] = (768, 1920, 256, 128)
+R["cornice"] = (1024, 1920, 256, 64)
 # where the runtime writes the station name into the mosaic tablet (inside tablet_frame)
 TABLET_FIELD = (56, 56, 912, 144)
 
@@ -950,6 +954,49 @@ def p_newspaper(d, w, h):
     return L
 
 
+def p_vault(d, w, h, base, soot):
+    """a shallow brick-and-concrete jack arch between two girders, painted long ago: u runs girder to girder"""
+    L = [d.rect(0, 0, w, h, base), d.noise(w, h, op=26, scale=18)]
+    # the arch's brick courses showing through the paint, faint
+    for x in range(0, w, 8):
+        L.append(d.rect(x, 0, 1.2, h, mul(base, 0.86), op=40))
+    # darker toward the girders (the paint is newest at the crown), soot streaks along the arch
+    L.append(d.rect(0, 0, w * 0.18, h, mul(base, 0.6), blend="multiply", grad=d.lin(0, 0, w * 0.18, 0, [(0, mul(base, 0.55)), (1, (1, 1, 1))])))
+    L.append(d.rect(w * 0.82, 0, w * 0.18, h, mul(base, 0.6), blend="multiply", grad=d.lin(w * 0.82, 0, w, 0, [(0, (1, 1, 1)), (1, mul(base, 0.55))])))
+    # water stains: rings of tide marks
+    for _ in range(5 if not soot else 3):
+        cx, cy, r = d.rng.uniform(20, w - 20), d.rng.uniform(15, h - 15), d.rng.uniform(10, 26)
+        L.append(d.ellipse(cx, cy, r * 2, r * 1.5, (0.55, 0.45, 0.3), op=28))
+        L.append(d.ellipse(cx, cy, r * 1.6, r * 1.1, base, op=55))
+    # peeling paint: pale flakes with dark edges
+    for _ in range(9 if not soot else 4):
+        x, y = d.rng.uniform(0, w), d.rng.uniform(0, h)
+        sz = d.rng.uniform(5, 14)
+        pts = [(x + sz * math.cos(t) * d.rng.uniform(0.6, 1.2), y + sz * 0.7 * math.sin(t) * d.rng.uniform(0.6, 1.2)) for t in [k * 0.9 for k in range(7)]]
+        L.append(d.poly(pts, mul(base, 0.55), op=60))
+        L.append(d.poly([(px + 1.5, py - 1) for px, py in pts], (0.62, 0.6, 0.55), op=55))
+    # drip marks
+    L += d.streaks(w, h, 6 if not soot else 10, c=(0.25, 0.2, 0.14) if not soot else (0.05, 0.05, 0.05), op=(20, 40), top=(0.0, 0.6), length=(0.15, 0.4))
+    if soot:
+        L.append(d.noise(w, h, op=45, scale=10, blend="multiply", contrast=140))
+    return L
+
+
+def p_cornice(d, w, h):
+    """a moulded plaster cornice: a cream band, an egg-and-dart run and a dark shadow line"""
+    L = [d.rect(0, 0, w, h, (0.74, 0.70, 0.60)), d.noise(w, h, op=20, scale=10)]
+    L.append(d.rect(0, 0, w, 8, (0.86, 0.83, 0.74)))
+    L.append(d.rect(0, 8, w, 3, (0.45, 0.42, 0.36)))
+    for x in range(0, w, 16):
+        L.append(d.ellipse(x + 8, 26, 10, 14, (0.84, 0.80, 0.70)))
+        L.append(d.ellipse(x + 8, 27, 6, 9, (0.55, 0.51, 0.44)))
+        L.append(d.poly([(x + 15, 20), (x + 17, 20), (x + 16, 34)], (0.5, 0.46, 0.4)))
+    L.append(d.rect(0, 40, w, 4, (0.45, 0.42, 0.36)))
+    L.append(d.rect(0, 44, w, h - 44, (0.40, 0.26, 0.16), grad=d.lin(0, 44, 0, h, [(0, (0.46, 0.18, 0.12)), (1, (0.30, 0.12, 0.08))])))
+    L += d.streaks(w, h, 8, c=(0.3, 0.25, 0.18), top=(0.0, 0.3), length=(0.3, 0.8), op=(20, 40))
+    return L
+
+
 def p_coat_tweed(d, w, h):
     """a worn winter coat's wool"""
     L = [d.rect(0, 0, w, h, (0.30, 0.24, 0.19))]
@@ -986,7 +1033,7 @@ def build_atlas_doc():
         "sign_exit": lambda d, w, h: p_sign(d, w, h, "Exit to Street", [], arrow=True),
         "sign_entrance": lambda d, w, h: p_sign(d, w, h, "Subway", ["N", "Q", "R", "W"], size=52),
         "hazard": p_hazard, "grime": p_grime,
-        "fare_machine": p_fare_machine, "busker_sign": p_busker_sign, "newspaper": p_newspaper, "coat_tweed": p_coat_tweed,
+        "fare_machine": p_fare_machine, "busker_sign": p_busker_sign, "newspaper": p_newspaper, "coat_tweed": p_coat_tweed, "vault_paint": lambda d, w, h: p_vault(d, w, h, (0.72, 0.68, 0.58), False), "vault_soot": lambda d, w, h: p_vault(d, w, h, (0.36, 0.34, 0.31), True), "cornice": p_cornice,
     }
     layers = []
     for name, (x, y, w, h) in R.items():
