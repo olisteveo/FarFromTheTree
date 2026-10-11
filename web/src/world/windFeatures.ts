@@ -39,6 +39,8 @@ export interface Jet {
   grade: number;
   /** one of the ways through (see ROUTES), if it's a link in one */
   route?: string;
+  /** a false lead: it branches off a way through and looks just like it, but goes wrong */
+  decoy?: "back" | "edge" | "blind";
   /** route position of its start and end (for the minimap and the pilots) */
   s0: number;
   s1: number;
@@ -51,10 +53,13 @@ export interface WindHit { x: number; y: number; z: number; jet: number; devil: 
 
 /** Not every current is equal: a breeze nudges you, a gale grabs you and carries you (its
  *  grip is how firmly, see Glider guide). Grade 0..2, from the current's id. */
+/** past this share of a current's radius its edge churns and throws you out, at up to SHEAR_PUSH m/s */
+const SHEAR = 0.5, SHEAR_PUSH = 4.5;
+
 export const JET_GRADE = [
-  { label: "breeze", speed: 0.85, grip: 0.3 },
-  { label: "stream", speed: 1.05, grip: 0.6 },
-  { label: "gale", speed: 1.35, grip: 0.95 },
+  { label: "breeze", speed: 0.85, grip: 0.2 },
+  { label: "stream", speed: 1.0, grip: 0.4 },
+  { label: "gale", speed: 1.3, grip: 0.7 },
 ];
 
 const STEP = 6;
@@ -113,11 +118,12 @@ export class WindFeatures {
       j.id = i;
       // a spread of grades: about a third gales, the sky currents mostly gales, gutter runs never
       const h = h01(i * 7919 + 13);
-      if (!j.route) j.grade = j.kind === "gutter" ? (h < 0.5 ? 0 : 1) : j.kind === "sky" ? (h < 0.25 ? 1 : 2) : h < 0.3 ? 0 : h < 0.65 ? 1 : 2;
+      if (!j.route && !j.decoy) j.grade = j.kind === "gutter" ? (h < 0.5 ? 0 : 1) : j.kind === "sky" ? (h < 0.25 ? 1 : 2) : h < 0.3 ? 0 : h < 0.65 ? 1 : 2;
       j.speed *= JET_GRADE[j.grade].speed;
       for (let k = 0; k < j.pts.length / 3 - 1; k++) {
         const ax = j.pts[k * 3], az = j.pts[k * 3 + 2], bx = j.pts[k * 3 + 3], bz = j.pts[k * 3 + 5];
-        this.jetGrid.add([i, k], Math.min(ax, bx) - j.r, Math.min(az, bz) - j.r, Math.max(ax, bx) + j.r, Math.max(az, bz) + j.r);
+        const R = j.r;
+        this.jetGrid.add([i, k], Math.min(ax, bx) - R, Math.min(az, bz) - R, Math.max(ax, bx) + R, Math.max(az, bz) + R);
       }
     });
     this.buildDevils();
@@ -267,12 +273,15 @@ export class WindFeatures {
     let seed = 0;
     for (const d of defs) {
       this.routes.push({ id: d.id, name: d.name, line: d.line, y: d.y });
-      let s = 60; // a run out of the tree first
+      // (the rooftop way: a run out of the tree first; the side ways take hold of you right away, as the
+      // East Side's first leg runs south into the wind round the fort)
+      let s = d.kind === "sky" ? 60 : 4;
       let link = 0;
       while (s < d.line.length - 80) {
         const h1 = h01(++seed * 7919 + d.id.length), h2 = h01(seed * 104729 + 3);
         // (shorter gaps down in the streets: between the towers the street air can be against you)
-        const len = 220 + h1 * 160, gap = d.kind === "sky" ? 40 + h2 * 50 : 25 + h2 * 30;
+        // (help, not a conveyor: a third or more of each way is yours to fly, the currents a lift between)
+        const len = 160 + h1 * 130, gap = d.kind === "sky" ? 90 + h2 * 90 : 55 + h2 * 65;
         const path: [number, number, number][] = [];
         for (let t = s; t <= Math.min(s + len, d.line.length - 40); t += STEP) { const a = d.line.at(t); path.push([a.x, d.y(t), a.z]); }
         if (path.length > 6) {
@@ -281,13 +290,63 @@ export class WindFeatures {
           const j = this.jets[before];
           if (j) {
             j.route = d.id;
-            j.r = d.kind === "sky" ? 6 : 4;
+            j.r = d.kind === "sky" ? 6 : 5;
             j.speed = d.kind === "sky" ? 15 : 13;
             const g = h01(seed * 31 + 17);
-            j.grade = g < 0.22 ? 0 : g < 0.75 ? 1 : 2;
+            j.grade = g < 0.32 ? 0 : g < 0.82 ? 1 : 2;
           }
         }
-        s += len + gap;
+        // a gap only where the street air itself carries you on (down an avenue running uptown): on a
+        // crosstown leg the street gusts across you or against you, and a gap there is a dead stop
+        let open = gap;
+        if (d.kind !== "sky") {
+          for (let t = s + len; t <= s + len + gap; t += 4) {
+            const a = d.line.at(t), r = city.route.at(city.route.nearest(a.x, a.z).s);
+            if (a.tx * r.tx + a.tz * r.tz < 0.6) { open = 4; break; }
+          }
+        }
+        s += len + open;
+      }
+    }
+    this.buildDecoys(course.path.length, end);
+  }
+
+  /** False leads: every so often a current peels off a way through (same leaves, same paper, often a
+   *  gale) and carries you back downtown, out over the edge, or up a street that goes nowhere. */
+  private buildDecoys(_len: number, end: { x: number; z: number }) {
+    const city = this.city;
+    let seed = 900;
+    for (const w of this.routes) {
+      const sky = w.id === "roofs";
+      for (let s = 500 + h01(w.id.length * 31) * 300; s < w.line.length - 600; s += 650 + h01(++seed * 7) * 450) {
+        const b = w.line.at(s), h = h01(seed * 7919 + 5);
+        const kind: "back" | "edge" | "blind" = h < 0.34 ? "back" : h < 0.67 ? "edge" : "blind";
+        const side = h01(seed * 104729) < 0.5 ? 1 : -1, nx = b.tz * side, nz = -b.tx * side;
+        // where it goes: back down the way you came, off to the side for the edge, or a few blocks across
+        const tgt = kind === "back" ? { x: b.x - b.tx * 500 + nx * 160, z: b.z - b.tz * 500 + nz * 160 }
+          : kind === "edge" ? { x: b.x + nx * 700, z: b.z + nz * 700 }
+          : { x: b.x + nx * 260 + b.tx * 60, z: b.z + nz * 260 + b.tz * 60 };
+        if (Math.hypot(tgt.x - end.x, tgt.z - end.z) < 900) continue; // (never toward the park)
+        let line: Polyline;
+        try { line = streetPath(city, b, tgt, 0); } catch { continue; }
+        if (line.length < 120) continue;
+        // start where it leaves the way (a little after: you see it peel off), run 180-300 m
+        let s0 = 0;
+        for (let t = 0; t < line.length; t += 4) { const a = line.at(t); if (w.line.nearest(a.x, a.z).d > 6) { s0 = Math.max(0, t - 8); break; } }
+        const len = Math.min(line.length - s0, 180 + h01(seed * 13) * 120);
+        if (len < 100) continue;
+        const y = w.y(s);
+        const path: [number, number, number][] = [];
+        for (let t = s0; t <= s0 + len; t += STEP) { const a = line.at(t); path.push([a.x, sky ? y : 16, a.z]); }
+        const before = this.jets.length;
+        this.addJet(sky ? "sky" : "canyon", `a false lead off ${w.name}`, path);
+        const j = this.jets[before];
+        if (!j) continue;
+        j.decoy = kind;
+        j.r = sky ? 6 : 5;
+        j.speed = sky ? 15 : 13;
+        // (they look worth taking: streams and gales, never a breeze)
+        j.grade = h01(seed * 59) < 0.5 ? 1 : 2;
       }
     }
   }
@@ -350,12 +409,13 @@ export class WindFeatures {
     out.jet = -1; out.devil = -1; out.lee = false; out.guide = 0;
     if (y < -0.4) return out;
     // hidden currents
-    let bestK = 0;
+    let bestK = 0, bestScore = 0, bj = -1, bdx = 0, bdy = 0, bdz = 0, bL2 = 1, bpx = 0, bpy = 0, bpz = 0;
     for (const [ji, k] of this.jetGrid.around(x, z, 0, this.scratch)) {
       const j = this.jets[ji], p = j.pts;
       const ax = p[k * 3], ay = p[k * 3 + 1], az = p[k * 3 + 2];
       const dx = p[k * 3 + 3] - ax, dy = p[k * 3 + 4] - ay, dz = p[k * 3 + 5] - az;
-      const L2 = dx * dx + dy * dy + dz * dz || 1e-9;
+      const L2 = dx * dx + dy * dy + dz * dz;
+      if (L2 < 0.01) continue; // (a doubled point where two runs of the path meet: no direction of its own)
       const u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / L2));
       const cx = ax + dx * u, cy = ay + dy * u, cz = az + dz * u;
       const d = Math.hypot(x - cx, y - cy, z - cz);
@@ -363,18 +423,33 @@ export class WindFeatures {
       const along = (k + u) * STEP, ends = smooth(0, 14, along) * smooth(0, 14, j.length - along);
       // full strength over most of the tube, falling off only near its skin
       const kk = Math.min(1, 1.6 * (1 - (d / j.r) ** 2)) * ends;
-      if (kk <= bestK) continue;
-      bestK = kk;
-      const L = Math.sqrt(L2);
-      // the stream itself, a firm hold toward its axis so you can ride it, and lift enough to
-      // cancel a leaf's sink (it's moving with the air, so it gets little lift of its own)
+      // (most of the tube is at full strength, so between equals the nearest segment wins: the one behind
+      // you measures to its end point, and its pull to that point drags you backwards)
+      const score = kk - d * 1e-3;
+      if (score <= bestScore) continue;
+      bestScore = score;
+      bestK = kk; bj = ji; bdx = dx; bdy = dy; bdz = dz; bL2 = L2; bpx = cx - x; bpy = cy - y; bpz = cz - z;
+    }
+    if (bj >= 0) {
+      // (applied once, for the nearest, strongest segment)
+      const j = this.jets[bj], kk = bestK, dx = bdx, dy = bdy, dz = bdz, L = Math.sqrt(bL2);
+      // A current is a fast core with a ragged edge. It doesn't steer you (you fly it like any air:
+      // a tailwind is speed), only a soft hold in the middle third keeps you in if you fly straight.
+      // Out toward the skin the shear churns and throws you clear: riding one is work, and leaving one
+      // is a matter of steering for its edge.
       const blend = 0.75 * kk;
-      out.x = out.x * (1 - blend) + (dx / L) * j.speed * kk + (cx - x) * 3.2 * kk;
-      out.y = out.y * (1 - blend) + (dy / L) * j.speed * kk + (cy - y) * 3.2 * kk + 2.2 * kk;
-      out.z = out.z * (1 - blend) + (dz / L) * j.speed * kk + (cz - z) * 3.2 * kk;
-      if (kk > 0.3) out.jet = ji;
-      // (the gutter runs never take hold: down among the cabs, being carried is how you die)
-      out.guide = j.kind === "gutter" ? 0 : JET_GRADE[j.grade].grip * Math.min(1, kk);
+      let px = bpx, py = bpy, pz = bpz;
+      const pa = (px * dx + py * dy + pz * dz) / bL2;
+      px -= dx * pa; py -= dy * pa; pz -= dz * pa;
+      const off = Math.hypot(px, py, pz), q = off / j.r;
+      let hold = 0.9 * kk;
+      if (q > SHEAR) hold = -SHEAR_PUSH * ((q - SHEAR) / (1 - SHEAR)) / Math.max(0.3, off); // (outward, in m/s per m)
+      const churn = 3.2 * smooth(SHEAR * 0.7, 1, q);
+      out.x = out.x * (1 - blend) + (dx / L) * j.speed * kk + px * hold + churn * Math.sin(t * 2.3 + x * 0.21 + z * 0.13);
+      out.y = out.y * (1 - blend) + (dy / L) * j.speed * kk + py * hold + 0.9 * kk + churn * 0.6 * Math.sin(t * 1.7 + z * 0.19);
+      out.z = out.z * (1 - blend) + (dz / L) * j.speed * kk + pz * hold + churn * Math.cos(t * 2.1 + x * 0.17 - z * 0.11);
+      if (kk > 0.3) out.jet = bj;
+      // (no steering: guide stays 0 - that's for the ways in and out of the subway)
     }
     // dust devils
     for (const dv of this.devils) {

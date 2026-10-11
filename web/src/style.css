@@ -10,11 +10,21 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1210; col
 #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #hud { position: fixed; inset: 0; pointer-events: none; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45); }
 
-.top { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: min(720px, calc(100% - 32px)); }
-.route { position: relative; height: 26px; }
-.route .seg { position: absolute; top: 12px; height: 3px; background: rgba(255, 240, 225, 0.35); border-left: 2px solid rgba(255, 240, 225, 0.75); }
-.route .seg span { position: absolute; top: -16px; left: 6px; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
-.route .marker { position: absolute; top: 6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50% 0 50% 50%; transform: rotate(-45deg); background: var(--amber); box-shadow: 0 0 12px var(--amber); transition: left 0.1s linear; }
+/* the route bar: the district you're in above a thin line (small ticks where districts begin,
+   the way you've come filled in, the leaf riding it), the two ends named faintly below.
+   It sits between the pause button (top left) and the clock (top right), never under them. */
+.top { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 400px)); }
+.route { position: relative; max-width: 560px; margin: 0 auto; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 10px rgba(0, 0, 0, 0.35); }
+.route .here { margin-bottom: 8px; text-align: center; font: 700 11px/1 Inter, system-ui, sans-serif; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.route .line { position: relative; height: 2px; border-radius: 1px; background: rgba(255, 240, 225, 0.4); filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.6)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45)); }
+.route .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 1px; background: rgba(255, 240, 225, 0.85); transition: width 0.1s linear; }
+.route .tick { position: absolute; top: -3px; width: 1px; height: 8px; margin-left: -0.5px; background: rgba(255, 240, 225, 0.6); }
+.route .marker { position: absolute; top: -6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50% 0 50% 50%; transform: rotate(-45deg); background: var(--amber); box-shadow: 0 0 10px var(--amber); transition: left 0.1s linear; }
+.route .ends { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; font: 600 9px/1 Inter, system-ui, sans-serif; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255, 240, 225, 0.62); white-space: nowrap; }
+/* narrow windows: anchor the bar between the pause button and the clock instead of centring it */
+@media (max-width: 760px) { .top { left: 64px; right: 186px; width: auto; transform: none; } }
+@media (max-width: 640px) { .top { right: 150px; } }
+@media (max-width: 480px) { .route .ends { display: none; } .route .here { font-size: 10px; letter-spacing: 0.14em; } }
 
 .clock { position: absolute; top: 18px; left: 24px; }
 .clock .time { font: 700 34px/1 Inter, sans-serif; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
@@ -96,7 +106,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #1a1210; col
 .board button:disabled { opacity: 0.5; cursor: default; }
 .board .err { min-height: 1.2em; margin-top: 6px; font-size: 13px; color: #ff9a80; }
 .board .note { font-size: 14px; color: var(--muted); }
-.board .row, .board-mini .row { display: flex; justify-content: space-between; gap: 24px; font: 14px/1.7 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.board .row, .board-mini .row { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; font: 14px/1.7 system-ui, sans-serif; font-variant-numeric: tabular-nums; }
 .board .row.me { color: var(--amber); font-weight: 700; }
 .board-mini { position: absolute; right: 24px; top: 96px; min-width: 200px; padding: 10px 14px; border-radius: 8px; background: rgba(20, 10, 4, 0.45); opacity: 0; transition: opacity 0.5s; pointer-events: none; }
 .board-mini.show { opacity: 1; }
@@ -141,12 +151,6 @@ body.is-touch .minimap { right: auto; left: calc(10px + env(safe-area-inset-left
 body.is-touch .minimap canvas { width: 130px; height: 130px; }
 @media (max-width: 640px) { .minimap { width: 130px; height: 130px; } .minimap canvas { width: 130px; height: 130px; } }
 
-/* the district line: names alternate above and below it so they never overlap */
-.route { height: 40px; }
-.route .seg { top: 18px; }
-.route .seg span { top: -16px; left: 4px; }
-.route .seg:nth-of-type(even) span { top: 7px; }
-.route .marker { top: 12px; }
 
 /* phones: keep the middle of the screen clear. No text-selection pop-ups when holding a button,
    a compact tutorial at the top, smaller titles, and quieter controls until you touch them. */
@@ -158,13 +162,20 @@ body.is-touch .card { top: 14%; }
 body.is-touch .card .name { font-size: clamp(26px, 6vw, 44px); }
 body.is-touch .card .sub { font-size: 10px; letter-spacing: 0.18em; }
 body.is-touch .callout { top: 24%; font-size: 15px; }
-body.is-touch .toast { font-size: 12px; padding: 7px 12px; top: 50px; }
+body.is-touch .toast { font-size: 12px; padding: 7px 12px; top: calc(54px + env(safe-area-inset-top)); }
 body.is-touch .subway-pointer { font-size: 11px; padding: 4px 9px 4px 6px; }
 body.is-touch .screen .title { font-size: clamp(30px, 8vw, 56px); }
 body.is-touch .screen .sub { font-size: 13px; }
 body.is-touch .touch button { opacity: 0.55; transition: opacity 0.2s; }
 body.is-touch .touch button.down { opacity: 1; }
-body.is-touch .route .seg span { font-size: 8px; letter-spacing: 0.08em; }
+/* phones: a smaller clock tucked into the top right corner, and the route bar in the gap between
+   it and the pause button (top left), clear of the minimap and restart button below (top 70px) */
+body.is-touch .clock { top: calc(12px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); }
+body.is-touch .clock .time { font-size: 24px; }
+body.is-touch .clock .best { margin-top: 3px; font-size: 10px; }
+body.is-touch .top { top: calc(12px + env(safe-area-inset-top)); left: calc(68px + env(safe-area-inset-left)); right: calc(140px + env(safe-area-inset-right)); width: auto; transform: none; }
+body.is-touch .route .here { margin-bottom: 7px; }
+body.is-touch .route .ends { margin-top: 7px; }
 @media (orientation: portrait) { body.is-touch .tutorial { left: 10px; right: 10px; width: auto; top: calc(186px + env(safe-area-inset-top)); } }
 body.is-touch .screen .intro-again { padding: 14px 26px; font-size: 15px; margin-top: 14px; }
 .touch.title .touch-restart { display: none; }
@@ -209,10 +220,15 @@ body.is-touch .screen .board-open { padding: 14px 26px; font-size: 15px; margin-
 .board-full.on { display: grid; }
 .board-full .lb-card { width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; padding: 22px 24px; border-radius: 14px; background: rgba(28, 18, 10, 0.92); border: 1px solid rgba(255, 240, 225, 0.18); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); }
 .board-full .h { font: 800 28px/1 Fraunces, Georgia, serif; color: #fff7ec; margin-bottom: 14px; text-align: center; }
-.board-full .row { display: flex; gap: 12px; padding: 7px 4px; border-bottom: 1px solid rgba(255, 240, 225, 0.08); color: var(--ink); font: 500 15px Inter, system-ui, sans-serif; }
+.board-full .row { display: flex; align-items: baseline; gap: 12px; padding: 7px 4px; border-bottom: 1px solid rgba(255, 240, 225, 0.08); color: var(--ink); font: 500 15px Inter, system-ui, sans-serif; }
 .board-full .row.me { color: var(--amber); font-weight: 700; }
 .board-full .rk { width: 26px; text-align: right; opacity: 0.6; }
 .board-full .nm { flex: 1; }
-.board-full .tm { font-variant-numeric: tabular-nums; }
+.board-full .tm { width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+.board-full .du, .board .du { width: 44px; text-align: right; color: rgba(255, 240, 225, 0.6); font-variant-numeric: tabular-nums; font-size: 0.86em; }
+.board-full .row.me .du, .board .row.me .du { color: inherit; opacity: 0.75; }
+.board-full .row.hd { padding-top: 0; border-bottom-color: rgba(255, 240, 225, 0.16); font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(255, 240, 225, 0.5); }
+.board-full .row.hd .du { font-size: inherit; color: inherit; }
+.board .row .nm { flex: 1; }
 .board-full .note { color: rgba(255, 240, 225, 0.75); text-align: center; padding: 10px 0; }
 .board-full .close { display: block; margin: 16px auto 0; padding: 10px 22px; border-radius: 999px; border: 1px solid rgba(255, 240, 225, 0.3); background: rgba(255, 255, 255, 0.04); color: var(--ink); font: 600 14px Inter, system-ui, sans-serif; cursor: pointer; }

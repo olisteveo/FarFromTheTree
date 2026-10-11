@@ -10,7 +10,7 @@
 
 import * as THREE from "three";
 import GUI from "lil-gui";
-import { Leaderboard } from "./game/leaderboard";
+import { Leaderboard, durabilityPct } from "./game/leaderboard";
 import { SubwayArt } from "./render/subwayArt";
 import { CentralPark } from "./render/centralPark";
 import { StreetFurniture } from "./render/streetFurniture";
@@ -52,6 +52,8 @@ import { Recorder, sampleAt, type RunLog } from "./game/recorder";
 import { Tutorial } from "./game/tutorial";
 import { playIntro, playEnding } from "./game/intro";
 import { LeafMeter } from "./game/leafmeter";
+import { SnapshotCard } from "./game/snapshotCard";
+import { AchievementGallery } from "./game/achievementGallery";
 import { clamp } from "./core/rng";
 
 const params = new URLSearchParams(location.search);
@@ -241,8 +243,14 @@ const recorder = new Recorder(canvas, stage.quality);
 if (touch) useTouchWording();
 const tutorial = new Tutorial(hudEl, params.get("tutorial") === "1");
 const achievements = new Achievements(landmarks);
+const snapshots = new SnapshotCard();
+snapshots.onShow = () => audio.shutter();
+const gallery = new AchievementGallery(achievements);
+gallery.addTitleButton();
 achievements.onUnlock = (a) => {
-  hud.notify(`<b>${a.name}</b><br/><span style="opacity:.75">${a.desc}</span>`, 4.5);
+  // landmark landings: a polaroid snapshot (game/snapshotCard.ts); the rest: a toast
+  if (a.snap) snapshots.show(a);
+  else hud.notify(`<b>${a.name}</b><br/><span style="opacity:.75">${a.desc}</span>`, 4.5);
   audio.ui("achievement_chime");
   recorder.event("achievement", a.name);
 };
@@ -569,7 +577,7 @@ function tick(dt: number, render: boolean) {
     playEnding(document.body, () => leaf.state === "planted", 1600, () => { endingSound = false; }).then(() => { endingPlaying = false; input.endFrame(); });
   }
   if (leaf.state !== "planted") endingSeen = false;
-  if (leaf.state === "planted" && !replay && !endingPlaying) leaderboard.showWon(leaf.time);
+  if (leaf.state === "planted" && !replay && !endingPlaying) leaderboard.showWon(leaf.time, durabilityPct(leaf.integrity));
   leaderboard.showMini(leaf.state === "attached" && !introPlaying);
   leafMeter.update(dt, leaf.integrity, leaf.maxIntegrity, wall);
   // the leaf meter only once you're off the tree (it sat over the title screen's text)
@@ -613,6 +621,7 @@ const pause = new PauseMenu(document.body, {
   onRestart: () => restartRun(),
   onTitle: () => { restartRun(); showcase = true; pickShowcase(); },
   onShow: (on) => audio.pause(on),
+  onAchievements: () => gallery.show(true),
   onStory: () => {
     restartRun();
     introPlaying = true;

@@ -42,6 +42,7 @@ export function landmarkSolids(l: Landmarks, f: Facades) {
   add(ax - 6.5, 11, az, 2.2, 11, 2.2); add(ax + 6.5, 11, az, 2.2, 11, 2.2); add(ax, 21, az, 8.7, 1.6, 2.2);
   const [cx, cz] = l.column;
   add(cx, 11, cz, 1.3, 11, 1.3);
+  add(cx, 23.6, cz, 0.5, 1.6, 0.5); // the figure on top (something to fetch up against, and a head to land on)
   const [sx, sz] = l.steps;
   for (let i = 0; i < 6; i++) add(sx, 0.4 + i * 0.8, sz - 5 + i * 1.6, 5, 0.4 + i * 0.8, 0.8);
 }

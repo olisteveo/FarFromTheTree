@@ -31,13 +31,19 @@ const lastIn = Math.min(stopAt - 400, u.end);
 type Mode = "roof" | "street" | "toEntry" | "tunnel" | "toExit";
 
 function fly(layer: string, run: number) {
-  const g = new Glider(city, flow, course.start);
+  // START=metres: begin part-way along the way being flown (to re-fly one stretch quickly)
+  if (process.env.NOWAY) (globalThis as { __fftt_noWay?: boolean }).__fftt_noWay = true;
+  const startS = Number(process.env.START ?? 0);
+  const way0 = flow.features.routes.find((q) => q.id === layer);
+  const st0 = startS > 0 ? (way0 ? way0.line : course.path).at(startS) : null;
+  const g = new Glider(city, flow, st0 ? { x: st0.x, y: way0 ? way0.y(startS) : 20, z: st0.z, heading: Math.atan2(st0.tx, st0.tz) } : course.start);
   g.detach();
   g.clock = run * 41 + layer.length * 7;
   const dt = 1 / 120;
   // following one of the ways through (world/windFeatures.ts routes): its line, at its height
   const way = flow.features.routes.find((q) => q.id === layer) ?? null;
   let mode: Mode = layer === "street" ? "street" : layer === "roof" || way ? "roof" : "toEntry";
+  let bestWay = -1, bestWayT = 0;
   let target: Shaft | null = null, maxS = 0, lastS = -1, stuck = 0, subwayUsed = false;
   const log: string[] = [];
   for (let i = 0; i < (minutes * 60) / dt && g.state === "flying"; i++) {
@@ -77,6 +83,14 @@ function fly(layer: string, run: number) {
       braking = turn > 0.8 && sp > 8;
       tx = a.x; tz = a.z;
       want = way.line.length - wn.s < 150 ? 0 : way.y(wn.s);
+      // getting nowhere (pinned by a headwind, or lost off the line): climb out over the roofs and come
+      // back at it from above, as a player would
+      if (wn.s > bestWay + 3) { bestWay = wn.s; bestWayT = g.time; }
+      if (g.time - bestWayT > 6 && g.time - bestWayT < 30) {
+        want = Math.max(want, city.canopy(p.x, p.z, 30) + 12);
+        const far = way.line.at(Math.min(way.line.length, bestWay + 60));
+        if (p.y > city.canopy(p.x, p.z, 20) + 4) { tx = far.x; tz = far.z; }
+      } else if (g.time - bestWayT >= 30) bestWayT = g.time;
       const closed = flow.blockers.barriers.some((b) => Math.hypot(b.x - a.x, b.z - a.z) < b.half + 25);
       if (closed) want = Math.max(want, 14);
     } else {
@@ -111,6 +125,10 @@ function fly(layer: string, run: number) {
     const pitch = g.grounded && !course.inMeadow(p.x, p.z) ? -1 : braking ? -0.7 : clamp((p.y - want) * 0.15 - g.vel.y * 0.12, -1, 1);
     g.step(dt, { pitch, roll: clamp(-d * 2, -1, 1), spread: p.y < want - 4, curl: false, corkscrew: 0, loop: false });
     if (g.grounded && course.inMeadow(p.x, p.z) && Math.hypot(g.vel.x, g.vel.z) < 2.5) g.plant();
+    if (process.env.TRACE && i % 60 === 0 && way) {
+      const wn = way.line.nearest(p.x, p.z), b = city.buildingAt(p.x, p.z);
+      console.log(`t${g.time.toFixed(1)} way s${wn.s.toFixed(0)} off ${wn.d.toFixed(1)} (${p.x.toFixed(0)},${p.y.toFixed(1)},${p.z.toFixed(0)}) v ${Math.hypot(g.vel.x, g.vel.z).toFixed(1)}/${g.vel.y.toFixed(1)} want ${want.toFixed(0)} aim (${tx.toFixed(0)},${tz.toFixed(0)}) ${g.lane}${b ? " over h" + b.h.toFixed(0) : ""}${g.grounded ? " GROUNDED" : ""} ${g.events.length ? g.events[g.events.length - 1] : ""}`);
+    }
     if (i % 1200 === 0) {
       maxS = Math.max(maxS, n.s);
       stuck = Math.abs(n.s - lastS) < 5 ? stuck + 10 : 0;

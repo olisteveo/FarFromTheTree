@@ -5,6 +5,8 @@ export interface PauseHandlers {
   onRestart(): void;
   onTitle(): void;
   onStory(): void;
+  /** the achievements gallery (opens over the menu; the game stays paused) */
+  onAchievements(): void;
   setMusic(v: number): void;
   setSound(v: number): void;
   /** opened or closed (the sound stops while it's open) */
@@ -39,6 +41,7 @@ export class PauseMenu {
         <button data-act="restart">Fall again</button>
         <button data-act="title">Back to the title</button>
         <button data-act="story">Watch the story</button>
+        <button data-act="achievements">Achievements</button>
         <div class="pause-sub">Settings</div>
         <label class="pause-vol"><span>Music</span><input data-vol="music" type="range" min="0" max="1" step="0.05" value="${music}"/></label>
         <label class="pause-vol"><span>Sound</span><input data-vol="sound" type="range" min="0" max="1" step="0.05" value="${sound}"/></label>
@@ -48,6 +51,7 @@ export class PauseMenu {
     this.el.addEventListener("click", (e) => {
       const act = (e.target as HTMLElement).closest("button")?.dataset.act;
       if (!act) return;
+      if (act === "achievements") { h.onAchievements(); return; }
       this.show(false);
       if (act === "restart") h.onRestart();
       else if (act === "title") h.onTitle();

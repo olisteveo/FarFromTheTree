@@ -74,6 +74,8 @@ const EXIT_REACH = 10;
 
 const tmpE = { d: 0, nx: 0, nz: 0, px: 0, pz: 0 };
 
+const WAY_CELL = 8, WAY_HOLD = 60, WAY_FADE = 140;
+
 export class Airflow {
   readonly under: Underground;
   private entryGrid = new Grid<Shaft>(16);
@@ -117,6 +119,7 @@ export class Airflow {
   private s2 = streetHit();
   private nr = { s: 0, off: 0, d: 0 };
   private hint = -1;
+  private rtw = { x: 0, z: 0, tx: 0, tz: 1 };
   private bl: Building[] = [];
   private uinfo = { ss: 0, off: 0, inShaft: null as unknown };
 
@@ -149,6 +152,7 @@ export class Airflow {
     this.traffic.closed = this.blockers.list;
     this.features = new WindFeatures(city, this.blockers.barriers);
     this.way = makeCourse(city).path;
+    this.buildWayField();
     this.parkLayout = parkLayout(city);
     this.parkSolids = colliderGrid(this.parkLayout.colliders);
     this.streetLayout = streetLayout(city, { traffic: this.traffic, life: this.life, blockers: this.blockers, under: this.under });
@@ -246,13 +250,61 @@ export class Airflow {
     return f;
   }
 
+  // ---------------------------------------------------------------- the ways through
+  // Only a few ways through carry you uptown (the rooftops, the West and East Sides, the subway's
+  // streets). Off them the city's air has its own ideas: across you, or back downtown, in patches a
+  // few blocks wide. `onWay` is 1 on a way, fading to 0 by WAY_FADE metres off it.
+  private wayX0 = 0; private wayZ0 = 0; private wayW = 0; private wayH = 0;
+  private wayCells = new Uint8Array(0);
+  private buildWayField() {
+    const lines = [...this.features.routes.map((r) => r.line), this.city.subway];
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    for (const l of lines) for (let i = 0; i < l.x.length; i++) { x0 = Math.min(x0, l.x[i]); x1 = Math.max(x1, l.x[i]); z0 = Math.min(z0, l.z[i]); z1 = Math.max(z1, l.z[i]); }
+    const C = WAY_CELL, pad = WAY_FADE + C;
+    this.wayX0 = x0 - pad; this.wayZ0 = z0 - pad;
+    this.wayW = Math.ceil((x1 - x0 + pad * 2) / C); this.wayH = Math.ceil((z1 - z0 + pad * 2) / C);
+    const cells = new Uint8Array(this.wayW * this.wayH);
+    const R = Math.ceil(WAY_FADE / C);
+    for (const l of lines) {
+      for (let i = 0; i < l.x.length; i += 2) {
+        const ci = Math.floor((l.x[i] - this.wayX0) / C), cj = Math.floor((l.z[i] - this.wayZ0) / C);
+        for (let dj = -R; dj <= R; dj++) for (let di = -R; di <= R; di++) {
+          const a = ci + di, b = cj + dj;
+          if (a < 0 || b < 0 || a >= this.wayW || b >= this.wayH) continue;
+          const d = Math.hypot(di, dj) * C;
+          const v = Math.round(255 * (1 - Math.max(0, Math.min(1, (d - WAY_HOLD) / (WAY_FADE - WAY_HOLD)))));
+          if (v > cells[b * this.wayW + a]) cells[b * this.wayW + a] = v;
+        }
+      }
+    }
+    this.wayCells = cells;
+  }
+  /** 1 on one of the ways through, 0 well off them. */
+  onWay(x: number, z: number) {
+    if ((globalThis as { __fftt_noWay?: boolean }).__fftt_noWay) return 1; // (tools: A/B the way field)
+    const i = Math.floor((x - this.wayX0) / WAY_CELL), j = Math.floor((z - this.wayZ0) / WAY_CELL);
+    if (i < 0 || j < 0 || i >= this.wayW || j >= this.wayH) return 0;
+    return this.wayCells[j * this.wayW + i] / 255;
+  }
+  /** Off the ways, how far the air turns from uptown here: across you, or quartering back (70-140 degrees
+   *  either side). Costly, not a trap: you can always claw your way back to a way. */
+  private wrongTurn(x: number, z: number) {
+    const a = Math.floor(x / 260), b = Math.floor(z / 260);
+    const h = Math.abs(Math.sin(a * 127.1 + b * 311.7) * 43758.5453) % 1;
+    return (h < 0.5 ? 1 : -1) * Math.PI * (0.39 + 0.78 * Math.abs(h - 0.5));
+  }
+
   sample(x: number, y: number, z: number, t: number, out: AirSample): AirSample {
     out.vehicle = false; out.train = false; out.jet = -1; out.devil = -1; out.guide = 0;
     this.lv.x = out.vx ?? 0; this.lv.y = out.vy ?? 0; this.lv.z = out.vz ?? 0;
     const city = this.city;
     const n = city.route.nearest(x, z, this.hint, this.nr);
     this.hint = n.s;
-    const rt = city.route.at(n.s);
+    const rt0 = city.route.at(n.s);
+    // "uptown" as the air here sees it: on a way through, uptown; off them, turned across or back
+    const ow = this.onWay(x, z), turn = (1 - ow) * this.wrongTurn(x, z);
+    const tc = Math.cos(turn), ts = Math.sin(turn);
+    const rt = this.rtw; rt.x = rt0.x; rt.z = rt0.z; rt.tx = rt0.tx * tc + rt0.tz * ts; rt.tz = rt0.tz * tc - rt0.tx * ts;
     let wx = 0, wy = 0, wz = 0;
     let entry: { x: number; y: number; z: number; k: number } | null = null;
     let lift = 0; // how firmly a barrier's updraft carries you (a guided stream)
@@ -432,7 +484,7 @@ export class Airflow {
     // ---------------------------------------------------------------- rooftops (and above)
     const above = Math.max(0, y - H);
     const gust = 1 + 0.45 * noise3(x / 90, y / 60, z / 90 - t * 0.25, 3) + 0.5 * Math.max(0, Math.sin(t * 0.52 + x * 0.004)) ** 6;
-    const roofSpeed = (AIR.roof + Math.min(8, above * AIR.roofGrowth)) * gust;
+    const roofSpeed = (AIR.roof + Math.min(8, above * AIR.roofGrowth)) * gust * (0.6 + 0.4 * ow);
     // The wind over the roofs blows uptown, quartering: it comes at an angle that swings from one side
     // of the route to the other every kilometre or so (and wanders a little), so up there you're carried
     // along but always crabbing, and which side the city's edge is coming at you from keeps changing.
@@ -569,7 +621,7 @@ export class Airflow {
           sy = sy * (1 - k) + 13 * k * (1 - over * 0.6);
           // (over the top it carries you across uptown, whichever side you're on: across "to the other side"
           // flipped the moment you crossed the line and held you hovering over the barrier)
-          const upAcross = rt.tx * bar.nx + rt.tz * bar.nz >= 0 ? 1 : -1;
+          const upAcross = rt0.tx * bar.nx + rt0.tz * bar.nz >= 0 ? 1 : -1;
           sx = sx * (1 - 0.7 * k) + bar.nx * (over ? 6 * upAcross : 1.5 * side) * k;
           sz = sz * (1 - 0.7 * k) + bar.nz * (over ? 6 * upAcross : 1.5 * side) * k;
           lift = Math.max(lift, k * 0.7);
@@ -597,6 +649,8 @@ export class Airflow {
           const wn = this.way.nearest(x, z, -1, this.wayN), a = this.way.at(wn.s + (wn.d > 15 ? 4 : 0), this.wayA);
           let dx = a.tx, dz = a.tz;
           if (wn.d > 15) { const L = Math.hypot(a.x - x, a.z - z) || 1; dx = (a.x - x) / L; dz = (a.z - z) / L; }
+          // (off the ways it's the city's own draught, wherever that's going)
+          dx = dx * ow + rt.tx * (1 - ow); dz = dz * ow + rt.tz * (1 - ow);
           sx += dx * (3.5 - hs); sz += dz * (3.5 - hs);
         }
         if (y < 2.5) sy = Math.max(sy, 1.6 * (1 - y / 2.5) + 0.6);
@@ -656,7 +710,7 @@ export class Airflow {
     {
       const g = this.gustAt(n.s, t);
       if (g > 0.01) {
-        const k = g * (y > -0.4 ? 1 : 0);
+        const k = g * (y > -0.4 ? 1 : 0) * (0.25 + 0.75 * ow);
         wx += rt.tx * AIR.gust * k; wz += rt.tz * AIR.gust * k;
         wy += 1.2 * k;
         // churning inside it
@@ -710,10 +764,10 @@ export class Airflow {
         const nx = (rt.x - x) / n.d, nz = (rt.z - z) / n.d;
         const churn = noise3(x / 14, y / 10, z / 14 + t * 1.5, 71);
         // (and on uptown along it, so it never just pins you against it)
-        wx = wx * (1 - 0.7 * k) + (nx * AIR.wallSpeed + rt.tx * 7 + -nz * churn * 5) * k;
-        wz = wz * (1 - 0.7 * k) + (nz * AIR.wallSpeed + rt.tz * 7 + nx * churn * 5) * k;
+        wx = wx * (1 - 0.7 * k) + (nx * AIR.wallSpeed + rt0.tx * 7 + -nz * churn * 5) * k;
+        wz = wz * (1 - 0.7 * k) + (nz * AIR.wallSpeed + rt0.tz * 7 + nx * churn * 5) * k;
         wy += (2 + 3 * churn) * k;
-        out.guide = Math.max(out.guide ?? 0, 0.75 * k);
+        out.guide = Math.max(out.guide ?? 0, 0.3 * k * k); // (firm at its heart, but you can fight your way out of its edge)
       }
     }
     // ---------------------------------------------------------------- over the rivers

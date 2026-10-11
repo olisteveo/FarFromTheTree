@@ -22,6 +22,10 @@ export async function db(env: Env): Promise<D1> {
       env.DB.prepare("CREATE TABLE IF NOT EXISTS scores (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, ms INTEGER NOT NULL, at INTEGER NOT NULL, run TEXT UNIQUE)"),
       env.DB.prepare("CREATE INDEX IF NOT EXISTS scores_ms ON scores (ms)"),
     ]);
+    // durability (how much of the leaf was left at the finish, 0 to 100) came later: add the
+    // column to databases made before it (migrations/0001_scores_durability.sql does the same).
+    // It fails harmlessly when the column's already there.
+    try { await env.DB.prepare("ALTER TABLE scores ADD COLUMN durability INTEGER").run(); } catch { /* already there */ }
     ready = true;
   }
   return env.DB;

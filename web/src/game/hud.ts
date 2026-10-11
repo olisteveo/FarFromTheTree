@@ -1,10 +1,11 @@
-// The HUD: millisecond timer, best time, a thin route bar with the districts, the layer
+// The HUD: millisecond timer, best time, a thin route bar (where you are between Battery Park and Central Park), the layer
 // you're in, district title cards, layer-drop and trick call-outs, and the start, death
 // and planted screens. Integrity shows on the leaf itself, not here.
 
 import type { CityData } from "../world/data";
 import { isTouchDevice } from "./touch";
 import type { Glider } from "../sim/glider";
+import { durabilityPct } from "./leaderboard";
 
 const fmt = (t: number) => {
   const m = Math.floor(t / 60), s = t - m * 60;
@@ -15,12 +16,15 @@ export class Hud {
   private timer: HTMLElement;
   private best: HTMLElement;
   private marker: HTMLElement;
+  private fill: HTMLElement;
+  private here: HTMLElement;
   private layer: HTMLElement;
   private card: HTMLElement;
   private callout: HTMLElement;
   private screen: HTMLElement;
   private toast: HTMLElement;
   private lastDistrict = "";
+  private lastHere = "";
   private cardTimer = 0;
   private calloutTimer = 0;
   private toastTimer = 0;
@@ -30,13 +34,16 @@ export class Hud {
 
   constructor(root: HTMLElement, private city: CityData) {
     try { const b = localStorage.getItem("fftt.best"); this.bestTime = b ? Number(b) : null; } catch { /* storage blocked */ }
-    const L = city.route.length;
-    const segs = city.raw.districts.map((d, i, all) => {
-      const a = d.s0 / L, b = (all[i + 1]?.s0 ?? L) / L;
-      return `<div class="seg" style="left:${a * 100}%;width:${(b - a) * 100}%"><span>${d.name}</span></div>`;
-    }).join("");
+    // the route bar: a thin line with a small tick where each district starts, the leaf riding
+    // it, the district you're in named above, and the two ends named faintly below
+    const L = city.route.length, ds = city.raw.districts;
+    const ticks = ds.slice(1).map((d) => `<i class="tick" style="left:${(d.s0 / L) * 100}%"></i>`).join("");
     root.innerHTML = `
-      <div class="top"><div class="route">${segs}<div class="marker"></div></div></div>
+      <div class="top"><div class="route">
+        <div class="here"></div>
+        <div class="line"><div class="fill"></div>${ticks}<div class="marker"></div></div>
+        <div class="ends"><span>${ds[0]?.name ?? ""}</span><span>${ds[ds.length - 1]?.name ?? ""}</span></div>
+      </div></div>
       <div class="clock"><div class="time">0:00.000</div><div class="best"></div></div>
       <div class="status"><div class="layer">STREET</div></div>
       <div class="card"></div>
@@ -48,6 +55,8 @@ export class Hud {
     this.timer = root.querySelector(".time")!;
     this.best = root.querySelector(".best")!;
     this.marker = root.querySelector(".marker")!;
+    this.fill = root.querySelector(".route .fill")!;
+    this.here = root.querySelector(".route .here")!;
     this.layer = root.querySelector(".layer")!;
     this.card = root.querySelector(".card")!;
     this.callout = root.querySelector(".callout")!;
@@ -75,12 +84,15 @@ export class Hud {
 
   update(dt: number, leaf: Glider, progressS: number) {
     this.timer.textContent = fmt(leaf.time);
-    this.marker.style.left = `${Math.min(100, (progressS / this.city.route.length) * 100)}%`;
+    const along = `${Math.max(0, Math.min(100, (progressS / this.city.route.length) * 100))}%`;
+    this.marker.style.left = along;
+    this.fill.style.width = along;
     const names = { subway: "SUBWAY", street: "STREET", roof: "ROOFTOPS" } as const;
     this.layer.textContent = `${names[leaf.lane]} · ${Math.max(0, leaf.pos.y).toFixed(0)} m`;
     this.layer.dataset.layer = leaf.lane;
 
     const d = this.city.district(progressS);
+    if (d.name !== this.lastHere) { this.here.textContent = d.name; this.lastHere = d.name; }
     if (leaf.state === "flying" && d.name !== this.lastDistrict) {
       this.card.innerHTML = `<div class="name">${d.name}</div><div class="sub">${d.sub}</div>`;
       this.card.classList.add("show");
@@ -115,7 +127,7 @@ export class Hud {
           try { localStorage.setItem("fftt.best", String(leaf.time)); } catch { /* ignore */ }
           this.showBest();
         }
-        this.setScreen("won", `<div class="title">Seed planted</div><div class="sub">${fmt(leaf.time)}${pb ? " · new best" : ""}<br/>Next spring, a tree.</div><div class="cta">${document.body.classList.contains("is-touch") ? "tap ↻" : "R"} to fall again</div>`);
+        this.setScreen("won", `<div class="title">Seed planted</div><div class="sub">${fmt(leaf.time)}${pb ? " · new best" : ""} · ${durabilityPct(leaf.integrity)}% of the leaf left<br/>Next spring, a tree.</div><div class="cta">${document.body.classList.contains("is-touch") ? "tap ↻" : "R"} to fall again</div>`);
       }
     } else {
       this.setScreen("", "");

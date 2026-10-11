@@ -425,4 +425,25 @@ export class Audio {
   }
 
   ui(name: "ui_click" | "ui_back" | "achievement_chime") { this.play(name); }
+
+  /** a soft camera shutter for the snapshot card (game/snapshotCard.ts): two quick ticks of filtered
+   *  noise, the blades opening and closing, made on the spot */
+  shutter() {
+    const ctx = this.ctx;
+    if (!ctx || !this.sfxBus) return;
+    const len = Math.floor(ctx.sampleRate * 0.035);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (len * 0.16));
+    for (const [at, vol, f] of [[0, 0.32, 3400], [0.07, 0.22, 2300]]) {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 1.1;
+      const g = ctx.createGain();
+      g.gain.value = vol;
+      src.connect(bp).connect(g).connect(this.sfxBus);
+      src.start(ctx.currentTime + at);
+    }
+  }
 }

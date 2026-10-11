@@ -4,13 +4,17 @@
 // time that passed. Runs that don't count (jumping ahead with ?at, autopilot, a tuned flight
 // model) just don't get a ticket. Everything fails quietly when the API isn't there.
 
-interface Entry { name: string; ms: number; at: number }
+interface Entry { name: string; ms: number; at: number; durability?: number | null }
 
 const fmt = (ms: number) => {
   const s = ms / 1000, m = Math.floor(s / 60);
   return `${m}:${(s - m * 60).toFixed(2).padStart(5, "0")}`;
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+/** How much of the leaf made it to the park, 0 to 100 (integrity starts at 1, a whole leaf). */
+export const durabilityPct = (integrity: number) => Math.round(Math.min(1, Math.max(0, integrity)) * 100);
+/** The durability column: "49%", or a dash for scores from before it was kept. */
+const dur = (e: Entry) => `<span class="du">${typeof e.durability === "number" ? `${e.durability}%` : "–"}</span>`;
 
 export class Leaderboard {
   private panel: HTMLElement;
@@ -58,8 +62,8 @@ export class Leaderboard {
       .catch(() => null);
   }
 
-  /** The seed's planted: offer to enter the time. */
-  async showWon(seconds: number) {
+  /** The seed's planted: offer to enter the time (and how much of the leaf was left, 0 to 100). */
+  async showWon(seconds: number, durability: number) {
     if (this.shown) return;
     this.shown = true;
     const ms = Math.round(seconds * 1000);
@@ -86,7 +90,7 @@ export class Leaderboard {
       const name = input.value.trim();
       (form.querySelector("button") as HTMLButtonElement).disabled = true;
       try {
-        const r = await fetch("/api/scores", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ run, name, ms }) });
+        const r = await fetch("/api/scores", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ run, name, ms, durability }) });
         const j = (await r.json()) as { ok?: boolean; error?: string; rank?: number; name?: string };
         if (!j.ok) { err.textContent = j.error ?? "Couldn't save that."; (form.querySelector("button") as HTMLButtonElement).disabled = false; return; }
         try { localStorage.setItem("fftt.name", name); } catch { /* ignore */ }
@@ -101,7 +105,7 @@ export class Leaderboard {
 
   private renderTable(me: string, rank: number) {
     const rows = this.top.slice(0, 10).map((e, i) =>
-      `<div class="row${e.name.toLowerCase() === me.toLowerCase() ? " me" : ""}"><span>${i + 1}. ${esc(e.name)}</span><span>${fmt(e.ms)}</span></div>`).join("");
+      `<div class="row${e.name.toLowerCase() === me.toLowerCase() ? " me" : ""}"><span class="nm">${i + 1}. ${esc(e.name)}</span>${dur(e)}<span>${fmt(e.ms)}</span></div>`).join("");
     this.panel.innerHTML = `<div class="h">You're number ${rank}</div>${rows}`;
   }
 
@@ -117,14 +121,14 @@ export class Leaderboard {
       addEventListener("keydown", (e) => { if (this.fullOpen && (e.code === "Escape" || e.code === "Enter")) { e.stopPropagation(); this.closeFull(); } }, true);
     }
     this.fullOpen = true;
-    this.full.innerHTML = `<div class="lb-card"><div class="h">Fastest seeds</div><div class="rows">Loading…</div><button class="close">Close</button></div>`;
+    this.full.innerHTML = `<div class="lb-card"><div class="h">Fastest seeds</div><div class="row hd"><span class="rk"></span><span class="nm"></span><span class="du" title="How much of the leaf made it to the park">leaf</span><span class="tm">time</span></div><div class="rows">Loading…</div><button class="close">Close</button></div>`;
     this.full.classList.add("on");
     await this.refresh();
     let me = "";
     try { me = (localStorage.getItem("fftt.name") ?? "").toLowerCase(); } catch { /* ignore */ }
     const rows = this.full.querySelector(".rows")!;
     rows.innerHTML = this.top.length
-      ? this.top.slice(0, 20).map((e, i) => `<div class="row${me && e.name.toLowerCase() === me ? " me" : ""}"><span class="rk">${i + 1}</span><span class="nm">${esc(e.name)}</span><span class="tm">${fmt(e.ms)}</span></div>`).join("")
+      ? this.top.slice(0, 20).map((e, i) => `<div class="row${me && e.name.toLowerCase() === me ? " me" : ""}"><span class="rk">${i + 1}</span><span class="nm">${esc(e.name)}</span>${dur(e)}<span class="tm">${fmt(e.ms)}</span></div>`).join("")
       : `<div class="note">No seeds planted yet. Be the first to reach Central Park.</div>`;
   }
   closeFull() { this.fullOpen = false; this.full?.classList.remove("on"); }
