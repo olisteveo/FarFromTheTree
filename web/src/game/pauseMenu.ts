@@ -1,5 +1,7 @@
-// The pause menu: Esc / P (or the ⏸ button on screen) during a run. Resume, start again, back to the
+// The pause menu: Esc / P (or the pause button on screen) during a run. Resume, start again, back to the
 // title screen, watch the story, and the settings: music and sound volumes (remembered). The game also pauses itself when the tab or app goes away.
+
+import { icon } from "./pixelIcons";
 
 export interface PauseHandlers {
   onRestart(): void;
@@ -22,7 +24,7 @@ export class PauseMenu {
     this.button = document.createElement("button");
     this.button.className = "pause-button";
     this.button.title = "pause (Esc)";
-    this.button.textContent = "⏸";
+    this.button.innerHTML = icon("pause", 12, false);
     this.button.addEventListener("pointerdown", (e) => { e.stopPropagation(); e.preventDefault(); this.show(true); });
     root.appendChild(this.button);
 
@@ -41,7 +43,7 @@ export class PauseMenu {
         <button data-act="restart">Fall again</button>
         <button data-act="title">Back to the title</button>
         <button data-act="story">Watch the story</button>
-        <button data-act="achievements">Achievements</button>
+        <button data-act="achievements">${icon("camera")}Achievements</button>
         <div class="pause-sub">Settings</div>
         <label class="pause-vol"><span>Music</span><input data-vol="music" type="range" min="0" max="1" step="0.05" value="${music}"/></label>
         <label class="pause-vol"><span>Sound</span><input data-vol="sound" type="range" min="0" max="1" step="0.05" value="${sound}"/></label>

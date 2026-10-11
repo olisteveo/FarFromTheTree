@@ -252,9 +252,8 @@ snapshots.onShow = () => audio.shutter();
 const gallery = new AchievementGallery(achievements);
 gallery.addTitleButton();
 achievements.onUnlock = (a) => {
-  // landmark landings: a polaroid snapshot (game/snapshotCard.ts); the rest: a toast
-  if (a.snap) snapshots.show(a);
-  else hud.notify(`<b>${a.name}</b><br/><span style="opacity:.75">${a.desc}</span>`, 4.5);
+  // every achievement "takes a photo": its polaroid snapshot slides in (game/snapshotCard.ts)
+  snapshots.show(a);
   audio.ui("achievement_chime");
   recorder.event("achievement", a.name);
 };

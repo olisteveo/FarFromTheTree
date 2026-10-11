@@ -12,10 +12,10 @@ export interface Achievement {
   desc: string;
   /** a cryptic nudge shown while it's locked (the gallery) */
   hint: string;
-  /** shown in the gallery when there's no snapshot */
+  /** a plain-text stand-in (every achievement now has a polaroid, public/achievements/<id>.png from
+   *  tools/achievements/snapshots.py, shown in the album: game/achievementGallery.ts) */
   icon: string;
-  /** a landmark landing: it has a pixel-art snapshot at public/achievements/<id>.png (tools/achievements/snapshots.py)
-   *  and unlocks with the polaroid card (game/snapshotCard.ts) */
+  /** a landmark landing: unlocks with the polaroid card (game/snapshotCard.ts) rather than a toast */
   snap?: true;
 }
 
