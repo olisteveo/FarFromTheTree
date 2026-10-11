@@ -174,14 +174,16 @@ export class RainView {
           // distance in from the meadow's edge (rounded corners)
           vec2 q = abs(vP) - (uHalf - 18.0);
           float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 18.0; // < 0 inside
-          float line = smoothstep(3.2, 0.0, abs(d + 2.0));
-          float glow = smoothstep(10.0, 0.0, abs(d + 5.0)) * 0.18;
-          float fill = step(d, 0.0) * 0.035;
+          float line = smoothstep(1.6, 0.0, abs(d + 2.0));
+          float glow = smoothstep(7.0, 0.0, abs(d + 4.0)) * 0.08;
+          float fill = step(d, 0.0) * 0.02;
           // a pulse running inward from the edge
           float pulse = 0.65 + 0.35 * sin(uTime * 2.2);
-          float wave = smoothstep(3.0, 0.0, abs(-d - mod(uTime * 14.0, 70.0))) * 0.22 * step(d, 0.0);
+          float wave = smoothstep(2.0, 0.0, abs(-d - mod(uTime * 14.0, 70.0))) * 0.14 * step(d, 0.0);
           // (soft up close, where you're about to land: it's a guide, not a wall of light)
-          float a = (line * pulse + glow + fill + wave) * uShow * mix(0.12, 1.0, smoothstep(6.0, 90.0, vD));
+          // and low down a grazing view stretches the band into a wash: it fades as you come down to land
+          float a = (line * pulse + glow + fill + wave) * uShow * mix(0.12, 1.0, smoothstep(6.0, 90.0, vD))
+            * mix(0.22, 1.0, smoothstep(6.0, 45.0, cameraPosition.y));
           gl_FragColor = vec4(vec3(0.25, 1.0, 0.45) * a, 1.0);
         }`,
     });
