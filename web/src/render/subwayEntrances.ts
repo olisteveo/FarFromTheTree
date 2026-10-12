@@ -804,7 +804,13 @@ export class SubwayEntrances {
     const LAND = 1.4;
     const aEnd = intoHall ? s.aCut! : hasPassage ? P0 : STAIRS_FOOT + LAND;
     const lineC = (a: number) => line(Math.min(a, STAIRS_FOOT));
-    const ceilC = (a: number) => stairCeil(Math.min(a, STAIRS_FOOT));
+    // (stairs that come down through a station's ceiling: their stairwell is a real one, its ceiling raked
+    // parallel to the flight 2.3 m over the treads all the way from the street opening, so looking up from the
+    // platform you see a lit, sloping stairwell going up and away. The air (world/underground.ts) is unchanged:
+    // the leaf's path down it runs 1.3 m over the treads)
+    const RAKE = 2.3;
+    const stairTop = intoHall ? (a: number) => (a < STAIRS.half ? Infinity : Math.min(STAIRS.roofUnder, line(a) + RAKE)) : stairCeil;
+    const ceilC = (a: number) => stairTop(Math.min(a, STAIRS_FOOT));
     // (over the hall nothing of the stairs hangs under its ceiling: the soffit is boxed in flush with it)
     const under = (y: number) => (intoHall ? Math.max(y, hallCeil + 0.006) : y);
     /** where the opening in the station's ceiling starts (along a): from there the stairwell is the well's,
@@ -958,8 +964,14 @@ export class SubwayEntrances {
       fixtures.push([0, y - 0.15, a]);
       this.opts.onLamp?.(s.x + s.ux * a, y - 0.4, s.z + s.uz * a);
     };
-    putFixture(2.42, STAIRS.roofUnder, 0, true);
-    for (let a = 3.9; a < Math.min(STAIRS_FOOT - 0.6, aEnd - 0.3); a += 2.4) putFixture(a, stairCeil(a) - 0.02, Math.atan(STAIRS.slope));
+    if (intoHall) putFixture(2.6, stairTop(2.6) - 0.02, Math.atan(STAIRS.slope));
+    else putFixture(2.42, STAIRS.roofUnder, 0, true);
+    for (let a = 3.9; a < Math.min(STAIRS_FOOT - 0.6, aEnd - 0.3); a += 2.4) putFixture(a, stairTop(a) - 0.02, Math.atan(STAIRS.slope));
+    if (intoHall) {
+      // where the raked ceiling starts under the pavement's edge: its face up to the slab
+      const y0 = stairTop(STAIRS.half + 1e-4);
+      if (y0 < STAIRS.roofUnder - 0.01) quadR(at, [[HW, y0, STAIRS.half], [-HW, y0, STAIRS.half], [-HW, STAIRS.roofUnder, STAIRS.half], [HW, STAIRS.roofUnder, STAIRS.half]], "ceiling_paint", [[0, 0], [1, 0], [1, 0.2], [0, 0.2]], [0, 0, -1]);
+    }
     if (!hasPassage && !intoHall) putFixture(STAIRS_FOOT + 0.7, ceilC(STAIRS_FOOT) - 0.02, 0);
     if (stepsEnd > 3.7) {
       const sx = hash2(s.z, s.x) < 0.5 ? -1 : 1, x = sx * (HW - 0.012);
