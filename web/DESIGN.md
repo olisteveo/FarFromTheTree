@@ -94,6 +94,11 @@ The wind is the level design (`src/world/airflow.ts`, `src/world/windFeatures.ts
   avenue (`AIR.crossBurst`, 8 m/s at the peak, growing uptown, below about 11 m). Each burst lives only
   in the junction box: once it has shoved you into the side street it lets go, so it costs you the line
   but never carries you away down the side street.
+- **No dead spots:** street air never goes dead calm. Where street flows meet head-on, the air rises
+  (`AIR.convLift`, from the steady street air only, not the subway's streams). Off the ways, the
+  wrong-way draught is weak enough to fly back against. A stream grips a leaf only as firmly as it
+  carries it. `tools/trap-scan.ts` drops a leaf every 80 m along every street and checks it can get
+  going again: street-level traps fell from 5.2% to 2.6% of drops.
 - **The edge of the map** is a visible wall of wind that blows you back toward the city and on
   uptown. Over the rivers the air drags you into the water.
 - **The subway's streams:** entrances, and the street grates every 110–160 m along the tunnels (two

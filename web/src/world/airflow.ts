@@ -45,6 +45,8 @@ export const AIR = {
   trainPush: 20,      // extra ahead of an uptown train
   corridor: 340,
   /** the wall of wind at the corridor's edge: how deep (it starts this far inside) and how hard it blows back */
+  /** converging street air rises: m/s of updraft per 1/s of convergence, and its cap */
+  convLift: 1.6, convLiftMax: 6,
   wallDepth: 30, wallSpeed: 20,      // how far either side of the route before the wind turns you back
 };
 
@@ -550,7 +552,9 @@ export class Airflow {
         let sign: number, speed: number;
         if (Math.abs(align) > 0.55) {
           sign = Math.sign(align); // route-aligned: always a tailwind uptown
-          speed = AIR.avenue * clamp(22 / Math.max(6, h.w), 0.85, 1.4);
+          // (off the ways the "uptown" here is turned across or back, so this is a wrong-way draught: weak
+          // enough to fly back against, or a crosstown street became a conveyor into a dead end)
+          speed = AIR.avenue * clamp(22 / Math.max(6, h.w), 0.85, 1.4) * (0.4 + 0.6 * ow);
           // like a river current, the canyon keeps you in its middle
           sx += h.cx * AIR.channel * tWeight * 2;
           sz += h.cz * AIR.channel * tWeight * 2;
@@ -611,12 +615,12 @@ export class Airflow {
         sx *= 0.5; sz *= 0.5;
       }
       // coming up out of a way out, its stream carries you on up into the street
-      if (y < 6) for (const g of this.exitGrid.at(x, z)) {
+      if (y < 6 && !this.inConv) for (const g of this.exitGrid.at(x, z)) {
         const f = this.exitFlow(g.exitPath!, x, y, z, 0, 3.2);
         if (f) { entry = { x: f.x, y: f.y, z: f.z, k: 1 }; break; }
       }
       // the ways in: their stream reaches out a dozen metres into the street and draws you into it
-      if (y < 6.5 && !entry) for (const sh of this.entryGrid.at(x, z)) {
+      if (y < 6.5 && !entry && !this.inConv) for (const sh of this.entryGrid.at(x, z)) {
         const f = this.exitFlow(this.mouths.get(sh)!, x, y, z, 12, 2.6, true, false);
         if (f && (!entry || f.k > entry.k)) entry = { x: f.x, y: f.y, z: f.z, k: f.tube ? 1 : f.k * 0.7 };
       }
@@ -707,7 +711,10 @@ export class Airflow {
           let dx = a.tx, dz = a.tz;
           if (wn.d > 15) { const L = Math.hypot(a.x - x, a.z - z) || 1; dx = (a.x - x) / L; dz = (a.z - z) / L; }
           // (off the ways it's the city's own draught, wherever that's going)
-          dx = dx * ow + rt.tx * (1 - ow); dz = dz * ow + rt.tz * (1 - ow);
+          // (normalised: blending toward a turned-back draught could cancel it to nothing, a dead pocket
+          // along the edge of every way's band)
+          const bx = dx * ow + rt.tx * (1 - ow), bz = dz * ow + rt.tz * (1 - ow), bl = Math.hypot(bx, bz);
+          if (bl > 0.35) { dx = bx / bl; dz = bz / bl; }
           sx += dx * (3.5 - hs); sz += dz * (3.5 - hs);
         }
         if (y < 2.5) sy = Math.max(sy, 1.6 * (1 - y / 2.5) + 0.6);
@@ -837,9 +844,51 @@ export class Airflow {
       out.guide = Math.max(out.guide ?? 0, 0.5 * k);
     }
     if (y > 320) wy -= (y - 320) * 0.15;
-    if (entry) { const k = Math.min(1, entry.k * 1.4); wx = wx * (1 - k) + entry.x * k; wy = wy * (1 - k) + entry.y * k; wz = wz * (1 - k) + entry.z * k; out.guide = entry.k; }
+    if (entry) {
+      // (a stream grips only as firmly as it carries: where its push fades to nothing - a bend in the path, the
+      // end of a way out's - a full grip held the leaf still in mid-air, a hard trap: tools/trap-scan.ts)
+      const carry = Math.min(1, Math.hypot(entry.x, entry.y, entry.z) / 4);
+      const k = Math.min(1, entry.k * 1.4) * carry;
+      wx = wx * (1 - k) + entry.x * k; wy = wy * (1 - k) + entry.y * k; wz = wz * (1 - k) + entry.z * k;
+      out.guide = entry.k * carry;
+    }
+
+    // ---------------------------------------------------------------- converging air rises
+    // Where two street flows meet head-on (a cross street's draught against the avenue's, air piling into a
+    // corner) the air has nowhere to go but up. Without this a stagnation line was a dead spot: no wind to
+    // carry you, nothing to lift you, and a leaf sat pinned there (tools/trap-scan.ts). Now it's a lift line.
+    // (measured from the street air alone: the subway's streams are sinks by design, and lift fighting a way in's
+    // pull held leaves hovering over the stairs; and none where a stream has you)
+    if (y > -0.4 && y < Math.min(H + 2, 30) && !this.inConv && !entry) {
+      const c = this.convergence(x, z);
+      if (c > 0.05) wy += Math.min(AIR.convLiftMax, c * AIR.convLift) * (1 - smoothstep(Math.min(H, 30) * 0.7, Math.min(H + 2, 30), y));
+    }
 
     out.x = wx; out.y = wy; out.z = wz;
     return out;
+  }
+
+  // the street air's convergence (1/s, > 0 where it piles up), from the steady part of the field, cached per
+  // 4 m cell (the same for everyone: no gusts or traffic in it)
+  private inConv = false;
+  private convCache = new Map<number, number>();
+  private convS: AirSample = { x: 0, y: 0, z: 0, lane: "street", vehicle: false, train: false };
+  private convergence(x: number, z: number) {
+    const i = Math.floor(x / 4), j = Math.floor(z / 4), key = i * 100003 + j;
+    const hit = this.convCache.get(key);
+    if (hit !== undefined) return hit;
+    this.inConv = true;
+    const cx = (i + 0.5) * 4, cz = (j + 0.5) * 4, d = 3, o = this.convS, Y = 2.5;
+    const hint = this.hint;
+    this.sample(cx + d, Y, cz, 0, o); const ex = o.x;
+    this.sample(cx - d, Y, cz, 0, o); const wxx = o.x;
+    this.sample(cx, Y, cz + d, 0, o); const nz = o.z;
+    this.sample(cx, Y, cz - d, 0, o); const sz = o.z;
+    this.hint = hint;
+    this.inConv = false;
+    const c = Math.max(0, -((ex - wxx) + (nz - sz)) / (2 * d));
+    if (this.convCache.size > 400000) this.convCache.clear();
+    this.convCache.set(key, c);
+    return c;
   }
 }
