@@ -430,8 +430,10 @@ function frame(now: number) {
   const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
   last = now;
   // Esc / P pauses a run (and resumes); while paused the world stands still and only draws
-  if ((input.hit("Escape") || input.hit("KeyP")) && leaf.state === "flying" && !replay) setPaused(!pause.open);
-  pause.update(leaf.state === "flying" && !replay && !introPlaying);
+  // (on the failure screen too: the menu's there for back-to-title, settings and the album)
+  const pausable = (leaf.state === "flying" || leaf.state === "dead") && !replay && !introPlaying && !endingPlaying;
+  if ((input.hit("Escape") || input.hit("KeyP")) && pausable) setPaused(!pause.open);
+  pause.update(pausable, leaf.state === "dead");
   if (pause.open) input.endFrame();
   tick(pause.open ? 0 : dt, true);
   stage.adapt(dt); // drop the resolution if the frame rate sags (phones)

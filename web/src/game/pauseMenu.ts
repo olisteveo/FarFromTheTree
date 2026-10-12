@@ -75,9 +75,16 @@ export class PauseMenu {
     this.el.classList.toggle("on", on);
   }
 
-  /** the button only during a run */
-  update(running: boolean) {
+  /** the button during a run, and on the failure screen (where there's nothing to resume: "Close") */
+  private dead = false;
+  update(running: boolean, dead = false) {
     this.button.classList.toggle("on", running && !this.open);
+    if (dead !== this.dead) {
+      this.dead = dead;
+      this.el.querySelector<HTMLElement>(".pause-title")!.textContent = dead ? "Menu" : "Paused";
+      this.el.querySelector<HTMLElement>('[data-act="resume"]')!.textContent = dead ? "Close" : "Resume";
+      this.el.querySelector<HTMLElement>(".pause-hint")!.textContent = dead ? "Esc to close" : "Esc to resume";
+    }
     if (!running && this.open) this.show(false);
   }
 }
