@@ -807,6 +807,9 @@ export class SubwayEntrances {
     const ceilC = (a: number) => stairCeil(Math.min(a, STAIRS_FOOT));
     // (over the hall nothing of the stairs hangs under its ceiling: the soffit is boxed in flush with it)
     const under = (y: number) => (intoHall ? Math.max(y, hallCeil + 0.006) : y);
+    /** where the opening in the station's ceiling starts (along a): from there the stairwell is the well's,
+     *  painted like its lining, so the view up it is one finished shaft (not tiled panels at angles) */
+    let wellA0 = Infinity;
     for (let i = 0; i < N_STEPS; i++) {
       const a0 = -STAIRS.half + i * RUN, a1 = a0 + RUN, yT = line(a1), yN = line(a0);
       if (a0 >= stepsEnd - 1e-4) {
@@ -833,6 +836,7 @@ export class SubwayEntrances {
       const aStart = Math.max(cut.aw, -STAIRS.half), cl = hallCeil;
       const aLo = -STAIRS.half + (STAIRS.top + 0.55 - cl) / STAIRS.slope;
       const A0 = Math.max(aStart, aLo - 0.05), A1 = s.aCut! + 0.05, hb = HW + 0.18, T = 0.35, LH = 0.6;
+      wellA0 = A0;
       if (A1 > A0 + 0.3) {
         for (const sx of [-1, 1]) {
           quadR(at, [[sx * hb, cl, A0], [sx * hb, cl, A1], [sx * hb, cl + LH, A1], [sx * hb, cl + LH, A0]], "ceiling_paint", [[0, 0], [1, 0], [1, 0.3], [0, 0.3]], [-sx, 0, 0]);
@@ -857,7 +861,8 @@ export class SubwayEntrances {
       }
       // the end of the stairwell, up above the hall's ceiling
       const C = ceilC(aEnd);
-      if (C > hallCeil) wall.quad([[HW, hallCeil, aEnd], [-HW, hallCeil, aEnd], [-HW, C, aEnd], [HW, C, aEnd]], [wallUV(-1, 0), wallUV(1, 0), wallUV(1, C - hallCeil), wallUV(-1, C - hallCeil)], [0, 0, -1]);
+      if (C > hallCeil && isFinite(wellA0)) quadR(at, [[HW, hallCeil, aEnd], [-HW, hallCeil, aEnd], [-HW, C, aEnd], [HW, C, aEnd]], "ceiling_paint", [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, -1]);
+      else if (C > hallCeil) wall.quad([[HW, hallCeil, aEnd], [-HW, hallCeil, aEnd], [-HW, C, aEnd], [HW, C, aEnd]], [wallUV(-1, 0), wallUV(1, 0), wallUV(1, C - hallCeil), wallUV(-1, C - hallCeil)], [0, 0, -1]);
     } else if (!hasPassage) {
       // the landing at the foot, and the rim of the enclosure's open end
       const F = STAIRS.passageFloor, A0 = STAIRS_FOOT, A1 = aEnd;
@@ -873,6 +878,7 @@ export class SubwayEntrances {
     const bounds = [-STAIRS.half];
     for (let i = 1; i <= N_STEPS; i++) bounds.push(-STAIRS.half + i * RUN);
     bounds.push(STAIRS.half, -STAIRS.half + (STAIRS.top - STAIRS.roofUnder + STAIRS.headroom) / STAIRS.slope - 0.0001, aEnd);
+    if (isFinite(wellA0) && wellA0 > -STAIRS.half && wellA0 < aEnd) bounds.push(wellA0);
     const cuts = [...new Set(bounds.filter((a) => a <= aEnd + 1e-6))].sort((p, q) => p - q);
     const GROUP = RUN * 5;
     for (let k = 0; k < cuts.length - 1; k++) {
@@ -892,6 +898,7 @@ export class SubwayEntrances {
         for (let r = 0; r < 3; r++) {
           const yAt = (a: number, f: number) => bot(a) + (top(a) - bot(a)) * f;
           const p00 = yAt(a0, rows[r]), p01 = yAt(a0, rows[r + 1]), p10 = yAt(a1, rows[r]), p11 = yAt(a1, rows[r + 1]);
+          if (a0 >= wellA0 - 1e-4) { quadR(at, [[x, p00, a0], [x, p10, a1], [x, p11, a1], [x, p01, a0]], "ceiling_paint", [[0, 0], [1, 0], [1, 1], [0, 1]], [-sx, 0, 0]); continue; }
           wall.quad([[x, p00, a0], [x, p10, a1], [x, p11, a1], [x, p01, a0]],
             [wallUV(a0, p00 - lineC(a0)), wallUV(a1, p10 - lineC(a1)), wallUV(a1, p11 - lineC(a1)), wallUV(a0, p01 - lineC(a0))], [-sx, 0, 0]);
         }

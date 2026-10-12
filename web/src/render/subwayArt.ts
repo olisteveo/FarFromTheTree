@@ -508,7 +508,37 @@ export class SubwayArt {
           for (const h of [-0.625, 0.625]) if (!(open(s, off + h) || open(s, off + h - 0.6) || open(s, off + h + 0.6))) put("girder", s, off + h, C, 0, undefined, new THREE.Vector3(0.5, 1, 1));
         }
       }
-      for (const side of [1, -1]) for (let s = st.ss - 70.5; s <= st.ss + 70.5; s += 3) if (inLine(s) && !open(s, 10.2 * side)) put("conduit", s, 10.2 * side, C, side > 0 ? Math.PI : 0);
+      // the services along each wall: one continuous run, jogging (on 45 degree elbows) out round any stair's
+      // opening in the ceiling and back
+      const hole = (s: number, off: number) => { const a = u.city.subway.at(s); return u.sdf(a.x + a.tz * off, C + 0.2, a.z - a.tx * off) > 0; };
+      const holeBand = (s: number, o: number) => hole(s, o) || hole(s, o - 0.45) || hole(s, o + 0.45);
+      for (const side of [1, -1]) {
+        const lo = Math.max(st.ss - 72, u.start + 2.5), hi = Math.min(st.ss + 72, u.end - 2.5), O = 10.2 * side;
+        // blocked stretches along the run, and a clear line to jog to for each
+        const pts: ([number, number] | null)[] = [[lo, O]];
+        const last = () => { for (let i = pts.length - 1; i >= 0; i--) if (pts[i]) return pts[i]![0]; return lo; };
+        for (let s = lo; s <= hi; s += 0.5) {
+          if (!holeBand(s, O)) continue;
+          let e = s; while (e + 0.5 <= hi && holeBand(e + 0.5, O)) e += 0.5;
+          const jog = [8.4, 7.6, 6.6].map((o) => o * side).find((o) => { for (let q = s - 1; q <= e + 1; q += 0.5) if (holeBand(q, o)) return false; return true; });
+          if (jog !== undefined && s - 1.6 > last()) pts.push([s - 1.6, O], [s - 0.6, jog], [e + 0.6, jog], [e + 1.6, O]);
+          // (nowhere to jog to: the run stops short of the trim and picks up again past it)
+          else pts.push([Math.max(last(), s - 1.2), O], null, [e + 1.2, O]);
+          s = e + 1.6;
+        }
+        if (hi > last()) pts.push([hi, O]);
+        for (let i = 0; i < pts.length - 1; i++) {
+          if (!pts[i] || !pts[i + 1]) continue;
+          const [s0, o0] = pts[i]!, [s1, o1] = pts[i + 1]!, len = Math.hypot(s1 - s0, o1 - o0);
+          if (len < 0.05) continue;
+          // in pieces of up to 3 m, along the segment (turned off the line by its angle)
+          const n = Math.max(1, Math.round(len / 3)), turn = Math.atan2(o1 - o0, s1 - s0);
+          for (let k = 0; k < n; k++) {
+            const t = (k + 0.5) / n;
+            put("conduit", s0 + (s1 - s0) * t, o0 + (o1 - o0) * t, C, turn, undefined, new THREE.Vector3(1, 1, len / n / 3));
+          }
+        }
+      }
       for (const h of u.hangers) {
         if (h.station !== st.name) continue;
         if (h.kind === "fluor" && !h.flicker) put("fluor_hung", h.s, h.off, C);
