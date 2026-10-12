@@ -805,25 +805,56 @@ export class SubwayEntrances {
     const aEnd = intoHall ? s.aCut! : hasPassage ? P0 : STAIRS_FOOT + LAND;
     const lineC = (a: number) => line(Math.min(a, STAIRS_FOOT));
     const ceilC = (a: number) => stairCeil(Math.min(a, STAIRS_FOOT));
+    // (over the hall nothing of the stairs hangs under its ceiling: the soffit is boxed in flush with it)
+    const under = (y: number) => (intoHall ? Math.max(y, hallCeil + 0.006) : y);
     for (let i = 0; i < N_STEPS; i++) {
       const a0 = -STAIRS.half + i * RUN, a1 = a0 + RUN, yT = line(a1), yN = line(a0);
       if (a0 >= stepsEnd - 1e-4) {
         // the last step's edge, where the stairs drop away into the hall
-        if (a0 < stepsEnd + RUN) quadR(at, [[-HW, yN - 0.5, a0], [HW, yN - 0.5, a0], [HW, yN, a0], [-HW, yN, a0]], "yellow", [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, 1]);
+        if (a0 < stepsEnd + RUN && under(yN - 0.5) < yN - 0.01) quadR(at, [[-HW, under(yN - 0.5), a0], [HW, under(yN - 0.5), a0], [HW, yN, a0], [-HW, yN, a0]], "yellow", [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, 1]);
         continue;
       }
       const w = a1 > P0 && hasPassage ? PW : HW;
       // the riser drops from the tread above (at a0) to this one; the yellow nosing is on this tread's far edge
       quadR(at, [[-w, yT, a0], [w, yT, a0], [w, yN, a0], [-w, yN, a0]], "riser", [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, 1]);
       quadR(at, [[-w, yT, a0], [w, yT, a0], [w, yT, a1], [-w, yT, a1]], "tread", [[0, 1], [1, 1], [1, 0], [0, 0]], [0, 1, 0]);
-      quadR(at, [[-w, yN - 0.5, a0], [w, yN - 0.5, a0], [w, yT - 0.5, a1], [-w, yT - 0.5, a1]], "concrete_shaft", [[0, 0], [1, 0], [1, 0.1], [0, 0.1]], [0, -1, -STAIRS.slope]);
+      quadR(at, [[-w, under(yN - 0.5), a0], [w, under(yN - 0.5), a0], [w, under(yT - 0.5), a1], [-w, under(yT - 0.5), a1]], intoHall ? "ceiling_paint" : "concrete_shaft",
+        intoHall ? [[0, 0], [1, 0], [1, 1], [0, 1]] : [[0, 0], [1, 0], [1, 0.1], [0, 0.1]], [0, -1, -STAIRS.slope]);
       for (const sx of [-1, 1]) {
         const x = sx * (HW - 0.02);
-        if (a0 < P0 || !hasPassage) quadR(at, [[x, yN + 0.12, a0], [x, yT + 0.12, a1], [x, yT - RISE - 0.02, a1], [x, yN - RISE - 0.02, a0]], "stringer",
+        if (a0 < P0 || !hasPassage) quadR(at, [[x, yN + 0.12, a0], [x, yT + 0.12, a1], [x, under(yT - RISE - 0.02), a1], [x, under(yN - RISE - 0.02), a0]], "stringer",
           [[0, 1], [0.5, 1], [0.5, 0], [0, 0]], [-sx, 0, 0]);
       }
     }
     if (intoHall) {
+      // the well round the opening in the station's ceiling (exactly the hole subwayCuts cuts): a painted lining
+      // up from the ceiling line with a guard rail on it, a stone trim flush with the ceiling round its edge, the
+      // green trimmer beam's face framing it (the girders stop on it, the vaults end against it), and a light
+      const aStart = Math.max(cut.aw, -STAIRS.half), cl = hallCeil;
+      const aLo = -STAIRS.half + (STAIRS.top + 0.55 - cl) / STAIRS.slope;
+      const A0 = Math.max(aStart, aLo - 0.05), A1 = s.aCut! + 0.05, hb = HW + 0.18, T = 0.35, LH = 0.6;
+      if (A1 > A0 + 0.3) {
+        for (const sx of [-1, 1]) {
+          quadR(at, [[sx * hb, cl, A0], [sx * hb, cl, A1], [sx * hb, cl + LH, A1], [sx * hb, cl + LH, A0]], "ceiling_paint", [[0, 0], [1, 0], [1, 0.3], [0, 0.3]], [-sx, 0, 0]);
+          quadR(at, [[sx * HW, cl + LH, A0], [sx * hb, cl + LH, A0], [sx * hb, cl + LH, A1], [sx * HW, cl + LH, A1]], "ceiling_paint", [[0, 0], [0.1, 0], [0.1, 1], [0, 1]], [0, -1, 0]);
+          // the trim and the trimmer's face along the sides
+          quadR(at, [[sx * hb, cl - 0.006, A0 - T], [sx * (hb + T), cl - 0.006, A0 - T], [sx * (hb + T), cl - 0.006, A1 + T], [sx * hb, cl - 0.006, A1 + T]], "limestone", [[0, 0], [0.2, 0], [0.2, 1], [0, 1]], [0, -1, 0]);
+          quadR(at, [[sx * (hb + T), cl - 0.006, A0 - T], [sx * (hb + T), cl - 0.006, A1 + T], [sx * (hb + T), cl + 0.34, A1 + T], [sx * (hb + T), cl + 0.34, A0 - T]], "iron_green", [[0, 0], [1, 0], [1, 1], [0, 1]], [sx, 0, 0]);
+          bar(metal, [sx * (hb - 0.04), cl + LH + 0.02, A0 + 0.2], [sx * (hb - 0.04), cl + LH + 0.02, A1 - 0.1], 0.025, this.uv("steel_dark"), 6);
+          // the light in the well
+          glow.quad([[sx * (hb - 0.01), cl + 0.22, (A0 + A1) / 2 - 0.6], [sx * (hb - 0.01), cl + 0.22, (A0 + A1) / 2 + 0.6], [sx * (hb - 0.01), cl + 0.34, (A0 + A1) / 2 + 0.6], [sx * (hb - 0.01), cl + 0.34, (A0 + A1) / 2 - 0.6]],
+            [U("fluor", 0, 0), U("fluor", 1, 0), U("fluor", 1, 1), U("fluor", 0, 1)], [-sx, 0, 0]);
+        }
+        fixtures.push([0, cl + 0.3, (A0 + A1) / 2]);
+        for (const [z, nz] of [[A1, -1], [A0, 1]] as const) {
+          if (nz > 0) continue; // (the stairs' own soffit closes the top end)
+          quadR(at, [[-hb, cl, z], [hb, cl, z], [hb, cl + LH, z], [-hb, cl + LH, z]], "ceiling_paint", [[0, 0], [1, 0], [1, 0.3], [0, 0.3]], [0, 0, nz]);
+        }
+        for (const [z0, z1, zf, nz] of [[A1, A1 + T, A1 + T, 1], [A0 - T, A0, A0 - T, -1]] as const) {
+          quadR(at, [[-hb - T, cl - 0.006, z0], [hb + T, cl - 0.006, z0], [hb + T, cl - 0.006, z1], [-hb - T, cl - 0.006, z1]], "limestone", [[0, 0], [1, 0], [1, 0.2], [0, 0.2]], [0, -1, 0]);
+          quadR(at, [[-hb - T, cl - 0.006, zf], [hb + T, cl - 0.006, zf], [hb + T, cl + 0.34, zf], [-hb - T, cl + 0.34, zf]], "iron_green", [[0, 0], [1, 0], [1, 1], [0, 1]], [0, 0, nz]);
+        }
+      }
       // the end of the stairwell, up above the hall's ceiling
       const C = ceilC(aEnd);
       if (C > hallCeil) wall.quad([[HW, hallCeil, aEnd], [-HW, hallCeil, aEnd], [-HW, C, aEnd], [HW, C, aEnd]], [wallUV(-1, 0), wallUV(1, 0), wallUV(1, C - hallCeil), wallUV(-1, C - hallCeil)], [0, 0, -1]);

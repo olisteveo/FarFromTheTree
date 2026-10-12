@@ -510,6 +510,15 @@ export class Underground {
         for (const a of areas) if (a.side === side && exits.some((q) => Math.abs(q.s - a.s) < 30)) for (const d of [-12, 12]) signs.push(line(a.s + d));
         for (const q of exits) if (!signs.some((x) => Math.abs(x - q.s) < 9)) signs.push(line(q.s));
         for (const x of [...new Set(signs)]) put(x, 8.6 * side, "sign_exit");
+        // and at each way out that comes down through the ceiling, just short of its opening
+        for (const sh of this.shafts) {
+          if (sh.kind !== "stairs" || !sh.out || sh.aCut === undefined || !isFinite(sh.aw!)) continue;
+          const cl = this.shape(sub.nearest(sh.x, sh.z).s).ceil;
+          const a = Math.max(Math.max(sh.aw!, -STAIRS.half), -STAIRS.half + (STAIRS.top + 0.55 - cl) / STAIRS.slope - 0.05) - 1.6;
+          const q = sub.nearest(sh.x + sh.ux * a, sh.z + sh.uz * a);
+          if ((q.off >= 0 ? 1 : -1) !== side || this.stationAt(q.s) !== st || signs.some((x) => Math.abs(x - q.s) < 4)) continue;
+          put(q.s, q.off, "sign_exit");
+        }
         for (const ds of [-45, 0, 45]) {
           const x = line(st.ss + ds);
           if (signs.includes(x) || areas.some((a) => a.side === side && Math.abs(a.s - x) < 6)) continue;

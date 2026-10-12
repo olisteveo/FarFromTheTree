@@ -503,8 +503,9 @@ export class SubwayArt {
         const hw = this.width(s).hw;
         // (from each wall to its column line, as the old stations have them: none over the tracks)
         for (const off of [-hw + 1.25, -hw + 3.75, hw - 3.75, hw - 1.25]) {
-          if (open(s, off) || open(s, off - 1.2) || open(s, off + 1.2)) continue;
-          put("girder", s, off, C);
+          if (!(open(s, off) || open(s, off - 1.2) || open(s, off + 1.2))) { put("girder", s, off, C); continue; }
+          // (by an opening: in half lengths, so the girder runs on up to the trimmer round it)
+          for (const h of [-0.625, 0.625]) if (!(open(s, off + h) || open(s, off + h - 0.6) || open(s, off + h + 0.6))) put("girder", s, off + h, C, 0, undefined, new THREE.Vector3(0.5, 1, 1));
         }
       }
       for (const side of [1, -1]) for (let s = st.ss - 70.5; s <= st.ss + 70.5; s += 3) if (inLine(s) && !open(s, 10.2 * side)) put("conduit", s, 10.2 * side, C, side > 0 ? Math.PI : 0);
