@@ -51,7 +51,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "drop", icon: "⬇️", name: "Drop It Like It's Hot", desc: "Dive from the rooftops into the subway in one go.", hint: "Top floor to basement, no stops." },
   // ---- the end
   { id: "plant", icon: "🌱", name: "The Last Leaf", desc: "Plant your seed in Central Park.", hint: "Finish what the tree started." },
-  { id: "mint", icon: "🪙", name: "Mint Condition", desc: "Plant your seed with the leaf barely scratched.", hint: "Arrive looking your best." },
+  { id: "mint", icon: "🪙", name: "Iron Leaf", desc: "Plant your seed with 90% or more of the leaf left.", hint: "Arrive in one piece. Nearly." },
   { id: "quick", icon: "⏱️", name: "Leaf Blower", desc: "Plant your seed in under fifteen minutes.", hint: "The park, against the clock." },
 ];
 

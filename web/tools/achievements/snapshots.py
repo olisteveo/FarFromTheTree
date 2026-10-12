@@ -1347,7 +1347,8 @@ def s_plant(rnd):
 
 
 def s_mint(rnd):
-    """Mint Condition: on fresh snow, the leaf without a scratch, and a peppermint beside it"""
+    """Iron Leaf: the leaf, barely a mark on it, laid on a blacksmith's anvil in the snow, the hammer
+    beside it and sparks still flying (it came through 8.8 km of city at 90% or better)"""
     cv = Canvas()
     sky(cv, COLD, 0, 50)
     for x in range(-4, W, 12):
@@ -1355,19 +1356,23 @@ def s_mint(rnd):
     cv.rect(0, 46, W, 44, (236, 240, 246))
     for _ in range(60):
         cv.put(rnd.randrange(W), rnd.randrange(48, H), (214, 222, 234))
-    for _ in range(8):
-        sparkle(cv, rnd.randrange(W), rnd.randrange(52, H), (255, 255, 255), 1)
-    cv.ellipse(30, 72, 76, 80, (204, 214, 228))
-    leaf_on(cv, 52, 76, scale=3, outline=(110, 40, 30))
-    cv.poly([(84, 72), (77, 67), (78, 72), (77, 77)], (226, 232, 240)); cv.poly([(100, 72), (107, 67), (106, 72), (107, 77)], (226, 232, 240))
-    disc(cv, 92, 72, 8, (186, 196, 210)); disc(cv, 92, 71, 7.5, (250, 250, 250))
-    for k in range(3):
-        for i in range(14):
-            a = k * 2 * math.pi / 3 + i * 0.22
-            r = i * 0.5
-            disc(cv, 92 + math.cos(a) * r, 71 + math.sin(a) * r, 1.0, (222, 40, 52))
-    cv.put(89, 68, (255, 255, 255))
-    finish(cv, rnd, vig=0.38, grain=0.08, bloom=(52, 56, 40, 0.14))
+    # the anvil: horn to the left, face, waist, foot
+    D, M, L = (46, 48, 56), (78, 82, 92), (130, 136, 150)
+    cv.poly([(22, 60), (40, 57), (40, 64), (30, 64)], M)                 # horn
+    cv.rect(40, 56, 50, 9, M); cv.rect(40, 56, 50, 2, L)                # face, lit edge
+    cv.rect(52, 65, 26, 8, D)                                            # waist
+    cv.rect(44, 73, 42, 6, M); cv.rect(44, 73, 42, 1, L)                # foot
+    cv.ellipse(38, 78, 92, 84, (204, 214, 228))                          # its shadow in the snow
+    # the leaf on the face, crisp and whole
+    leaf_on(cv, 64, 52, scale=2, outline=(110, 40, 30))
+    # the hammer leaning on the anvil
+    cv.line([(98, 80), (88, 58)], (120, 82, 50), 2)
+    cv.rect(83, 54, 12, 6, D); cv.rect(83, 54, 12, 1, L)
+    # sparks
+    for _ in range(14):
+        sparkle(cv, 64 + rnd.randint(-22, 22), 44 + rnd.randint(-14, 8), (255, 200, 110), 1)
+    snowfall(cv, rnd, 14, 3)
+    finish(cv, rnd, vig=0.38, grain=0.08, bloom=(64, 50, 40, 0.18))
     return cv
 
 
@@ -1406,7 +1411,7 @@ SCENES = {
     "vent": (s_vent, "Mind the Gap"), "cab": (s_cab, "Cab Surfer"), "mole": (s_mole, "Mole Person"),
     "high": (s_high, "Bird's Eye View"), "fast": (s_fast, "Speed of Leaf"), "spin": (s_spin, "Spin Cycle"),
     "loop": (s_loop, "Loop de Leaf"), "drop": (s_drop, "Drop It Like It's Hot"),
-    "plant": (s_plant, "The Last Leaf"), "mint": (s_mint, "Mint Condition"), "quick": (s_quick, "Leaf Blower"),
+    "plant": (s_plant, "The Last Leaf"), "mint": (s_mint, "Iron Leaf"), "quick": (s_quick, "Leaf Blower"),
 }
 
 
