@@ -17,7 +17,7 @@
 
 import { Grid, inPoly, type CityData } from "./data";
 import type { Traffic } from "./traffic";
-import { SIGNAL, signalState } from "../render/streetLayout";
+import { SIGNAL, untilWalk } from "./signals";
 
 /** What the crowd can use from the street furniture (render/streetLayout.ts StreetLayout). */
 export interface CrowdExtras {
@@ -1092,15 +1092,6 @@ function finishPath(x: Float32Array, z: Float32Array, loop: boolean, E: number[]
   for (let i = 0; i < n; i++) { x0 = Math.min(x0, x[i]); x1 = Math.max(x1, x[i]); z0 = Math.min(z0, z[i]); z1 = Math.max(z1, z[i]); }
   return { loop, n, ds: len / (loop ? n : n - 1), len, x, z, tx, tz, nx, nz, kerb, bld, kerbRight: true, busy: 1, corners, x0, z0, x1, z1, walkers: [], standers: [] };
 }
-
-/** seconds from global time g until the WALK comes on at a crossing (0 if it's on now) */
-function untilWalk(g: number, group: number, offset: number): number {
-  // signalState: walk is on while ((t + offset + (group 0 ? half a cycle : 0)) mod cycle) < SIGNAL.walk
-  const C = SIGNAL.cycle;
-  const o = ((((g + offset + (group === 0 ? C / 2 : 0)) % C) + C) % C);
-  return o < SIGNAL.walk ? 0 : C - o;
-}
-void signalState;
 
 function dedupe(r: number[], d: number): number[] {
   const o: number[] = [];

@@ -25,7 +25,7 @@ export function loadKitModels(): Promise<KitParts | null> {
     if (atlas) {
       atlas.colorSpace = THREE.SRGBColorSpace;
       atlas.flipY = false;   // glTF UV convention
-      atlas.anisotropy = 4;
+      atlas.anisotropy = 16;
     }
     const SLOT: Record<string, THREE.MeshStandardMaterialParameters> = {
       atlas: { roughness: 0.75, metalness: 0.12, side: THREE.DoubleSide },

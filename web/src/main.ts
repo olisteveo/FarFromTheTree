@@ -32,7 +32,7 @@ import { TUNNEL } from "./world/underground";
 import { Glider, FLIGHT } from "./sim/glider";
 import { Stage, type Quality } from "./render/stage";
 import { buildFacadeTextures } from "./render/facades";
-import { BuildingsMesh } from "./render/buildings";
+import { BuildingsMesh, WEAR } from "./render/buildings";
 import { addInfill } from "./render/architectureInfill"; // architecture: gap infill
 import { GroundMesh } from "./render/ground";
 import { FarCity } from "./render/farCity"; // far city
@@ -40,6 +40,10 @@ import { SubwayMesh } from "./render/subway";
 import { SubwayEntrances, deepOpenings, streetOpenings } from "./render/subwayEntrances";
 import { LeafView } from "./render/leaf";
 import { FacadePropsView } from "./render/facadeProps";
+import { WallArtView } from "./render/wallArt";
+import { FILL } from "./render/stage";
+import { STREET_WEAR } from "./render/groundArt";
+import { SkateSpotView } from "./render/skateSpot";
 import { Pigeons } from "./render/pigeons";
 import { blockerMeshes } from "./render/blockers";
 import { Chinatown } from "./render/chinatown";
@@ -98,7 +102,7 @@ const flow = new Airflow(city);
 const buildings = new BuildingsMesh(city, tex);
 // Central Park plants its own trees (render/centralPark.ts): the ground only does Battery Park's and the streets'
 const parkBounds = flow.parkLayout.bounds;
-const ground = new GroundMesh(city, { skipTree: (x, z) => x > parkBounds.x0 && x < parkBounds.x1 && z > parkBounds.z0 && z < parkBounds.z1, holes: streetOpenings(flow.under), waterHoles: deepOpenings(flow.under) });
+const ground = new GroundMesh(city, { detail: !LOW, skipTree: (x, z) => x > parkBounds.x0 && x < parkBounds.x1 && z > parkBounds.z0 && z < parkBounds.z1, holes: streetOpenings(flow.under), waterHoles: deepOpenings(flow.under) });
 // ---- the far city (render/farCity.ts): the rest of Manhattan, the waterfronts across the rivers, the bridges
 // and the harbour to the horizon. It loads public/far.dat in a worker after start and updates itself each
 // frame; the detailed buildings stop at the detail distance and the far versions take over beyond it.
@@ -117,7 +121,7 @@ const farCity = new FarCity(city, stage.sun, stage.hemi, { quality: stage.qualit
 // ---- end far city
 const subway = new SubwayMesh(flow.under);
 const leafView = new LeafView();
-const traffic = new TrafficView(flow);
+const traffic = new TrafficView(flow, !LOW);
 const trains = new TrainsView(flow);
 // the modelled subway: trains, track, stations, fare control (the simple versions show until it loads)
 const subwayArt = new SubwayArt(flow.under);
@@ -148,6 +152,8 @@ stage.scene.add(entrances.root);
 const steam = new SteamView(flow);
 const streaks = new WindStreaks(flow, stage.quality === "low" ? 220 : 560);
 const facadeProps = new FacadePropsView(flow.facades);
+const wallArt = new WallArtView(city);
+const skateSpot = new SkateSpotView();
 // fire-escape landings, awnings, canopies, shed roofs, lot fences and hoardings, cranes: solid
 buildings.attachFacades(flow.facades, true);
 const crowdView = new CrowdView(flow);
@@ -177,7 +183,7 @@ stage.scene.add(chinatown.root);
 const edgeWall = new EdgeWall(city);
 stage.scene.add(edgeWall.root);
 // ----
-stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks, city), crowdView.root, people.root, facadeProps.root, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks, city), crowdView.root, people.root, facadeProps.root, wallArt.root, skateSpot.root, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 // ---- street furniture (render/streetFurniture.ts): lamps, live signals, street name blades, hydrants,
 // mailboxes, baskets, newsstands, carts, bike docks, bus stops, kiosks, sheds, plaza bollards, steam
 // stacks, parked cars. Its colliders are streetFurniture.layout.colliders (not wired into the sim here).
@@ -516,7 +522,7 @@ function tick(dt: number, render: boolean) {
   traffic.update(focus);
   if (!subwayArtReady) trains.update(leaf.clock, focus);
   buildings.update(focus);
-  facadeProps.update(focus);
+  facadeProps.update(focus, flow, leaf.clock + wall);
   if (viewing()) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, LOW ? 260 : 400); }
   if (peopleReady) {
     // the people near the camera; anyone the leaf whooshes past flinches and looks up
@@ -564,7 +570,7 @@ function tick(dt: number, render: boolean) {
   rainView.update(dt, wall, leaf, cam, stage, leafView);
   chinatown.update(cam.position, wall);
   edgeWall.update(wall, cam.position);
-  streetFurniture.update(cam.position, focus, wall); // street furniture: refill near the focus, signal clock
+  streetFurniture.update(cam.position, focus, wall, viewing() ? leaf.clock + wall : leaf.clock); // street furniture: refill near the focus, signal clock
   ground.update(wall);
   ground.updateFocus(focus);
   // light: underground the sun goes and the fluorescents take over
@@ -573,7 +579,7 @@ function tick(dt: number, render: boolean) {
   if (cam.position.y < -0.9) underTarget = 1; else if (cam.position.y > -0.3) underTarget = 0;
   underMix += (underTarget - underMix) * (1 - Math.exp(-dt * 4));
   stage.sun.intensity = 3.4 * (1 - underMix);
-  stage.hemi.intensity = 0.6 * (1 - underMix) + 0.07 * underMix; // the tunnels are dark: the lamps do the lighting
+  stage.hemi.intensity = FILL * (1 - underMix) + 0.07 * underMix; // the tunnels are dark: the lamps do the lighting
   stage.hemi.color.setRGB(0.66 + underMix * 0.2, 0.7 + underMix * 0.1, 0.78 - underMix * 0.2);
   subway.update(leaf.clock, cam.position, underMix);
   entrances.update(viewing() ? leaf.clock + wall : leaf.clock, cam.position, window.innerHeight);
@@ -699,7 +705,7 @@ function shrinkTextures(max: number) {
 if (LOW) for (const ms of [6000, 15000, 30000]) setTimeout(() => shrinkTextures(512), ms);
 
 // the views, for timing and debugging from the console
-Object.assign(window, { ffttViews: { rainView, chinatown, traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
-Object.assign(window, { fftt: { THREE, tex, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances,
+Object.assign(window, { ffttViews: { wallArt, skateSpot, rainView, chinatown, traffic, buildings, facadeProps, centralPark, farCity, subwayArt, debris, streaks, minimap, steam, ground, subwaySigns, people, entrances, streetFurniture, pigeons, leafView, hud, audio, leafMeter, trains } });
+Object.assign(window, { fftt: { WEAR, STREET_WEAR, THREE, tex, city, flow, streetFurniture, leaf, stage, cam, advance, input, recorder, subway, pigeons, entrances,
   /** (tools: move the ?cam= free camera without reloading) */
   setCam: (x: number, y: number, z: number, yawDeg: number, pitchDeg: number) => { freePos.set(x, y, z); freeYaw = THREE.MathUtils.degToRad(yawDeg); freePitch = THREE.MathUtils.degToRad(pitchDeg); } } });

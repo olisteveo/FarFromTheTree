@@ -24,7 +24,8 @@ import { VEHICLE_SIZE, type Traffic, type VehicleKind } from "../world/traffic";
 import type { StreetLife } from "../world/streetlife";
 import type { Blockers } from "../world/blockers";
 import { loadParkAssets } from "./centralPark";
-import { SIGNAL, streetLayout, type StreetKind, type StreetLayout, type Court } from "./streetLayout";
+import { GREEN_AT, SIGNAL } from "../world/signals";
+import { streetLayout, type StreetKind, type StreetLayout, type Court } from "./streetLayout";
 import type { Quality } from "./stage";
 
 export interface StreetFurnitureOptions {
@@ -157,19 +158,30 @@ function lensMaterial(atlas: THREE.Texture, rects: Record<string, Rect>, size: [
   return new THREE.ShaderMaterial({
     uniforms: { uTime: { value: 0 }, uMap: { value: atlas }, uLens: { value: r("lens") }, uWalk: { value: r("walk") }, uHand: { value: r("hand") } },
     vertexShader: /* glsl */ `
-      attribute vec4 aSig; varying vec4 vSig; varying vec2 vUv;
-      void main() { vSig = aSig; vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0); }`,
+      uniform float uTime;
+      attribute vec4 aSig; varying vec4 vSig; varying vec2 vUv; varying vec2 vPhase;
+      const float C = ${SIGNAL.cycle.toFixed(1)}, A = ${SIGNAL.amber.toFixed(1)};
+      const vec2 G = vec2(${SIGNAL.green[0].toFixed(1)}, ${SIGNAL.green[1].toFixed(1)}), AT = vec2(${GREEN_AT[0].toFixed(1)}, ${GREEN_AT[1].toFixed(1)}), W = vec2(${SIGNAL.walk[0].toFixed(1)}, ${SIGNAL.walk[1].toFixed(1)});
+      void main() {
+        vSig = aSig; vUv = uv;
+        float kind = aSig.x; int g = aSig.y < 0.5 ? 0 : 1, o = 1 - g;
+        // the plan in world/signals.ts: phase is 2 green, 1 amber, 0 red; walk is 2 WALK, 1 flashing hand, 0 hand
+        float q = mod(uTime + aSig.z - AT[g], C), r = mod(uTime + aSig.z - AT[o], C);
+        float veh = q < G[g] ? 2.0 : (q < G[g] + A ? 1.0 : 0.0);
+        float walk = r < W[o] ? 2.0 : (r < G[o] + A ? 1.0 : 0.0);
+        vPhase = vec2(veh, walk);
+        float lit = kind < 0.5 ? step(veh, 0.5) : kind < 1.5 ? step(0.5, veh) * step(veh, 1.5) : kind < 2.5 ? step(1.5, veh) : 0.0;
+        vec4 mv = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        // a lit signal has to carry: it stays readable from a block or two away, as real ones do
+        vec4 centre = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+        mv.xyz = centre.xyz + (mv.xyz - centre.xyz) * mix(1.0, clamp(length(centre.xyz) / 55.0, 1.0, 3.4), lit);
+        gl_Position = projectionMatrix * mv;
+      }`,
     fragmentShader: /* glsl */ `
       uniform float uTime; uniform sampler2D uMap; uniform vec4 uLens, uWalk, uHand;
-      varying vec4 vSig; varying vec2 vUv;
-      const float C = ${SIGNAL.cycle.toFixed(1)}, G = ${SIGNAL.green.toFixed(1)}, A = ${SIGNAL.amber.toFixed(1)}, W = ${SIGNAL.walk.toFixed(1)};
+      varying vec4 vSig; varying vec2 vUv; varying vec2 vPhase;
       void main() {
-        float kind = vSig.x, group = vSig.y;
-        float p = mod(uTime + vSig.z, C);
-        float q = group < 0.5 ? p : mod(p + C * 0.5, C);
-        float veh = q < G ? 2.0 : (q < G + A ? 1.0 : 0.0);
-        float o = mod(q + C * 0.5, C);
-        float walk = o < W ? 2.0 : (o < G + A ? 1.0 : 0.0);
+        float kind = vSig.x, veh = vPhase.x, walk = vPhase.y;
         vec4 R = kind > 3.5 && kind < 4.5 ? uHand : (kind > 2.5 && kind < 3.5 ? uWalk : uLens);
         vec2 uv = vec2(mix(R.x, R.z, vUv.x), mix(R.w, R.y, vUv.y));
         float mask = texture2D(uMap, uv).r;
@@ -615,9 +627,10 @@ export class StreetFurniture {
   }
 
   /** cam: the camera (hides it all underground); focus: what to fill around; t: seconds (signal clock) */
-  update(cam: THREE.Vector3, focus: THREE.Vector3, t: number) {
+  /** signalT: the traffic's clock, so the lamps show what the cars are obeying */
+  update(cam: THREE.Vector3, focus: THREE.Vector3, t: number, signalT = t) {
     this.root.visible = cam.y > -0.6;
-    if (this.lens) this.lens.mat.uniforms.uTime.value = t;
+    if (this.lens) this.lens.mat.uniforms.uTime.value = signalT;
     if (this.steamPuffs) this.steamPuffs.mat.uniforms.uTime.value = t;
     if (!this.root.visible) return;
     this.animateCourts(focus, t);

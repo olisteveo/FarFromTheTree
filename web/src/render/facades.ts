@@ -119,7 +119,7 @@ function placeholder(size: number, srgb: boolean, normal: boolean): THREE.DataAr
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
   t.generateMipmaps = true;
-  t.anisotropy = 8;
+  t.anisotropy = 16;
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   t.needsUpdate = true;
   return t;
@@ -133,7 +133,7 @@ function makeArray(size: number, srgb: boolean): THREE.DataArrayTexture {
   t.minFilter = THREE.LinearMipmapLinearFilter;
   t.magFilter = THREE.LinearFilter;
   t.generateMipmaps = true;
-  t.anisotropy = 8;
+  t.anisotropy = 16;
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }

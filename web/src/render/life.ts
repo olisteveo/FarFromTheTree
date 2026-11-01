@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { Airflow, AirSample } from "../world/airflow";
+import { GroundShadows, WHEEL_RADIUS, dressVehicleMaterial, prepareWheels } from "./vehicleLook";
 import { VEHICLE_SIZE, type VehicleKind } from "../world/traffic";
 import { TRAIN, TUNNEL } from "../world/underground";
 
@@ -70,11 +71,14 @@ const CAR_COLOURS = [0x1c1c1e, 0xe8e8e8, 0x6d7278, 0x22344d, 0x7a1d1d, 0x2f4a3a,
 
 export class TrafficView {
   readonly root = new THREE.Group();
+  private grounding: GroundShadows | null = null;
   /** per vehicle kind: one instanced mesh per material part; "paint" parts get a colour per car */
   private parts = new Map<VehicleKind, { mesh: THREE.InstancedMesh; paint: boolean }[]>();
   /** simple box versions for the far distance (and until the models load) */
   private far = new Map<VehicleKind, THREE.InstancedMesh>();
-  constructor(private flow: Airflow) {
+  /** look: the fuller vehicle shading (vehicleLook.ts); low quality keeps it simple */
+  constructor(private flow: Airflow, private look = true) {
+    if (look) { this.grounding = new GroundShadows(); this.root.add(this.grounding.mesh); }
     // simple box cars straight away, swapped for the modelled ones when they load
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.35 });
     for (const k of Object.keys(VEHICLE_SIZE) as VehicleKind[]) {
@@ -91,6 +95,9 @@ export class TrafficView {
     for (const old of this.parts.get(kind) ?? []) { this.root.remove(old.mesh); old.mesh.dispose(); }
     const made = list.map(({ geo, mat, paint }) => {
       const mesh = new THREE.InstancedMesh(geo, mat, 700);
+      // how far round each wheel has turned, per vehicle
+      if (geo.attributes.aAxle) geo.setAttribute("aRoll", new THREE.InstancedBufferAttribute(new Float32Array(700), 1));
+      if (this.look && mat.name === "light_rear") geo.setAttribute("aBrake", new THREE.InstancedBufferAttribute(new Float32Array(700), 1));
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
@@ -121,7 +128,8 @@ export class TrafficView {
           const name = (m.material as THREE.Material).name;
           const paint = name === "paint";
           if (paint) mat.color.set(0xffffff);
-          if (name === "light_front" || name === "light_rear" || name === "sign") mat.emissiveIntensity = name === "sign" ? 2 : 2.6; // so they glow and bloom
+          if (name === "light_front" || name === "light_rear" || name === "sign") mat.emissiveIntensity = this.look ? (name === "sign" ? 1.25 : name === "light_front" ? 1.15 : 1.5) : name === "sign" ? 2 : 2.6; // so they glow and bloom
+          if (this.look) { if (name === "tyre" || name === "rim") prepareWheels(geo); dressVehicleMaterial(mat, name); }
           list.push({ geo, mat, paint });
         });
         if (list.length) this.setParts(kind, list);
@@ -132,13 +140,17 @@ export class TrafficView {
   update(focus: THREE.Vector3) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
     const counts = new Map<VehicleKind, number>(), farCounts = new Map<VehicleKind, number>();
+    this.grounding?.begin();
+    const dip = new THREE.Quaternion(), X = new THREE.Vector3(1, 0, 0);
     for (const v of this.flow.traffic.now) {
       const dx = v.x - focus.x, dz = v.z - focus.z, d2 = dx * dx + dz * dz;
       if (d2 > 320 * 320) continue;
       const kind = v.v.kind;
+      if (v.fade > 0.5) this.grounding?.add(v.x, v.z, v.tx, v.tz, VEHICLE_SIZE[kind].l, VEHICLE_SIZE[kind].w);
       const parts = this.parts.get(kind)!;
       q.setFromAxisAngle(Y, Math.atan2(v.tx, v.tz));
-      m.compose(p.set(v.x, 0.02, v.z), q, s);
+      if (v.brake > 0.05 && v.speed > 0.2) q.multiply(dip.setFromAxisAngle(X, 0.014 * v.brake)); // the nose dips under braking
+      m.compose(p.set(v.x, 0.02, v.z), q, s.setScalar(Math.max(0.001, v.fade)));
       c.set(paintFor(kind, v.v.colorSeed));
       // the full model up close, a simple shape in the distance (or until it loads)
       if (d2 < 160 * 160 && parts.length) {
@@ -148,6 +160,10 @@ export class TrafficView {
         for (const part of parts) {
           part.mesh.setMatrixAt(i, m);
           if (part.paint) part.mesh.setColorAt(i, c);
+          const roll = part.mesh.geometry.attributes.aRoll as THREE.InstancedBufferAttribute | undefined;
+          if (roll) roll.setX(i, (v.odo / WHEEL_RADIUS) % (Math.PI * 2));
+          const brake = part.mesh.geometry.attributes.aBrake as THREE.InstancedBufferAttribute | undefined;
+          if (brake) brake.setX(i, v.brake);
         }
       } else {
         const far = this.far.get(kind)!;
@@ -164,8 +180,13 @@ export class TrafficView {
         part.mesh.visible = part.mesh.count > 0;
         part.mesh.instanceMatrix.needsUpdate = true;
         if (part.mesh.instanceColor) part.mesh.instanceColor.needsUpdate = true;
+        const roll = part.mesh.geometry.attributes.aRoll as THREE.InstancedBufferAttribute | undefined;
+        if (roll) roll.needsUpdate = true;
+        const brake = part.mesh.geometry.attributes.aBrake as THREE.InstancedBufferAttribute | undefined;
+        if (brake) brake.needsUpdate = true;
       }
     }
+    this.grounding?.end();
     for (const [k, far] of this.far) {
       far.count = farCounts.get(k) ?? 0;
       far.visible = far.count > 0;
@@ -256,12 +277,13 @@ export class SteamView {
     g.setAttribute("aSize", new THREE.BufferAttribute(this.size, 1).setUsage(THREE.DynamicDrawUsage));
     g.setAttribute("aAlpha", new THREE.BufferAttribute(this.alpha, 1).setUsage(THREE.DynamicDrawUsage));
     this.points = new THREE.Points(g, new THREE.ShaderMaterial({
-      transparent: true, depthWrite: false,
+      // (the colour below is premultiplied: blended as if it weren't, steam darkened whatever was behind it, black on cars)
+      transparent: true, depthWrite: false, premultipliedAlpha: true,
       uniforms: { uTex: { value: softDot() }, uScale: { value: 600 } },
       vertexShader: `attribute float aSize; attribute float aAlpha; varying float vA; uniform float uScale;
         void main(){ vA = aAlpha; vec4 mv = modelViewMatrix * vec4(position,1.0); gl_PointSize = aSize * uScale / -mv.z; gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform sampler2D uTex; varying float vA;
-        void main(){ float a = texture2D(uTex, gl_PointCoord).a * vA; gl_FragColor = vec4(vec3(0.93, 0.93, 0.95) * a, a); }`,
+        void main(){ float a = texture2D(uTex, gl_PointCoord).a * vA * 0.075; gl_FragColor = vec4(vec3(0.93, 0.93, 0.95) * a, a); }`,
     }));
     this.points.frustumCulled = false;
   }

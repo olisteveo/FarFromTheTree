@@ -271,7 +271,7 @@ export class PeopleView {
     this.json = json;
     atlas.colorSpace = THREE.SRGBColorSpace;
     atlas.flipY = false;
-    atlas.anisotropy = 4;
+    atlas.anisotropy = 16;
     atlas.needsUpdate = true;
 
     // ---- VAT texture

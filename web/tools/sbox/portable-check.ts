@@ -15,7 +15,6 @@ const ALLOW: Record<string, RegExp[]> = {
   // TODO(port): these layouts (colliders, signal timing, facade tiles) are gameplay data that grew up in
   // render files. Move them to src/world before the port (see the migration doc), then delete these lines.
   "src/world/airflow.ts": [/from "\.\.\/render\/centralPark"/, /from "\.\.\/render\/streetLayout"/],
-  "src/world/crowd.ts": [/from "\.\.\/render\/streetLayout"/],
   "src/world/facades.ts": [/from "\.\.\/render\/facades"/],
 };
 const RULES: [RegExp, string][] = [

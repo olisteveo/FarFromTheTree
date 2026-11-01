@@ -19,7 +19,7 @@ function tex(name: string, srgb: boolean, wrapT = true): THREE.Texture {
   t.wrapS = THREE.RepeatWrapping;
   t.wrapT = wrapT ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
   t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  t.anisotropy = 8;
+  t.anisotropy = 16;
   return t;
 }
 
@@ -31,10 +31,19 @@ export interface GroundTextures {
   lawnA: THREE.Texture; lawnAN: THREE.Texture; lawnB: THREE.Texture; lawnBN: THREE.Texture;
   strips: THREE.Texture; stripsN: THREE.Texture; paint: THREE.Texture; paintN: THREE.Texture;
   decals: THREE.Texture; decalsN: THREE.Texture; macro: THREE.Texture;
+  /** The street wear below; left out on low quality. */
+  street: StreetMaps | null;
 }
 
+/** tools/ground/road_wear.mjs and road_field.ts. */
+export interface StreetMaps { wear: THREE.Texture; grain: THREE.Texture; walk: THREE.Texture; fieldA: THREE.Texture; fieldB: THREE.Texture }
+/** The lane field's rect, x0, z0, width, depth in metres: keep in step with tools/ground/road_field.ts. */
+const FIELD = new THREE.Vector4(-2000, -400, 4000, 9800);
+/** 0 turns the street wear off, to compare look and cost. */
+export const STREET_WEAR = { value: 1 };
+
 /** base: URL of the folder holding textures/ (default: next to the page). */
-export function loadGroundTextures(baseUrl = "./"): GroundTextures {
+export function loadGroundTextures(baseUrl = "./", detail = true): GroundTextures {
   base = baseUrl;
   const pair = (n: string, wrapT = true): [THREE.Texture, THREE.Texture] => [tex(`${n}_c.webp`, true, wrapT), tex(`${n}_n.webp`, false, wrapT)];
   const [walkA, walkAN] = pair("walk_a"), [walkB, walkBN] = pair("walk_b");
@@ -44,7 +53,13 @@ export function loadGroundTextures(baseUrl = "./"): GroundTextures {
   const [decals, decalsN] = pair("decals", false);
   decals.wrapS = decalsN.wrapS = THREE.ClampToEdgeWrapping;
   const macro = tex("macro.webp", false);
-  return { walkA, walkAN, walkB, walkBN, roadA, roadAN, roadB, roadBN, lawnA, lawnAN, lawnB, lawnBN, strips, stripsN, paint, paintN, decals, decalsN, macro };
+  const field = (n: string) => {
+    const t = tex(n, false);
+    t.flipY = false; t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; t.generateMipmaps = false; t.minFilter = THREE.LinearFilter; t.anisotropy = 1;
+    return t;
+  };
+  const street = detail ? { wear: tex("road_wear.webp", false), grain: tex("road_grain.webp", false), walk: tex("walk_wear.webp", false), fieldA: field("road_field_a.png"), fieldB: field("road_field_b.png") } : null;
+  return { walkA, walkAN, walkB, walkBN, roadA, roadAN, roadB, roadBN, lawnA, lawnAN, lawnB, lawnBN, strips, stripsN, paint, paintN, decals, decalsN, macro, street };
 }
 
 // ------------------------------------------------------------------ the world-space surface shader
@@ -62,6 +77,8 @@ export interface SurfaceOpts {
   normalScale?: number;
   tint?: number;
   polygonOffset?: number;
+  /** What this surface wears like, with the maps to do it: road (lanes, tar, patches), walk (gum, stains, cracks). */
+  street?: { kind: "road" | "walk"; maps: StreetMaps | null };
 }
 
 /** Rain on the ground (render/rain.ts sets these): the box it falls in (x0, z0, x1, z1) and how soaked the
@@ -71,7 +88,8 @@ export const GROUND_RAIN = { box: { value: new THREE.Vector4(0, 0, 0, 0) }, amou
 export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0, color: o.tint ?? 0xffffff });
   if (o.polygonOffset) { m.polygonOffset = true; m.polygonOffsetFactor = o.polygonOffset; m.polygonOffsetUnits = o.polygonOffset; }
-  m.defines = { GMODE: o.mode };
+  const streetKind = o.street?.maps ? (o.street.kind === "road" ? 1 : 2) : 0;
+  m.defines = { GMODE: o.mode, GSTREET: streetKind };
   const u = {
     gA: { value: o.a }, gAn: { value: o.an }, gB: { value: o.b }, gBn: { value: o.bn }, gMacro: { value: o.macro },
     gScale: { value: new THREE.Vector2(o.scaleA, o.scaleB) },
@@ -81,6 +99,10 @@ export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
     gWet: { value: o.wet ?? 1 },
     gNS: { value: o.normalScale ?? 1 },
     gRainBox: GROUND_RAIN.box, gRain: GROUND_RAIN.amount,
+    ...(o.street?.maps ? {
+      gWear: { value: o.street.maps.wear }, gGrain: { value: o.street.maps.grain }, gWalk: { value: o.street.maps.walk },
+      gFieldA: { value: o.street.maps.fieldA }, gFieldB: { value: o.street.maps.fieldB }, gField: { value: FIELD }, gStreetOn: STREET_WEAR,
+    } : {}),
   };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
@@ -93,6 +115,9 @@ export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
         uniform vec2 gScale, gMaskRange; uniform vec3 gMask; uniform float gShareB, gWet, gNS;
         uniform vec4 gRainBox; uniform float gRain;
         varying vec2 vGW;
+      #if GSTREET > 0
+        uniform sampler2D gWear, gGrain, gWalk, gFieldA, gFieldB; uniform vec4 gField; uniform float gStreetOn;
+      #endif
         vec3 gNW = vec3(0.0, 1.0, 0.0); float gR = 0.9;
         float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
       .replace("#include <map_fragment>", `{
@@ -124,6 +149,52 @@ export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
         nw = mix(nwA, vec2(-nwB.y, nwB.x), t);
         float nz = nr.z * 2.0 - 1.0;
       #endif
+      #if GSTREET == 1
+        if (gStreetOn > 0.5) {
+          // the stones of the mix, at the size you'd see them from a metre up
+          vec3 stones = texture2D(gGrain, vGW / 1.2).rgb;
+          alb.rgb *= 0.56 + stones.b * 0.95;
+          nw += (stones.rg * 2.0 - 1.0) * 0.8;
+          // where the traffic goes, from the real streets: this much of the road is lanes, this much is junction
+          vec2 fuv = (vGW - gField.xy) / gField.zw;
+          vec3 fa = texture2D(gFieldA, fuv).rgb, fb = texture2D(gFieldB, fuv).rgb;
+          float off = (fa.r - 0.5) * 48.0, ang = fa.g * 3.14159265, junction = fa.b;
+          float halfW = fb.r * 24.0, laneW = max(1.5, fb.g * 8.0), phase = fb.b * 8.0;
+          float along = dot(vGW, vec2(cos(ang), sin(ang)));
+          float lane = (fract((off - phase) / laneW + 0.5) - 0.5) * laneW;
+          float tyres = exp(-pow((abs(lane) - 0.82) / 0.5, 2.0));
+          float drip = exp(-pow(lane / 0.42, 2.0));
+          float kerb = halfW - abs(off);
+          float inLanes = (1.0 - junction) * smoothstep(0.5, 1.6, kerb);
+          float run = texture2D(gMacro, vec2(along / 41.0, off * 0.07)).g, broken = texture2D(gMacro, vec2(along / 9.0, off * 0.31)).b;
+          // polished where the tyres run, in long uneven streaks; oil spotted down the middle of each lane
+          alb.rgb *= 1.0 - 0.46 * tyres * inLanes * (0.45 + 0.55 * run);
+          alb.rgb *= 1.0 - 0.34 * drip * inLanes * smoothstep(0.38, 0.68, broken);
+          nr.a -= 0.38 * tyres * inLanes;
+          // grit and dirt pile up against the kerb, where nothing drives
+          float gutter = (1.0 - smoothstep(0.0, 1.7, kerb)) * (1.0 - junction * 0.7);
+          alb.rgb = mix(alb.rgb, alb.rgb * vec3(0.66, 0.62, 0.56), gutter);
+          vec3 w = texture2D(gWear, vGW / 40.0).rgb, w2 = texture2D(gWear, vGW.yx / 23.0 + 0.37).rgb;
+          // junctions take the turning and braking
+          alb.rgb *= 1.0 - junction * 0.16 * max(w.b, w2.b);
+          // utility cuts: newer or older asphalt, then the tar that seals everything
+          alb.rgb *= 1.0 + (w.g - 0.5) * 1.6;
+          float tar = max(w.r, w2.r * 0.75);
+          alb.rgb = mix(alb.rgb, vec3(0.018, 0.018, 0.02), tar * 0.78);
+          nr.a = mix(nr.a, 0.26, tar);
+          alb.rgb *= 1.0 - 0.2 * w.b;
+        }
+      #elif GSTREET == 2
+        if (gStreetOn > 0.5) {
+          vec3 w = texture2D(gWalk, vGW / 18.0).rgb, w2 = texture2D(gWalk, vGW.yx / 29.0 + 0.41).rgb;
+          vec3 stones = texture2D(gGrain, vGW / 2.1).rgb;
+          alb.rgb *= 0.8 + stones.b * 0.5;
+          nw += (stones.rg * 2.0 - 1.0) * 0.28;
+          alb.rgb *= 1.0 - 0.8 * max(w.r, w2.r * 0.7);  // years of gum
+          alb.rgb *= (1.0 - 0.24 * w.g) * (1.0 - 0.14 * w2.g);
+          alb.rgb *= 1.0 - 0.62 * w.b;
+        }
+      #endif
         // large-scale grime and damp: breaks the repeat at a distance, and it's November
         vec3 mac = texture2D(gMacro, vGW / 64.0).rgb;
         vec3 mac2 = texture2D(gMacro, vGW.yx / 23.0 + 0.37).rgb;
@@ -143,7 +214,7 @@ export function surfaceMaterial(o: SurfaceOpts): THREE.MeshStandardMaterial {
       .replace("#include <roughnessmap_fragment>", "float roughnessFactor = roughness * gR;")
       .replace("#include <normal_fragment_maps>", "#include <normal_fragment_maps>\nnormal = normalize((viewMatrix * vec4(gNW, 0.0)).xyz);");
   };
-  m.customProgramCacheKey = () => `ground-surface-${o.mode}`;
+  m.customProgramCacheKey = () => `ground-surface-${o.mode}-${streetKind}`;
   return m;
 }
 

@@ -6,6 +6,7 @@
 import { Grid, type Building, type CityData } from "./data";
 import { TILES } from "../render/facades";
 import { isModelled } from "./modelled";
+import { SKATE_SOLIDS, householdOf, inHeroBlock, pick, type BalconyVariant, type HouseholdRule } from "./heroBlock";
 
 export type PropKind = "ac" | "balcony" | "cat" | "line" | "solid";
 
@@ -21,6 +22,10 @@ export interface FacadeProp {
   blows?: boolean;
   /** what it is, for the "torn apart on ..." message (else by kind) */
   label?: string;
+  /** what this balcony is used for (the hero block; everywhere else it's the plain table and chairs) */
+  variant?: BalconyVariant;
+  /** a solid that's drawn by facadeProps.ts rather than the architecture kit */
+  dress?: "windowbox" | "windowbox_dead";
   /** for lines: the far end */
   x2?: number; y2?: number; z2?: number;
 }
@@ -47,6 +52,7 @@ export class Facades {
   constructor(city: CityData) {
     for (const b of city.buildings) if (!isModelled(b.cx, b.cz)) this.decorate(b, city);
     this.washingLines(city);
+    for (const k of SKATE_SOLIDS) this.props.push({ kind: "solid", x: k.x, y: k.y, z: k.z, tx: 1, tz: 0, nx: 0, nz: -1, hw: k.hw, hh: k.hh, hd: k.hd, seed: 0, label: k.label });
     for (const p of this.props) {
       const r = Math.max(p.hw, p.hd) + 1;
       if (p.kind === "line") this.grid.add(p, Math.min(p.x, p.x2!) - 1, Math.min(p.z, p.z2!) - 1, Math.max(p.x, p.x2!) + 1, Math.max(p.z, p.z2!) + 1);
@@ -65,6 +71,8 @@ export class Facades {
     // balconies: all or nothing per building, every bay or every other bay (the same all the way up)
     const balconies = h01(b.seed, 9901) < rate.balcony;
     const stride = h01(b.seed, 9902) < 0.35 ? 1 : 2, phase = stride === 2 && h01(b.seed, 9903) < 0.5 ? 1 : 0;
+    const household = inHeroBlock(b.cx, b.cz) ? householdOf(b.seed, b.style) : null;
+    const hasBalconies = !!household && h01(b.seed, 9904) < household.hasBalconies;
     let u = 0;
     for (let i = 0; i < n; i++) {
       const ax = ring[i * 2], az = ring[i * 2 + 1], bx = ring[((i + 1) % n) * 2], bz = ring[((i + 1) % n) * 2 + 1];
@@ -83,6 +91,7 @@ export class Facades {
           const wx = ax + tx * along, wz = az + tz * along;
           const yWin = groundH + f * t.floorH;
           const seed = (b.seed + bay * 7 + f) >>> 0;
+          if (household) { this.dressFloor(household, hasBalconies, along < 1.7 * t.bayW || along > L - 1.7 * t.bayW, f, along, L, wx, wz, yWin, tx, tz, nx, nz, r, seed); continue; }
           if (balconies && f > 0 && along > 2 && along < L - 2 && (bay - phase) % stride === 0) {
             this.props.push({ kind: "balcony", x: wx + nx * 0.75, y: yWin, z: wz + nz * 0.75, tx, tz, nx, nz, hw: 1.4, hh: 0.55, hd: 0.75, seed });
           } else if (r < rate.ac) {
@@ -93,6 +102,24 @@ export class Facades {
         }
       }
       u += L;
+    }
+  }
+
+  /** One window of a hero block building: what this household keeps there. Balconies only at the ends of a wall:
+   *  the fire escape needs the middle bays, and it's what makes these streets. */
+  private dressFloor(rule: HouseholdRule, hasBalconies: boolean, wallEnd: boolean, f: number, along: number, L: number, wx: number, wz: number, yWin: number, tx: number, tz: number, nx: number, nz: number, r: number, seed: number) {
+    const roll = h01(seed, 4411);
+    if (hasBalconies && wallEnd && f > 0 && along > 1.5 && along < L - 1.5 && roll < rule.balcony * 1.6) {
+      const variant = pick(rule.variants, h01(seed, 4412));
+      const hd = variant === "juliet" ? 0.25 : 0.75, hw = variant === "juliet" ? 0.75 : 1.4;
+      this.props.push({ kind: "balcony", x: wx + nx * hd, y: yWin, z: wz + nz * hd, tx, tz, nx, nz, hw, hh: 0.55, hd, seed, variant });
+    } else if (f > 0 && r < rule.windowbox) {
+      const dress = h01(seed, 4413) < rule.deadBox ? "windowbox_dead" : "windowbox";
+      this.props.push({ kind: "solid", x: wx + nx * 0.2, y: yWin + 0.62, z: wz + nz * 0.2, tx, tz, nx, nz, hw: 0.48, hh: 0.12, hd: 0.15, seed, dress, label: "a flower box" });
+    } else if (r < rule.windowbox + rule.ac) {
+      this.props.push({ kind: "ac", x: wx + nx * 0.32, y: yWin + 0.55, z: wz + nz * 0.32, tx, tz, nx, nz, hw: 0.38, hh: 0.24, hd: 0.3, seed, blows: h01(seed, 3) < 0.25 });
+    } else if (r < rule.windowbox + rule.ac + rule.cat) {
+      this.props.push({ kind: "cat", x: wx + nx * 0.25, y: yWin + 0.85, z: wz + nz * 0.25, tx, tz, nx, nz, hw: 0.2, hh: 0.2, hd: 0.2, seed });
     }
   }
 
@@ -113,8 +140,8 @@ export class Facades {
         const tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx;
         for (let a = 12; a < L - 8; a += 14) {
           const r = h01(Math.round(ax * 10 + az), Math.round(a));
-          if (r > 0.45) continue;
           const cx = ax + tx * a, cz = az + tz * a;
+          if (r > (inHeroBlock(cx, cz) ? 0.8 : 0.45)) continue;
           // find the walls either side
           let left = 0, right = 0;
           for (let s = 1; s < 14 && !left; s += 0.5) if (city.buildingAt(cx + nx * s, cz + nz * s)) left = s;
