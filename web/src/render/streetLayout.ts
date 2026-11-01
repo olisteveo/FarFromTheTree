@@ -13,6 +13,7 @@
 // (its "front") to (sin rot, cos rot); its local +X becomes (cos rot, -sin rot).
 // Everything is deterministic (hashes of the data), so every run sees the same street.
 
+import { SIGNAL, signalState, type SignalNode } from "../world/signals";
 import { Grid, inPoly, type CityData, type Poly } from "../world/data";
 import { Traffic, VEHICLE_SIZE, type VehicleKind } from "../world/traffic";
 import { StreetLife } from "../world/streetlife";
@@ -76,6 +77,8 @@ export interface StreetLayout {
   items: StreetItem[];
   plates: Plate[];
   lenses: Lens[];
+  /** the signalled junctions, for the traffic */
+  signals: SignalNode[];
   parked: Parked[];
   colliders: StreetCollider[];
   /** street names used on the blades (plate cells are "name:<index>") */
@@ -91,20 +94,7 @@ export interface StreetLayout {
 
 export interface StreetLayoutOptions { traffic?: Traffic; life?: StreetLife; blockers?: Blockers; under?: Underground }
 
-/** The signal cycle (seconds): see signalState. */
-export const SIGNAL = { cycle: 64, green: 27, amber: 3, allRed: 2, walk: 17 };
-
-/** What a signal shows at time t: for a group, the phase within the cycle. Shared with the shader in streetFurniture.ts. */
-export function signalState(t: number, group: number, offset: number): { vehicle: 0 | 1 | 2; walk: 0 | 1 | 2 } {
-  const C = SIGNAL.cycle, half = C / 2;
-  const p = (((t + offset) % C) + C) % C;
-  const q = group === 0 ? p : (p + half) % C; // the other group runs half a cycle later
-  const vehicle = q < SIGNAL.green ? 2 : q < SIGNAL.green + SIGNAL.amber ? 1 : 0;
-  // pedestrians crossing a street of this group walk while the *other* group has green
-  const o = (q + half) % C;
-  const walk = o < SIGNAL.walk ? 2 : o < SIGNAL.green + SIGNAL.amber ? 1 : 0; // 2 walk, 1 flashing hand, 0 hand
-  return { vehicle: vehicle as 0 | 1 | 2, walk: walk as 0 | 1 | 2 };
-}
+export { SIGNAL, signalState };
 
 // ------------------------------------------------------------------ helpers
 
@@ -447,11 +437,21 @@ export function streetLayout(city: CityData, opts: StreetLayoutOptions = {}): St
 
   mark('corners');
   // ================================================================== corners: signals, signs, baskets, mailboxes, carts
-  const groupOf = (n: Node, a: Arm) => { const m = n.arms[0]; return Math.abs(a.tx * m.tx + a.tz * m.tz) > 0.6 ? 0 : 1; };
+  // group 0 is the main street through the junction, the widest: it gets the longer green
+  const majorOf = (n: Node) => n.arms.reduce((m, a) => (a.w > m.w ? a : m), n.arms[0]);
+  const groupOf = (n: Node, a: Arm) => { const m = majorOf(n); return Math.abs(a.tx * m.tx + a.tz * m.tz) > 0.6 ? 0 : 1; };
   const POLE_H = 6.9;
+  // Avenues are timed like the real ones: a green wave at about 10 m/s the way the avenue's traffic runs, so a car keeping
+  // up meets green after green. A greener light further along means its phase runs later, hence the minus for uptown.
+  const signals: SignalNode[] = crossings.map((n, ni) => {
+    const major = majorOf(n);
+    const along = n.arms.find((a) => Math.abs(a.tx * major.tx + a.tz * major.tz) > 0.6 && a.inbound !== a.outbound);
+    const uptown = along ? (along.inbound ? along.tz < 0 : along.tz > 0) : true;
+    return { x: n.x, z: n.z, offset: ((uptown ? -1 : 1) * n.z) / 10 + h01(ni, 5) * 1.5, refX: major.tx, refZ: major.tz, heads: [] };
+  });
 
   crossings.forEach((n, ni) => {
-    const offset = n.z / 13 + h01(ni, 5) * 6; // a loose green wave uptown
+    const offset = signals[ni].offset; // a loose green wave uptown
     // busy corners: close to the route in the districts where people stop for a hot dog
     const nearR = city.route.nearest(n.x, n.z);
     const busyNode = nearR.d < 60 && /fidi|flatiron|midtown|columbus|village/.test(city.district(nearR.s).id);
@@ -512,7 +512,9 @@ export function streetLayout(city: CityData, opts: StreetLayoutOptions = {}): St
         count("oneway");
       }
     }
-    // vehicle signals: for each street arriving here, heads on a mast arm from the far-right corner
+    // vehicle signals: every street arriving here gets heads on a mast arm reaching out over its lanes, from the far-right
+    // corner if it has a pole (any pole across the junction if not, or a post of its own), and a repeater on the pole at
+    // eye level for whoever's at the stop line
     for (const a of n.arms) {
       if (!a.inbound) continue;
       const vx = -a.tx, vz = -a.tz, rx = -vz, rz = vx; // travel direction and its right
@@ -523,26 +525,61 @@ export function streetLayout(city: CityData, opts: StreetLayoutOptions = {}): St
         const f = dx * vx + dz * vz, s = dx * rx + dz * rz;
         if (f > 0.5 && s > 0.5 && f + s > bs) { bs = f + s; best = c; }
       }
-      if (!best) continue;
-      const [px, pz] = best.pole!;
-      // the arm reaches left across the lanes
-      const ax = -rx, az = -rz;
-      const len = Math.max(3, Math.min(10, a.w * (a.inbound && a.outbound ? 0.42 : 0.72)));
-      const ar = rotTo(ax, az);
-      put("mast_arm", px, SW + 6.15, pz, ar, { sz: len });
-      box("signal arm", px + ax * len / 2, SW + 6.15, pz + az * len / 2, 0.09, 0.1, len / 2, ar);
-      count("mast_arm");
-      const g = groupOf(n, a);
-      const heads = len > 6 ? [0.45, 0.92] : [0.82];
-      for (const f of heads) {
-        const hx = px + ax * len * f, hz = pz + az * len * f;
-        const r = rotTo(-vx, -vz); // facing the oncoming drivers
-        put("signal_head", hx, SW + 5.45, hz, r);
-        box("traffic signal", hx, SW + 5.45, hz, 0.2, 0.55, 0.2, r);
-        const [lx, lz] = at(hx, hz, r, 0, 0.16);
-        for (let li = 0; li < 3; li++) lenses.push({ x: lx, y: SW + 5.45 + (1 - li) * 0.33, z: lz, rot: r, size: 0.27, kind: li, group: g, offset });
-        count("signal_head");
+      let pole: [number, number] | null = best ? best.pole! : null;
+      if (!pole) {
+        // no far-right corner to use: a post of its own, past the junction on the right of the lanes
+        for (const out of [a.w / 2 + 0.8, a.w / 2 + 1.5, a.w / 2 + 2.4]) for (const on of [n.r + 1, n.r + 3, n.r + 6, n.r - 2]) {
+          if (pole) break;
+          const x = n.x + vx * on + rx * out, z = n.z + vz * on + rz * out;
+          if (onWalk(x, z) && free(x, z, 0.5)) {
+            pole = [x, z];
+            claim(x, z, 0.55);
+            put("signal_pole", x, SW, z, rotAlong(vx, vz));
+            cyl("signal pole", x, z, 0, POLE_H, 0.15);
+            count("signal_pole");
+          }
+        }
       }
+      if (!pole) {
+        // the corner's taken or there's no sidewalk: whichever pole here is most in the driver's view
+        let view = -1e9;
+        for (const c of corners) {
+          if (!c.pole) continue;
+          const dx = c.pole[0] - n.x, dz = c.pole[1] - n.z, f = dx * vx + dz * vz;
+          if (f > view) { view = f; pole = c.pole; }
+        }
+      }
+      if (!pole) continue;
+      const [px, pz] = pole;
+      const st = raw.streets[a.si], lanes = Math.min(4, Math.max(1, st.l)), step = Math.min(3.3, st.w / lanes);
+      // the lane centres, right of the street's centre as positive (as traffic.ts drives them)
+      const nl = a.outbound ? Math.max(1, Math.floor(lanes / 2)) : lanes;
+      const laneAt = Array.from({ length: nl }, (_, k) => (a.outbound ? (k + 0.5) * step : (k - (nl - 1) / 2) * step));
+      const poleRight = (px - n.x) * rx + (pz - n.z) * rz;
+      // the arm reaches left across the lanes: a head over each, three at most (the outer lanes, then the middle)
+      const reach = laneAt.map((o) => poleRight - o).filter((d) => d > 0.6 && d < 16).sort((p, q) => p - q);
+      const spread = reach.length > 3 ? [reach[0], reach[reach.length >> 1], reach[reach.length - 1]] : reach;
+      const ax = -rx, az = -rz, ar = rotTo(ax, az);
+      const g = groupOf(n, a), r = rotTo(-vx, -vz); // the heads face the oncoming drivers
+      const head = (hx: number, hy: number, hz: number) => {
+        put("signal_head", hx, hy, hz, r);
+        const [lx, lz] = at(hx, hz, r, 0, 0.16);
+        for (let li = 0; li < 3; li++) lenses.push({ x: lx, y: hy + (1 - li) * 0.33, z: lz, rot: r, size: 0.27, kind: li, group: g, offset });
+        count("signal_head");
+      };
+      if (spread.length) {
+        const len = spread[spread.length - 1] + 0.5;
+        put("mast_arm", px, SW + 6.15, pz, ar, { sz: len });
+        box("signal arm", px + ax * len / 2, SW + 6.15, pz + az * len / 2, 0.09, 0.1, len / 2, ar);
+        count("mast_arm");
+        for (const d of spread) {
+          const hx = px + ax * d, hz = pz + az * d;
+          head(hx, SW + 5.45, hz);
+          box("traffic signal", hx, SW + 5.45, hz, 0.2, 0.55, 0.2, r);
+        }
+      }
+      head(px - vx * 0.28, SW + 3.2, pz - vz * 0.28);
+      signals[ni].heads.push({ vx, vz, group: g });
     }
     // the corner's other furniture: wire baskets, mailboxes, newsstands, food carts
     corners.forEach((c, ci) => {
@@ -1074,5 +1111,5 @@ export function streetLayout(city: CityData, opts: StreetLayoutOptions = {}): St
   Object.assign(stats, tm);
   stats.items = items.length; stats.plates = plates.length; stats.lenses = lenses.length; stats.parkedTotal = parked.length; stats.colliders = colliders.length;
   stats.intersections = crossings.length;
-  return { items, plates, lenses, parked, colliders, names, pools, figures, courts, stats };
+  return { items, plates, lenses, parked, colliders, names, pools, figures, courts, stats, signals };
 }

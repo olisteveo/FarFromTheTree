@@ -27,6 +27,12 @@ const merge = (parts: THREE.BufferGeometry[]) => mergeGeometries(parts)!;
 /** Stand-ins, built at unit scale around their own origin (y = 0 at the base). Facade pieces: x along the wall, z out of it. */
 function standIns(): Record<string, () => THREE.BufferGeometry> {
   return {
+    // what people keep on a fire escape (world/heroBlock.ts). On the landing, x along the wall, z out of it
+    fe_plants: () => merge([0, 1, 2].flatMap((i) => [cyl(0.13, 0.1, 0.22, -0.5 + i * 0.5, 0, i % 2 ? -0.12 : 0.12, 0x8a4a30, 8), vc(new THREE.IcosahedronGeometry(0.2 + (i % 2) * 0.06, 1).translate(-0.5 + i * 0.5, 0.36, i % 2 ? -0.12 : 0.12), [0x4d6a34, 0x5d7a3a, 0x3f5a2e][i])])),
+    fe_canes: () => merge([bx(0.9, 0.2, 0.26, 0, 0, 0, 0x5a4a3a), ...[-0.3, 0, 0.3].flatMap((x, i) => [cyl(0.01, 0.01, 1.1, x, 0.2, 0, 0x8a7a50, 4), vc(new THREE.IcosahedronGeometry(0.09, 0).translate(x + 0.03, 0.6 + i * 0.12, 0), 0x6a6a30), vc(new THREE.IcosahedronGeometry(0.05, 0).translate(x - 0.04, 0.42 + i * 0.1, 0.03), 0xa03020)])]),
+    fe_bike: () => merge([-0.5, 0.5].map((x) => vc(new THREE.TorusGeometry(0.31, 0.018, 5, 18).translate(x, 0.33, 0), 0x18181a)).concat([bx(0.8, 0.03, 0.03, 0, 0.56, 0, 0x2a5a8a), bx(0.03, 0.42, 0.03, -0.1, 0.26, 0, 0x2a5a8a), bx(0.03, 0.42, 0.03, 0.42, 0.34, 0, 0x2a5a8a), bx(0.22, 0.04, 0.09, -0.12, 0.7, 0, 0x18181a), bx(0.04, 0.04, 0.42, 0.42, 0.78, 0, 0x18181a)])),
+    fe_boxes: () => merge([bx(0.46, 0.34, 0.36, -0.1, 0, -0.02, 0xa98a5e), bx(0.36, 0.26, 0.3, -0.06, 0.34, -0.02, 0x8f744c), bx(0.3, 0.42, 0.3, 0.42, 0, 0.02, 0x3f4a55)]),
+    fe_chair: () => merge([bx(0.4, 0.04, 0.4, 0, 0.42, 0, 0xb5823c), bx(0.4, 0.4, 0.04, 0, 0.46, -0.18, 0xb5823c), ...[-0.17, 0.17].flatMap((x) => [-0.17, 0.17].map((z) => bx(0.03, 0.42, 0.03, x, 0, z, 0x2a2a2a))), bx(0.12, 0.14, 0.12, 0.42, 0, 0.1, 0x8a2a2a)]),
     water_tower: () => merge([
       cyl(1, 1, 3.6, 0, 2.6, 0, 0x6e4c34, 16), vc(new THREE.ConeGeometry(1.08, 0.9, 16).translate(0, 6.65, 0), 0x5a3c28),
       ...[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, c]) => bx(0.12, 2.6, 0.12, a * 0.7, 0, c * 0.7, 0x3a3a3a)),

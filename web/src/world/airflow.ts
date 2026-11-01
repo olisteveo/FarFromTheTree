@@ -161,6 +161,7 @@ export class Airflow {
     this.parkLayout = parkLayout(city);
     this.parkSolids = colliderGrid(this.parkLayout.colliders);
     this.streetLayout = streetLayout(city, { traffic: this.traffic, life: this.life, blockers: this.blockers, under: this.under });
+    this.traffic.signals = this.streetLayout.signals;
     this.streetSolids = colliderGrid(this.streetLayout.colliders);
     // the sidewalk crowd (block loops, schedules, groups) needs the furniture to step round it
     // (people step round the subway stairs' openings too: they walked over the holes, in mid-air)

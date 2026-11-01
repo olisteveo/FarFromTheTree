@@ -19,7 +19,7 @@ function canvasTex(size: number, draw: (c: CanvasRenderingContext2D, s: number) 
   const t = new THREE.CanvasTexture(cv);
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
+  t.anisotropy = 16;
   return t;
 }
 let sd = 7;
@@ -122,7 +122,7 @@ export class GroundMesh {
    *  opts.skipTree: spots where ground.ts must not plant a bare tree (e.g. Central Park, which plants its own).
    *  opts.holes: openings to cut out of the street surfaces (the subway stairs and vents: subwayEntrances.streetOpenings);
    *  opts.waterHoles: where the harbour plane (under the whole city) must not show inside a shaft (deepOpenings). */
-  constructor(city: CityData, opts: { base?: string; skipTree?: (x: number, z: number) => boolean; holes?: Rect[]; waterHoles?: Rect[] } = {}) {
+  constructor(city: CityData, opts: { base?: string; skipTree?: (x: number, z: number) => boolean; holes?: Rect[]; waterHoles?: Rect[]; detail?: boolean } = {}) {
     const raw = city.raw;
     // the subway's openings are cut out of every street surface, so you really go down into them
     this.holes = opts.holes ?? [];
@@ -148,9 +148,9 @@ export class GroundMesh {
     this.root.add(this.water);
 
     // the street surfaces: Tesseract-designed tiles shaded in world space (groundArt.ts)
-    const gt = loadGroundTextures(opts.base);
-    const walk = (tint: number, wet = 1) => surfaceMaterial({ a: gt.walkA, an: gt.walkAN, b: gt.walkB, bn: gt.walkBN, scaleA: 6, scaleB: 6, macro: gt.macro, mode: 0, shareB: 0.4, wet, tint });
-    const asphalt = (tint: number, offset: number) => surfaceMaterial({ a: gt.roadA, an: gt.roadAN, b: gt.roadB, bn: gt.roadBN, scaleA: 8, scaleB: 11, macro: gt.macro, mode: 1, mask: [0, 1, 0], maskRange: [0.4, 0.62], wet: 1, tint, polygonOffset: offset, normalScale: 0.9 });
+    const gt = loadGroundTextures(opts.base, opts.detail ?? true);
+    const walk = (tint: number, wet = 1) => surfaceMaterial({ a: gt.walkA, an: gt.walkAN, b: gt.walkB, bn: gt.walkBN, scaleA: 6, scaleB: 6, macro: gt.macro, mode: 0, shareB: 0.4, wet, tint, street: { kind: "walk", maps: gt.street } });
+    const asphalt = (tint: number, offset: number) => surfaceMaterial({ a: gt.roadA, an: gt.roadAN, b: gt.roadB, bn: gt.roadBN, scaleA: 8, scaleB: 11, macro: gt.macro, mode: 1, mask: [0, 1, 0], maskRange: [0.4, 0.62], wet: 1, tint, polygonOffset: offset, normalScale: 0.9, street: { kind: "road", maps: gt.street } });
     const kerbMat = atlasMaterial(gt.strips, gt.stripsN, {});
     const gutterMat = atlasMaterial(gt.strips, gt.stripsN, { transparent: true, offset: -2 });
     const paintMat = atlasMaterial(gt.paint, gt.paintN, { transparent: true, offset: -3, vertexColors: true, normalScale: 0.6 });
@@ -192,7 +192,7 @@ export class GroundMesh {
     const siteTex = new THREE.TextureLoader().load(`${opts.base ?? "./"}models/buildings_site_dirt.webp`);
     siteTex.wrapS = siteTex.wrapT = THREE.RepeatWrapping;
     siteTex.colorSpace = THREE.SRGBColorSpace;
-    siteTex.anisotropy = 8;
+    siteTex.anisotropy = 16;
     const dirt = new THREE.Mesh(merge(raw.sites.map((s) => flatPoly(s.p, 0.1))), new THREE.MeshStandardMaterial({ map: T(siteTex, 8), roughness: 1 }));
     dirt.receiveShadow = true;
     this.root.add(dirt);

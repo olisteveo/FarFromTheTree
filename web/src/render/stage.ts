@@ -13,6 +13,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { N8AOPass } from "n8ao";
 import { Warmup } from "./warmup";
+import { sunDirection } from "./sun";
 
 /** Contrast-adaptive sharpening (after AMD FidelityFX CAS): sharpens edges in proportion to how much local
  *  headroom there is, so flat areas don't get grainy and bright edges don't ring. It's the last pass on PC;
@@ -39,6 +40,10 @@ const CasShader = {
 };
 
 export type Quality = "low" | "medium" | "high";
+
+/** The sky's light in the shade. This low sun leaves half of every street out of direct light, and that half has to
+ *  read as cold blue air, not black. (main.ts sets the hemisphere from it each frame.) */
+export const FILL = 1.05;
 
 const GradeShader = {
   uniforms: {
@@ -248,7 +253,7 @@ export class Stage {
   // nearby surfaces flicker against each other there
   readonly camera = new THREE.PerspectiveCamera(72, 1, 0.15, 16000);
   readonly sun = new THREE.DirectionalLight(0xffd2a0, 3.4);
-  readonly hemi = new THREE.HemisphereLight(0xa8b4c8, 0x4a4038, 0.6);
+  readonly hemi = new THREE.HemisphereLight(0xa8b4c8, 0x5a4e44, FILL);
   readonly sunDir = new THREE.Vector3();
   readonly fog: THREE.FogExp2;
   private composer: EffectComposer;
@@ -276,7 +281,7 @@ export class Stage {
     this.maxRatio = Math.min(window.devicePixelRatio, quality === "high" ? 1.5 : 1);
     this.renderer.setPixelRatio(this.maxRatio);
     this.renderer.toneMapping = THREE.AgXToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = quality !== "low";
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     // the shadow map is drawn once a frame (render() asks for it), not by every scene render: N8AO draws the
@@ -284,10 +289,7 @@ export class Stage {
     // 4096 px shadow map, the last two with only the transparent objects in it
     this.renderer.shadowMap.autoUpdate = false;
 
-    // the low November sun, south-west (true azimuth ~235 deg, 11 deg up), which in the
-    // grid frame (avenues along +z) is behind and to the left of a player heading uptown
-    const az = THREE.MathUtils.degToRad(247 - 28.9), el = THREE.MathUtils.degToRad(11);
-    this.sunDir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)).normalize(); // east is -x
+    sunDirection(this.sunDir);
     installFog(this.sunDir, this.camera.far); // before any material compiles
 
     this.sky = new THREE.Mesh(new THREE.SphereGeometry(5000, 32, 16), skyMaterial(this.sunDir, quality === "low" ? 4 : 5));
@@ -303,7 +305,7 @@ export class Stage {
     ground.position.y = -2;
     env.add(ground);
     this.scene.environment = pmrem.fromScene(env, 0.03).texture;
-    this.scene.environmentIntensity = 0.5;
+    this.scene.environmentIntensity = 0.75;
 
     this.sun.castShadow = quality !== "low";
     const map = quality === "high" ? 4096 : 2048;
@@ -431,6 +433,7 @@ export class Stage {
     this.sky.position.copy(this.camera.position);
     this.sky.visible = !under; // no daylight leaking through anything down there
     this.scene.background = under ? _underBg : null;
+    this.scene.environmentIntensity = 0.75 - 0.25 * u; // (the tunnels keep their dark: the sky's reflection is for up here)
     (this.sky.material as THREE.ShaderMaterial).uniforms.uTime.value = t;
     const r = under ? 0 : this.rain;
     (this.sky.material as THREE.ShaderMaterial).uniforms.uRain.value = r;

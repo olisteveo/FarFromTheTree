@@ -12,6 +12,7 @@ import { inPoly, ringArea } from "../world/data";
 import type { FacadeProp } from "../world/facades";
 import type { ArchitectureKit } from "./architectureKit";
 import type { FacadeQuality } from "./facades";
+import { isSkateLot } from "../world/heroBlock";
 import { loadGaps, type GapsFile } from "./architectureInfill";
 import { kitBase } from "./architectureModels";
 
@@ -75,6 +76,9 @@ export class LotsView {
       const fronts = es.filter((e) => e.front);
       const main = (fronts.length ? fronts : es).reduce((a, b) => (b.L > a.L ? b : a));
       (lot.kind === "parking" ? asphalt : dirt).push(this.surface(lot.p, main));
+      if (isSkateLot(cx, cz)) {
+        continue; // render/skateSpot.ts draws the rest: it's open to the street, so the lot only keeps its ground
+      }
       if (lot.kind === "parking") this.parking(lot.p, es, main, lot.k);
       else this.construction(lot.p, es, lot.k, true);
     }
@@ -87,7 +91,7 @@ export class LotsView {
       const t = new THREE.TextureLoader().load(`${kitBase()}models/${name}`);
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
       t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 8;
+      t.anisotropy = 16;
       return t;
     };
     const add = (list: THREE.BufferGeometry[], tex: string, rough: number) => {

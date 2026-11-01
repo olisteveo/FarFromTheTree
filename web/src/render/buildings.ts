@@ -17,7 +17,10 @@ import {
 } from "./facades";
 import { ArchitectureKit } from "./architectureKit";
 import { facadeRegistry } from "./facadeProps";
+import { householdOf, inHeroBlock, pick } from "../world/heroBlock";
 import { loadKitModels } from "./architectureModels";
+import { sunDirection } from "./sun";
+import { REFLECT_GLSL } from "./reflections";
 import { LotsView } from "./architectureLots";
 import { isModelled } from "../world/modelled";
 
@@ -31,6 +34,18 @@ export const DEBUG = { value: 0 };
  *  4x4 dither (pixel discarded when bayer(gl_FragCoord) < fade). farCity.ts can draw the complement
  *  (keep a pixel only when bayer < fade) for a seamless hand-over. */
 export const DRAW_EDGE = { value: new THREE.Vector2(900, 60) };
+/** The weathering pass on the walls (tools/buildings/wall_wear.mjs): 0 turns it off, to compare look and cost. */
+export const WEAR = { value: 1 };
+
+/** Where each district's shops are on the sheet, [first, count]: keep in step with tools/buildings/shop_fronts.mjs. */
+const SHOP_SHEET = { generic: "vec2(0.0, 32.0)", chinatown: "vec2(32.0, 10.0)", soho: "vec2(42.0, 10.0)", midtown: "vec2(52.0, 8.0)", lobby: "vec2(60.0, 4.0)" };
+
+function dataTexture(name: string): THREE.Texture {
+  const t = new THREE.TextureLoader().load(`${location.pathname.includes("/tools/") ? "/" : "./"}textures/buildings/${name}.webp`);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
 
 export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ roughness: 0.82, metalness: 0, envMapIntensity: 1 });
@@ -41,7 +56,16 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
   tex.onSwap = swap;
   tex.ready.then(swap);
   const interior = tex.quality !== "low";
+  const wearMaps = interior ? { uWearMap: { value: dataTexture("wear") }, uGrain: { value: dataTexture("grain") }, uSun: { value: sunDirection() }, uShopSheet: { value: null as THREE.Texture | null }, uShopOn: { value: 0 } } : null;
+  if (wearMaps) {
+    // tools/buildings/shop_fronts.mjs. Until it arrives (and on low quality) the older storefront layers show
+    const sheet = new THREE.TextureLoader().load(`${location.pathname.includes("/tools/") ? "/" : "./"}textures/buildings/shops.webp`, () => { wearMaps.uShopOn.value = 1; });
+    sheet.colorSpace = THREE.SRGBColorSpace;
+    sheet.anisotropy = 16;
+    wearMaps.uShopSheet.value = sheet;
+  }
   m.onBeforeCompile = (sh) => {
+    if (wearMaps) Object.assign(sh.uniforms, wearMaps, { uWear: WEAR });
     sh.uniforms.uAlb = uAlb;
     sh.uniforms.uNor = uNor;
     sh.uniforms.uGrid = { value: grid };
@@ -57,7 +81,7 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
         vTanV = normalize((viewMatrix * vec4(aTan.x, 0.0, aTan.y, 0.0)).xyz);`);
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <common>", `#include <common>
-        ${interior ? "#define FFTT_INTERIOR 1" : ""}
+        ${interior ? "#define FFTT_INTERIOR 1\n#define FFTT_WEAR 1\nuniform sampler2D uWearMap; uniform sampler2D uGrain; uniform float uWear; uniform vec3 uSun; uniform sampler2D uShopSheet; uniform float uShopOn;" : ""}
         precision highp sampler2DArray;
         uniform sampler2DArray uAlb; uniform sampler2DArray uNor; uniform vec4 uGrid[${LAYERS}]; uniform float uDebug; uniform vec2 uEdge;
         float bayer4(vec2 p) { ivec2 q = ivec2(mod(p, 4.0)); int i = q.x + q.y * 4;
@@ -100,7 +124,19 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
           // deeper is darker, and the light from the window falls off
           c *= mix(1.0, 0.45, clamp(hit.z / depth, 0.0, 1.0));
           return c;
-        }`)
+        }
+#ifdef FFTT_WEAR
+        ${REFLECT_GLSL}
+        /** What this pane shows, and how much of it (F). No two panes hang quite flat: that's wobble. */
+        vec3 mirrorOf(vec3 viewPos, vec3 viewNormal, vec2 cell, float wobble, float F0, float Fmax, out float F) {
+          mat3 toWorld = transpose(mat3(viewMatrix));
+          vec3 wV = normalize(toWorld * normalize(viewPos)), wN = normalize(toWorld * normalize(viewNormal));
+          vec3 wP = cameraPosition - wV * length(viewPos);
+          vec3 lean = vec3(h21(cell + 1.7), h21(cell + 4.3), h21(cell + 7.9)) - 0.5;
+          F = min(Fmax, F0 + (1.0 - F0) * pow(1.0 - max(dot(wN, wV), 0.0), 4.0));
+          return reflCity(wP, normalize(reflect(-wV, normalize(wN + lean * wobble)))) * (0.93 + 0.14 * h21(cell + 11.3));
+        }
+#endif`)
       .replace("#include <color_fragment>", `#include <color_fragment>
         if (bayer4(gl_FragCoord.xy) < smoothstep(uEdge.x - uEdge.y, uEdge.x, length(vViewPosition))) discard;
         {
@@ -135,11 +171,12 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
             if (shop) {
               float uu = vUvm.x + vShop.z;
               float tile = floor(uu / ${SHOP_W.toFixed(1)});
-              layer = vShop.x + min(vShop.y - 1.0, floor(h21(vec2(tile, SEED)) * vShop.y));
+              float shopCount = floor(vShop.y), bayW = 3.0 + fract(vShop.y) * 4.0; // (each wall fits a whole number of bays: see edge building)
+              layer = vShop.x + min(shopCount - 1.0, floor(h21(vec2(tile, SEED)) * shopCount));
               tuv = vec2(uu / ${SHOP_W.toFixed(1)}, vY / gH);
               base = tuv;
               g = vec4(2.0, 1.0, 0.0, 3.0);
-              cs = vec2(4.5, gH); pc = vec2(mod(uu, 4.5), vY); cell = vec2(floor(uu / 4.5), -1.0);
+              cs = vec2(bayW, gH); pc = vec2(mod(uu, bayW), vY); cell = vec2(floor(uu / bayW), -1.0);
             } else {
               layer = vInfo.w;
               g = uGrid[int(layer + 0.5)];
@@ -157,10 +194,77 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
             vec2 dx = dFdx(base), dy = dFdy(base);
             vec4 a = textureGrad(uAlb, vec3(tuv, layer), dx, dy);
             vec4 n = textureGrad(uNor, vec3(tuv, layer), dx, dy);
+#ifdef FFTT_WEAR
+            bool sheetShop = shop && uShopOn * uWear > 0.5 && abs(vShop.x - ${SHOP_LAYERS.residential[0].toFixed(1)}) > 0.5; // (a stoop stays a stoop)
+            if (sheetShop) {
+              // every shop its own business, from the ranges for this district and sometimes the general run of them
+              float kindId = floor(vShop.x + 0.5);
+              vec2 range = abs(kindId - ${SHOP_LAYERS.chinatown[0].toFixed(1)}) < 0.5 ? ${SHOP_SHEET.chinatown} : abs(kindId - ${SHOP_LAYERS.soho[0].toFixed(1)}) < 0.5 ? ${SHOP_SHEET.soho} : abs(kindId - ${SHOP_LAYERS.midtown[0].toFixed(1)}) < 0.5 ? ${SHOP_SHEET.midtown} : abs(kindId - ${SHOP_LAYERS.lobby[0].toFixed(1)}) < 0.5 ? ${SHOP_SHEET.lobby} : ${SHOP_SHEET.generic};
+              bool lobbyKind = range.y < 5.0;
+              float mixR = h21(cell + SEED * 5.1 + 2.0);
+              if (!lobbyKind && mixR < 0.35) range = ${SHOP_SHEET.generic};
+              float idx = range.x + floor(h21(cell + SEED * 9.7) * range.y);
+              // never the same business twice running
+              float prev = range.x + floor(h21(cell - vec2(1.0, 0.0) + SEED * 9.7) * range.y);
+              if (idx == prev) idx = range.x + mod(idx - range.x + 1.0, range.y);
+              vec2 local = vec2(pc.x / cs.x, clamp(vY / gH, 0.0, 1.0));
+              const float G = ${(8 / 512).toFixed(6)};
+              vec2 corner = vec2(mod(idx, 8.0), floor(idx / 8.0));
+              vec2 scaleUv = vec2(1.0 - 2.0 * G) / 8.0;
+              vec2 dlx = dFdx(vec2((vUvm.x + vShop.z) / cs.x, vY / gH)) * scaleUv, dly = dFdy(vec2((vUvm.x + vShop.z) / cs.x, vY / gH)) * scaleUv;
+              #define SHEET_UV(L) vec2((corner.x + G + clamp(L.x, 0.0, 1.0) * (1.0 - 2.0 * G)) / 8.0, 1.0 - (corner.y + 1.0 - G - clamp(L.y, 0.0, 1.0) * (1.0 - 2.0 * G)) / 8.0)
+              a = textureGrad(uShopSheet, SHEET_UV(local), dlx, dly);
+              n = vec4(0.5, 0.5, 0.74, 1.0);
+              if (a.a > 0.72 && length(vViewPosition) < 140.0) {
+                // the display sits back behind the glass: look through to where this line of sight lands 35 cm in
+                vec3 V = normalize(vViewPosition), N = normalize(vNormal), T = normalize(vTanV), B = normalize(vUpV);
+                vec3 rd = -V;
+                vec2 slide = 0.35 * vec2(dot(rd, T), dot(rd, B)) / max(0.25, -dot(rd, N));
+                vec4 back = textureGrad(uShopSheet, SHEET_UV((local + slide / vec2(cs.x, gH))), dlx, dly);
+                // landing on the frame means we're looking at the reveal: dark, not the frame's paint
+                a.rgb = back.a > 0.72 ? back.rgb : a.rgb * 0.2;
+              }
+            }
+#endif
             float tintW = 1.0 - smoothstep(0.53, 0.6, a.a);
             float glassW = smoothstep(0.7, 0.76, a.a);
             float clearW = smoothstep(0.86, 0.95, a.a);
             vec3 wall = a.rgb * mix(vec3(1.0), vTint, tintW);
+#ifdef FFTT_WEAR
+            vec2 wearGrain = vec2(0.0);
+            float wearDark = 1.0;
+            vec3 limeCol = vec3(0.0); float limeW = 0.0;
+            if (uWear > 0.5) {
+              float near = 1.0 - smoothstep(420.0, 760.0, length(vViewPosition)); // gone before the far city takes over
+              vec2 wp = vec2(vUvm.x + SEED * 137.0, vY + SEED * 53.0);
+              vec3 wBig = texture(uWearMap, wp / 19.0).rgb, wSmall = texture(uWearMap, wp.yx / 7.3 + 0.31).rgb;
+              vec3 grain = texture(uGrain, wp / 1.7).rgb;
+              // the frames and stone trim are painted by whoever owns the place: most white or cream, some not
+              float paint = fract(SEED * 5.77);
+              vec3 trimPaint = paint < 0.34 ? vec3(0.96, 0.94, 0.88) : paint < 0.52 ? vec3(0.78, 0.76, 0.70) : paint < 0.68 ? vec3(0.30, 0.38, 0.32) : paint < 0.82 ? vec3(0.42, 0.20, 0.17) : paint < 0.92 ? vec3(0.17, 0.18, 0.20) : vec3(0.60, 0.48, 0.34);
+              float trimW = (1.0 - tintW) * (1.0 - smoothstep(0.66, 0.7, a.a));
+              wall = mix(wall, a.rgb * trimPaint * 1.12, trimW * near * (shop || g.w > 5.0 ? 0.0 : 1.0));
+              // a party wall has had no one looking after it for a hundred years
+              float party = step(${PARTY_LAYERS.brick.toFixed(1)}, layer + 0.5) * step(layer, ${PARTY_LAYERS.parge.toFixed(1)} + 0.5);
+              float age = (0.45 + 0.75 * vShop.w + party * 0.55) * near;
+              float streaks = max(wBig.r, wBig.r * 0.4 + wSmall.g * wSmall.r);
+              // what runs down from under each sill: a tongue the width of the window, fading toward the floor below
+              float sill = 0.9;
+              float under = sill - pc.y;
+              float sillStain = 0.0;
+              if (!shop && under > 0.0 && under < sill && party < 0.5) {
+                float across = abs(pc.x - cs.x * 0.5) / (cs.x * 0.3);
+                sillStain = (1.0 - smoothstep(0.7, 1.05, across)) * pow(1.0 - under / sill, 1.4) * (0.35 + 0.65 * wSmall.r + 0.4 * wBig.r) * (0.35 + 0.65 * h21(cell + 5.3));
+              }
+              wearDark = (1.0 - min(0.62, streaks * 0.55 * age)) * (1.0 - wBig.g * 0.3 * age) * (1.0 - sillStain * 0.5 * near);
+              wearDark *= 1.0 - 0.2 * near * h21(vec2(floor(vY / 2.2), floor(vUvm.x / 4.0)) + SEED) * smoothstep(0.55, 0.9, wSmall.g); // a repair that never matched
+              limeW = min(0.14, tintW * smoothstep(0.3, 1.0, wSmall.b) * (0.02 + 0.06 * smoothstep(6.0, 0.0, vY) + party * 0.03) * age); // a faint bloom: stronger reads as splashed paint
+              limeCol = vec3(0.74, 0.72, 0.65);
+              float gritAmt = tintW * (1.0 - glassW);
+              wall *= mix(1.0, 0.76 + grain.b * 0.48, gritAmt);
+              wearGrain = (grain.rg * 2.0 - 1.0) * 0.55 * gritAmt;
+            }
+#endif
             // weathering: dirt splashed up from the street, soot under the cornice, rain-washed streaks
             float dirt = vShop.w;
             float grime = mix(0.66, 1.0, smoothstep(0.0, 1.2, vY)) * mix(0.86, 1.0, smoothstep(1.0, 9.0, vY));
@@ -170,17 +274,32 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
             grime *= 0.93 + 0.12 * vnoise(vec2(vUvm.x * 0.06, vY * 0.05) + SEED);
             vec3 col = wall * mix(grime, 1.0, glassW * 0.6);
             vec3 nt = vec3(n.xy * 2.0 - 1.0, 0.0); nt.z = sqrt(max(0.0, 1.0 - dot(nt.xy, nt.xy)));
+#ifdef FFTT_WEAR
+            col = mix(mix(col, limeCol, limeW) * wearDark, col, glassW);
+            nt = normalize(vec3(nt.xy + wearGrain, nt.z));
+#endif
             gRough = n.b;
             gGlass = glassW;
             // lit windows: one random light per window bay
             float r = h21(cell + SEED);
             float lit = step(r, shop ? 0.85 : vMisc.y);
+#ifdef FFTT_WEAR
+            bool curtain = !shop && g.w > 5.0 && uWear > 0.5;
+            if (curtain) lit = step(r, vMisc.y * 0.35); // offices by day: most of it is reflection
+#endif
             vec3 lamp = mix(vec3(1.0, 0.58, 0.28), vec3(1.0, 0.82, 0.55), h21(cell * 1.7 + SEED));
             if (shop) {
               // shop interiors: a soft glow by day, a few brightly lit
               float on = step(h21(cell + SEED * 1.7), 0.35);
               gEm = a.rgb * glassW * (0.10 + 0.32 * on);
               col = mix(col, a.rgb * 0.45, glassW);
+#ifdef FFTT_WEAR
+              if (uWear > 0.5) {
+                float F;
+                vec3 seen = mirrorOf(vViewPosition, vNormal, cell, 0.035, 0.07, 0.8, F);
+                gEm = gEm * (1.0 - F) + seen * F * glassW;
+              }
+#endif
               gMetal = glassW * 0.1;
               gRough = mix(gRough, 0.12, glassW);
             } else {
@@ -192,12 +311,52 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
                 vec3 T = normalize(vTanV), B = normalize(vUpV);
                 vec3 rd = -V;
                 inside = room(pc, cs, vec3(dot(rd, T), dot(rd, B), dot(rd, N)), g.w * (0.8 + 0.5 * h21(cell + 2.3)), cell, lit);
+#ifdef FFTT_WEAR
+                if (uWear > 0.5 && g.w < 5.0) { // (not the office towers: on panes that size it's a patchwork)
+                  // what's hung in the window: every home's different, and it's the first thing you read from the street
+                  float which = h21(cell * 1.3 + SEED + 8.1), shade = h21(cell * 2.1 + SEED);
+                  vec3 cloth = shade < 0.4 ? vec3(0.82, 0.78, 0.68) : shade < 0.6 ? vec3(0.62, 0.64, 0.66) : shade < 0.75 ? vec3(0.55, 0.26, 0.20) : shade < 0.88 ? vec3(0.28, 0.36, 0.44) : vec3(0.70, 0.60, 0.34);
+                  float fy = pc.y / cs.y, cx = abs(pc.x - cs.x * 0.5) / cs.x;
+                  float hung = 0.0;
+                  if (which < 0.34) {
+                    // a roller blind or venetian, down to wherever it was left
+                    hung = step(0.86 - h21(cell + 3.9) * 0.56, fy);
+                    cloth *= 0.82 + 0.18 * step(0.5, fract(pc.y * 16.0));
+                  } else if (which < 0.62) {
+                    // curtains, drawn back to the sides or half closed
+                    float gap = 0.05 + 0.2 * h21(cell + 6.1);
+                    hung = smoothstep(gap, gap + 0.012, cx);
+                    cloth *= 0.8 + 0.2 * sin((pc.x + sin(fy * 9.0 + cell.x) * 0.012) * 58.0);
+                  }
+                  inside = mix(inside, cloth * (0.45 + 0.75 * lit), hung);
+                }
+#endif
               }
 #endif
               // daylight inside is dim; a lamp makes it glow
-              gEm = clearW * inside * mix(vec3(0.11), lamp * 0.85, lit) + (glassW - clearW) * a.rgb * lamp * lit * 0.55;
+              float roomK = 1.0;
+              vec3 glassEm = vec3(0.0);
+#ifdef FFTT_WEAR
+              float spandrel = 0.0;
+              if (uWear > 0.5) {
+                float F;
+                vec3 seen = mirrorOf(vViewPosition, vNormal, cell, curtain ? 0.028 : 0.05, curtain ? mix(0.14, 0.27, g.z) : 0.05, curtain ? 0.72 : 0.6, F);
+                float tone = fract(SEED * 3.91);
+                vec3 coat = !curtain ? vec3(1.0) : tone < 0.35 ? vec3(0.86, 0.96, 1.04) : tone < 0.6 ? vec3(0.88, 1.0, 0.94) : tone < 0.82 ? vec3(0.88, 0.9, 0.94) : vec3(1.02, 0.9, 0.78);
+                vec3 mirror = seen * coat;
+                glassEm = mirror * F * glassW;
+                roomK = (1.0 - F) * (curtain ? 0.34 : 1.0);
+                // the panels between floors are glass too, with nothing lit behind them
+                spandrel = (1.0 - glassW) * g.z * step(0.5, tintW + 1.0);
+                if (curtain) { col *= mix(1.0, 0.26, spandrel); glassEm += spandrel * mirror * F * 0.3; }
+              }
+#endif
+              gEm = glassEm + roomK * (clearW * inside * mix(vec3(0.11), lamp * 0.85, lit) + (glassW - clearW) * a.rgb * lamp * lit * 0.55);
               col = mix(col, a.rgb * mix(0.35, 0.12, clearW), glassW);
               gMetal = glassW * mix(0.12, 0.55, g.z);
+#ifdef FFTT_WEAR
+              if (uWear > 0.5) gMetal = glassW * 0.06; // the sky's already in glassEm: this leaves the sun's own glint
+#endif
               gRough = mix(gRough, mix(0.08, 0.04, g.z), clearW);
             }
             diffuseColor.rgb = col;
@@ -225,7 +384,7 @@ export function buildingMaterial(tex: FacadeTextures): THREE.MeshStandardMateria
       .replace("#include <opaque_fragment>", `#include <opaque_fragment>
         if (uDebug > 0.5) gl_FragColor = vec4(gDbg, 1.0);`);
   };
-  m.customProgramCacheKey = () => "fftt-building-2" + (interior ? "i" : "");
+  m.customProgramCacheKey = () => "fftt-building-5" + (interior ? "i" : "");
   return m;
 }
 
@@ -324,7 +483,7 @@ export type EdgeKind = "front" | "party" | "rear";
 
 export interface FrontEdge {
   b: Building; ax: number; az: number; bx: number; bz: number; tx: number; tz: number; nx: number; nz: number;
-  L: number; u0: number; y0: number; top: number; gH: number; ground: Ground; shopOff: number; kind: EdgeKind; tier: number; district: string;
+  L: number; u0: number; y0: number; top: number; gH: number; ground: Ground; shopOff: number; bayW: number; bays: number; kind: EdgeKind; tier: number; district: string;
 }
 
 /** The rooftop pieces the leaf can hit: half sizes along x, up, along z at scale 1 (from architectureKit), and
@@ -407,10 +566,14 @@ function addBuilding(g: GeoBuilder, city: CityData, b: Building, district: strin
         const front = kind === "front";
         const eg = tier.y0 > 0 || !front ? 0 : gH;
         const info = isParty ? [12, 12, 0, party] : [L.W, L.H, eg, layer];
-        const shop = isParty || !front || tier.y0 > 0 ? [0, 0, 0, dirt] : [shopFirst, shopCount, shopOff, dirt];
+        // a whole number of shops to the wall, about 4.5 m each, so no sign runs off the end. The bay width travels in the
+        // fraction of the count; the whole-bay shift keeps two walls of a building from opening with the same shops
+        const bays = Math.max(1, Math.round(Le / 4.5)), bayW = Math.max(3, Math.min(6.9, Le / bays));
+        const wallShift = (Math.floor(hash(b.seed + Math.round(u) * 7) * 64) * bayW) - u;
+        const shop = isParty || !front || tier.y0 > 0 ? [0, 0, 0, dirt] : [shopFirst, shopCount + (bayW - 3) / 4, wallShift, dirt];
         const wt = isParty ? partyTint : tint;
         g.quad([[ax, tier.y0, az], [bx, tier.y0, bz], [bx, top, bz], [ax, top, az]], [nx, 0, nz], [[u, tier.y0], [u + Le, tier.y0], [u + Le, top], [u, top]], [tx, tz], wt, info, misc, shop);
-        const e: FrontEdge = { b, ax, az, bx, bz, tx, tz, nx, nz, L: Le, u0: u, y0: tier.y0, top, gH: eg, ground: front && tier.y0 === 0 ? ground : "none", shopOff, kind, tier: ti, district };
+        const e: FrontEdge = { b, ax, az, bx, bz, tx, tz, nx, nz, L: Le, u0: u, y0: tier.y0, top, gH: eg, ground: front && tier.y0 === 0 ? ground : "none", shopOff, bayW, bays, kind, tier: ti, district };
         if (ri === 0 && kind !== "party") mine.push(e);
         if (ri === 0 && isParty) partyEdges.push(e);
         // the band over the shops: a projecting painted fascia cornice
@@ -753,6 +916,7 @@ export class BuildingsMesh {
     K.define("fire_escape", 220, true);
     K.define("fire_escape_top", 220, true);
     K.define("fire_escape_bottom", 220, true);
+    for (const piece of ["fe_plants", "fe_canes", "fe_bike", "fe_boxes", "fe_chair"]) K.define(piece, 200, false);
     K.define("bracket", 150, false);
     K.define("awning", 220, false);
     K.define("canopy", 220, false);
@@ -796,6 +960,7 @@ export class BuildingsMesh {
       const r = (k: number) => hash(b.seed * 13 + Math.round(e.u0 * 10) * 7 + k * 131);
       const floors = Math.floor((e.top - 1.2 - Math.max(e.gH, e.y0)) / t.floorH);
       const isFront = e.kind === "front";
+      const household = inHeroBlock(b.cx, b.cz) ? householdOf(b.seed, b.style) : null;
       // ---- fire escapes: the tenements' iron zig-zags, on the front and often the back
       const feStyle = b.style === "tenement" || (b.style === "brick" && b.h < 30) || (b.style === "prewar" && b.h < 34) || (b.style === "castiron" && !isFront);
       if (feStyle && e.L >= 2 * t.bayW + 1.2 && floors >= 2 && e.y0 === 0 && r(1) < (isFront ? 0.75 : 0.5)) {
@@ -804,7 +969,8 @@ export class BuildingsMesh {
         const kFirst = Math.ceil((e.u0 + t.bayW * 1.2) / t.bayW), kLast = Math.floor((e.u0 + e.L - t.bayW * 1.2) / t.bayW);
         const done: number[] = [];
         for (let f = 0; f < nFE; f++) {
-          for (let tries = 0; tries < 4; tries++) {
+          // (the hero block's balconies are scattered: look harder for the bay, the fire escape is what makes these streets)
+          for (let tries = 0, most = household ? 16 : 4; tries < most; tries++) {
             if (kLast < kFirst) break;
             const kk = kFirst + Math.floor(r(3 + f * 5 + tries) * (kLast - kFirst + 1));
             if (done.some((d) => Math.abs(d - kk) < 3)) continue;
@@ -819,6 +985,11 @@ export class BuildingsMesh {
               const piece = i === 0 ? "fire_escape_bottom" : i === fl - 1 ? "fire_escape_top" : "fire_escape";
               K.add(piece, at(e, along, y, 0, sc.set(w, sy, 1)), col);
               solid(e, along, y, 0.6, (2 * t.bayW - 0.5) / 2, 0.08, 0.55);
+              // somebody lives here: what they keep on the landing, clear of the ladder's end
+              if (household && i > 0 && r(40 + i + f * 13) < household.landing) {
+                const piece = pick(household.landingPieces, r(70 + i + f * 13));
+                K.add(piece, at(e, along + (r(90 + i) < 0.5 ? -1 : 1) * t.bayW * 0.45, y + 0.06, 0.55, sc.set(1, 1, 1)));
+              }
             }
             break;
           }
@@ -840,9 +1011,9 @@ export class BuildingsMesh {
       if (e.ground === "none" || e.L < 3) continue;
       // ---- shop awnings and blade signs, one per 4.5 m shop
       if (e.ground !== "lobby" && e.ground !== "residential") {
-        const first = Math.ceil((e.u0 + e.shopOff - 2.25) / 4.5), last = Math.floor((e.u0 + e.L + e.shopOff - 2.25) / 4.5);
+        const first = 0, last = e.bays - 1;
         for (let s = first; s <= last; s++) {
-          const along = s * 4.5 + 2.25 - e.shopOff - e.u0;
+          const along = (s + 0.5) * e.bayW;
           if (along < 2.2 || along > e.L - 2.2) continue;
           const rs = hash(b.seed * 5 + s * 977);
           const awn = e.ground === "chinatown" ? 0.55 : e.ground === "soho" ? 0.3 : 0.45;
