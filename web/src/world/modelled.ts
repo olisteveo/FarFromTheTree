@@ -2,6 +2,9 @@
 // renderers (render/buildings.ts, the facade props, the far city) leave them out. They stay in
 // city.buildings: the flight model still treats them as solid.
 //   - the Manhattan Bridge's arch and colonnade at Canal St and the Bowery (render/chinatown.ts)
+//   - the buildings you'd know anywhere (world/iconic.ts, render/iconicTowers.ts)
+
+import { FLATIRON, replacedByIcon } from "./iconic";
 
 const MODELLED: { x: number; z: number; r: number }[] = [
   { x: -961.5, z: 2069.6, r: 12 },
@@ -10,7 +13,7 @@ const MODELLED: { x: number; z: number; r: number }[] = [
 /** Is the building with this centroid drawn by a model instead? */
 export function isModelled(cx: number, cz: number): boolean {
   for (const m of MODELLED) if (Math.hypot(cx - m.x, cz - m.z) < m.r) return true;
-  return false;
+  return replacedByIcon(cx, cz) || Math.hypot(cx - FLATIRON.x, cz - FLATIRON.z) < 4;
 }
 
 /** The bridge district: Manhattan east of the Bowery around the Manhattan Bridge, down to the East River.

@@ -22,6 +22,7 @@ import { loadKitModels } from "./architectureModels";
 import { sunDirection } from "./sun";
 import { REFLECT_GLSL } from "./reflections";
 import { LotsView } from "./architectureLots";
+import { RoofScenesView, SCENE_NEEDS, pickRoofScene } from "./roofScenes";
 import { isModelled } from "../world/modelled";
 
 const CHUNK = 280;
@@ -489,13 +490,24 @@ export interface FrontEdge {
 /** The rooftop pieces the leaf can hit: half sizes along x, up, along z at scale 1 (from architectureKit), and
  *  what they're called when they tear you. */
 const ROOF_SOLIDS: Record<string, [number, number, number, string]> = {
-  bulkhead: [1.5, 1.3, 1.7, "a stair bulkhead"],
+  bulkhead: [1.6, 1.65, 1.9, "a stair bulkhead"],
   elevator: [2.5, 2.25, 2.5, "a lift penthouse"],
   water_tower: [1.15, 3.5, 1.15, "a water tower"],
   steel_tank: [1.4, 2.7, 1.4, "a water tank"],
-  chimney: [0.45, 1.25, 0.35, "a chimney"],
+  chimney: [0.5, 1.5, 0.4, "a chimney"],
   condenser: [0.5, 0.5, 0.5, "an air conditioner"],
   coop: [1.2, 1.25, 0.8, "a pigeon coop"],
+  hatch: [0.5, 0.3, 0.5, "a roof hatch"],
+  hvac: [3, 0.85, 1, "an air handler"],
+  vent: [0.4, 0.7, 0.3, "a vent pipe"],
+  fan: [0.5, 0.45, 0.5, "a roof fan"],
+  dish: [0.5, 0.75, 0.5, "a satellite dish"],
+  skylight: [1.2, 0.65, 0.8, "a skylight"],
+  mast: [0.15, 4.6, 0.15, "a radio mast"],
+  solar: [2.1, 0.55, 0.95, "a solar panel"],
+  laundry: [2.05, 1, 0.15, "a roof washing line"],
+  deck: [2.75, 0.45, 2, "a roof deck"],
+  roof_rail: [0.5, 0.55, 0.06, "a roof rail"],
 };
 
 export interface RoofSpot { b: Building; poly: Poly; y: number; district: string; party: FrontEdge[] }
@@ -661,6 +673,7 @@ export class BuildingsMesh {
   readonly chunks: Chunk[] = [];
   readonly kit: ArchitectureKit;
   readonly fronts: FrontEdge[] = [];
+  readonly roofScenes = new RoofScenesView();
   readonly roofs: RoofSpot[] = [];
   readonly lots: LotsView;
   private drawDistance = 900;
@@ -786,6 +799,7 @@ export class BuildingsMesh {
     }
     this.kit.update(focus);
     this.lots.update(focus);
+    this.roofScenes.update(focus);
   }
 
   // ---------------------------------------------------------------- roof kit
@@ -843,6 +857,11 @@ export class BuildingsMesh {
             const [hw, hh, hd, label] = box;
             const cx = Math.cos(yw), sx = Math.sin(yw);
             this.solids.push({ kind: "solid", x, y: y + hh * scale.y, z, tx: cx, tz: -sx, nx: sx, nz: cx, hw: hw * scale.x, hh: hh * scale.y, hd: hd * scale.z, seed: 0, label });
+          } else if (it.startsWith("billboard_")) {
+            // the hoarding up on its legs: you can get under it, between the legs
+            const cx = Math.cos(yw), sx = Math.sin(yw), s = scale.x;
+            this.solids.push({ kind: "solid", x, y: y + 8.1 * s, z, tx: cx, tz: -sx, nx: sx, nz: cx, hw: 4.6 * s, hh: 2.15 * s, hd: 0.25, seed: 0, label: "a billboard" });
+            for (const o of [-3.5, 3.5]) this.solids.push({ kind: "solid", x: x + cx * o * s, y: y + 3 * s, z: z - sx * o * s, tx: cx, tz: -sx, nx: sx, nz: cx, hw: 0.18, hh: 3 * s, hd: 0.18, seed: 0, label: "a billboard" });
           }
           return true;
         }
@@ -850,6 +869,24 @@ export class BuildingsMesh {
       };
       const S = (s: number, sy = s) => sc.set(s, sy, s);
       let k = 0;
+      // first, what someone's done with the place, if anything: it takes the clear roof before the plant does
+      const scene = b.h > 7 && !inHeroBlock(b.cx, b.cz) ? pickRoofScene(b.style, district, b.h, b.area, r(70), r(71)) : null;
+      if (scene) {
+        const need = SCENE_NEEDS[scene], reach = Math.min((b.x1 - b.x0) / 2, (b.z1 - b.z0) / 2);
+        // as big as the roof takes, up to half as big again as it must be
+        for (const fp of [need * 1.5, need * 1.25, need]) {
+          if (fp > reach) continue;
+          let done = false;
+          for (let t = 0; t < 8 && !done; t++) {
+            const x = t ? b.x0 + fp + (b.x1 - b.x0 - 2 * fp) * r(72 + t * 2) : b.cx, z = t ? b.z0 + fp + (b.z1 - b.z0 - 2 * fp) * r(73 + t * 2) : b.cz;
+            if (!fits(x, z, fp)) continue;
+            placed.push([x, z, fp]);
+            this.roofScenes.add(scene, x, y, z, yawBase + (r(74) < 0.5 ? 0 : Math.PI / 2), fp, (b.seed * 13 + 7) | 0, this.solids);
+            done = true;
+          }
+          if (done) break;
+        }
+      }
       // stair bulkhead (and an elevator penthouse on the bigger ones)
       if (b.area > 120 && r(1) < 0.9) {
         const w = 2.6 + r(2) * 1.2, d = 3.0 + r(3) * 1.4, h = 2.5 + r(4) * 0.6;
@@ -984,7 +1021,9 @@ export class BuildingsMesh {
               const y = g0 + i * t.floorH + 0.02;
               const piece = i === 0 ? "fire_escape_bottom" : i === fl - 1 ? "fire_escape_top" : "fire_escape";
               K.add(piece, at(e, along, y, 0, sc.set(w, sy, 1)), col);
-              solid(e, along, y, 0.6, (2 * t.bayW - 0.5) / 2, 0.08, 0.55);
+              // the landing and its railing, and the flight of stairs that hangs from it, in three steps
+              solid(e, along, y + 0.5, 0.6, (2 * t.bayW - 0.5) / 2, 0.58, 0.58);
+              if (i > 0) for (const k of [-1, 0, 1]) solid(e, along + (0.4 - k) * w, y + (-1.55 + k * 0.75) * sy, 0.7, 0.55 * w, 0.45 * sy, 0.42);
               // somebody lives here: what they keep on the landing, clear of the ladder's end
               if (household && i > 0 && r(40 + i + f * 13) < household.landing) {
                 const piece = pick(household.landingPieces, r(70 + i + f * 13));
@@ -1008,6 +1047,11 @@ export class BuildingsMesh {
         col.set(ct[Math.floor(hash(b.seed + 41) * ct.length)]);
         for (let i = 0; i < n; i++) K.add("bracket", at(e, off + i * sp, yb, 0, sc.set(1, 1, deep / 0.6)), col);
       }
+      // the cornice itself stands out from the wall, and so does the band over the shops
+      if (old && b.h > 8 && e.tier === tiers(b).length - 1 && e.L > 1.5) {
+        const deep = b.style === "tenement" ? 0.75 : 0.6;
+        solid(e, e.L / 2, e.top - 0.76, deep / 2, e.L / 2, 0.42, deep / 2);
+      }
       if (e.ground === "none" || e.L < 3) continue;
       // ---- shop awnings and blade signs, one per 4.5 m shop
       if (e.ground !== "lobby" && e.ground !== "residential") {
@@ -1021,13 +1065,14 @@ export class BuildingsMesh {
             const y = e.gH - 1.32;
             col.set(AWNING[Math.floor(hash(b.seed + s * 31) * AWNING.length)]);
             K.add("awning", at(e, along, y, 0.02, sc.set(3.9, 1, 1)), col);
-            solid(e, along, y - 0.2, 0.65, 1.95, 0.22, 0.62);
+            solid(e, along, y - 0.15, 0.65, 1.95, 0.4, 0.62);
           }
           const blade = e.ground === "chinatown" ? 0.3 : e.ground === "midtown" ? 0.22 : 0.1;
           if (hash(b.seed * 9 + s * 131) < blade && e.top > e.gH + 4) {
             const kind = e.ground === "chinatown" ? (hash(b.seed + s * 17) < 0.5 ? 3 : 5) : Math.floor(hash(b.seed + s * 19) * 3) + (hash(b.seed + s * 23) < 0.3 ? 4 : 0);
             col.set(0xffffff);
             K.add(`blade_sign_${Math.min(5, kind)}`, at(e, along - 2.25 + 0.2, e.gH + 1.8, 0.05, sc.set(1, 1, 1)), col);
+            solid(e, along - 2.05, e.gH + 1.8, 0.8, 0.1, 1.25, 0.65);
           }
         }
       } else if (e.ground === "lobby" && e.L > 8) {

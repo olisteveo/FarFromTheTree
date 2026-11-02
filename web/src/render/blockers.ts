@@ -24,6 +24,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { craneAt, type Barrier, type Blocker, type Blockers } from "../world/blockers";
+import { facadeRegistry } from "./facadeProps";
 
 type Quality = "low" | "medium" | "high";
 
@@ -158,6 +159,9 @@ function holidayBannerTex(i: number) {
 }
 
 // -------------------------------------------------------------------------------- the view
+
+/** Road-level dressing too low or thin to be worth a box. */
+const FLAT_PIECES = /^(slab|cone|sandbags|scaffold_base|shed_bay)/;
 
 export function blockerMeshes(b: Blockers, quality: Quality = "medium"): THREE.Group {
   const g = new THREE.Group();
@@ -726,6 +730,22 @@ export function blockerMeshes(b: Blockers, quality: Quality = "medium"): THREE.G
         im.computeBoundingSphere();
         im.name = "closure:" + name;
         g.add(im);
+      }
+      // what stands behind the barriers is solid too, for anyone who comes down over them
+      const facades = facadeRegistry.facades;
+      if (facades && !FLAT_PIECES.test(name)) {
+        const box = new THREE.Box3(), part = new THREE.Box3();
+        for (const q of parts) { q.geometry.computeBoundingBox(); part.copy(q.geometry.boundingBox!).applyMatrix4(q.matrixWorld); box.union(part); }
+        const c = box.getCenter(new THREE.Vector3()), half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5), o = new THREE.Vector3(), ax = new THREE.Vector3(), sc = new THREE.Vector3(), rot = new THREE.Quaternion();
+        for (const mm of mats4) {
+          mm.decompose(o, rot, sc);
+          o.copy(c).applyMatrix4(mm);
+          ax.set(1, 0, 0).applyQuaternion(rot);
+          const L = Math.hypot(ax.x, ax.z);
+          // a piece laid over or tipped keeps its upright box only if it's still roughly upright
+          if (L < 0.7) continue;
+          facades.addSolid(o.x, o.y, o.z, ax.x / L, ax.z / L, half.x * sc.x, half.y * sc.y, half.z * sc.z, `the ${name.replace(/_/g, " ")}`);
+        }
       }
     }
     // the cranes' tops: each its own group (it slews), the hook and load on a cable (world/blockers.ts craneAt)

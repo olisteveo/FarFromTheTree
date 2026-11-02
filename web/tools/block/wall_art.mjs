@@ -428,6 +428,62 @@ put("slaps_1", 360, 300, (c) => slaps(c, 9));
 put("naive_0", 460, 300, (c) => naive(c, "KING RAT", "#f4f0e4"));
 put("naive_1", 460, 300, (c) => naive(c, "OK BYE", "#e23c6a"));
 
+// ---------------------------------------------------------------- for the rest of the city (render/cityArt.ts)
+/** One paper poster, a bit torn. */
+const onePoster = (c, g) => `<g filter="url(#paper)">` + poster(c.x + c.w * 0.03, c.y + c.h * 0.03, c.w * 0.94, c.h * 0.94, g[0], g[1], g[2], g[3]) + `</g>`;
+/** A photocopied flyer with a fringe of phone numbers to tear off, some of them gone. */
+function flyer(c, title, sub) {
+  const fh = c.h * 0.2, body = c.h - fh;
+  let s = `<rect x="${c.x + 3}" y="${c.y + 3}" width="${c.w - 6}" height="${body}" fill="#ece8dc"/>`;
+  s += `<path d="${word(title, c.x + c.w * 0.08, c.y + c.h * 0.08, c.w * 0.84, body * 0.32, { gap: 0.2 })}" fill="none" stroke="#17171a" stroke-width="${c.h * 0.03}" stroke-linecap="round"/>`;
+  s += `<path d="${word(sub, c.x + c.w * 0.1, c.y + body * 0.56, c.w * 0.8, body * 0.14, { gap: 0.25 })}" fill="none" stroke="#2a2a30" stroke-width="${c.h * 0.012}" stroke-linecap="round"/>`;
+  for (let i = 0; i < 3; i++) s += `<rect x="${c.x + c.w * 0.1}" y="${c.y + body * (0.76 + i * 0.07)}" width="${c.w * between(0.5, 0.8)}" height="${c.h * 0.008}" fill="#55555c"/>`;
+  const n = 9, tw = (c.w - 6) / n;
+  for (let i = 0; i < n; i++) {
+    if (rand() < 0.28) continue; // somebody took this one
+    s += `<rect x="${c.x + 3 + i * tw + 1.5}" y="${c.y + 3 + body}" width="${tw - 3}" height="${fh - 6 - rand() * 6}" fill="#ece8dc"/>`;
+    s += `<rect x="${c.x + 3 + i * tw + tw * 0.42}" y="${c.y + body + fh * 0.16}" width="${tw * 0.16}" height="${fh * 0.6}" fill="#3a3a40"/>`;
+  }
+  return s;
+}
+/** Sprayed through a card cut-out, the way the hoardings are marked. */
+const stencilWords = (c, lines, ink) => `<g filter="url(#spray)">` + lines.map((t, i) => `<path d="${word(t, c.x + c.w * 0.05, c.y + c.h * (0.08 + (i * 0.86) / lines.length), c.w * 0.9, (c.h * 0.7) / lines.length, { gap: 0.28 })}" fill="none" stroke="${ink}" stroke-width="${(c.h * 0.14) / lines.length + 2}" stroke-linecap="butt"/>`).join("") + `</g>`;
+/** Roller letters, tall and streaky, with the paint running out. */
+const rollerWord = (c, text, ink) => `<g filter="url(#roller)"><path d="${word(text, c.x + c.w * 0.03, c.y + c.h * 0.1, c.w * 0.94, c.h * 0.8, { gap: 0.2 })}" fill="none" stroke="${ink}" stroke-width="${c.h * 0.16}" stroke-linecap="square"/></g>`;
+function ratStencil(c, ink) {
+  const { x, y, w, h } = c, X = (u) => x + u * w, Y = (v) => y + v * h;
+  return `<g filter="url(#spray)" fill="${ink}"><ellipse cx="${X(0.46)}" cy="${Y(0.58)}" rx="${w * 0.27}" ry="${h * 0.19}"/><ellipse cx="${X(0.72)}" cy="${Y(0.5)}" rx="${w * 0.13}" ry="${h * 0.11}"/><polygon points="${X(0.8)},${Y(0.46)} ${X(0.95)},${Y(0.54)} ${X(0.8)},${Y(0.57)}"/><circle cx="${X(0.68)}" cy="${Y(0.36)}" r="${w * 0.055}"/><path d="M${X(0.2)} ${Y(0.62)} Q${X(0.02)} ${Y(0.7)} ${X(0.08)} ${Y(0.9)}" fill="none" stroke="${ink}" stroke-width="${h * 0.035}"/><rect x="${X(0.34)}" y="${Y(0.72)}" width="${w * 0.06}" height="${h * 0.14}"/><rect x="${X(0.58)}" y="${Y(0.72)}" width="${w * 0.06}" height="${h * 0.14}"/></g>`;
+}
+function treeStencil(c, ink) {
+  const { x, y, w, h } = c, cx = x + w / 2;
+  let s = `<g filter="url(#spray)" stroke="${ink}" fill="none" stroke-linecap="round">`;
+  const limb = (px, py, a, L, t, d) => {
+    const qx = px + Math.sin(a) * L, qy = py - Math.cos(a) * L;
+    s += `<path d="M${px.toFixed(1)} ${py.toFixed(1)}L${qx.toFixed(1)} ${qy.toFixed(1)}" stroke-width="${t.toFixed(1)}"/>`;
+    if (d > 0) for (const o of [-1, 1]) limb(qx, qy, a + o * between(0.35, 0.62), L * between(0.66, 0.8), t * 0.66, d - 1);
+  };
+  limb(cx, y + h * 0.96, 0, h * 0.27, w * 0.07, 4);
+  return s + `</g>`;
+}
+GIGS.forEach((g, i) => put(`gig_${i}`, 200, 290, (c) => onePoster(c, g)));
+[["#f0cf3a", "#16130c", "BLOCK PARTY", "ELIZABETH ST SAT"], ["#1c3b78", "#f4efe3", "RENT STRIKE", "TENANTS MEET TUES"], ["#efe9dc", "#b02a22", "NO TOWER", "SAVE THE GARDEN"], ["#141418", "#54e6c8", "DJ PIGEON", "BASEMENT 11PM"], ["#e86a2a", "#14100a", "OPEN MIC", "BRING A FRIEND"], ["#f2ece0", "#23452f", "LAST TREE", "PLANT ONE"]]
+  .forEach((g, i) => put(`bill_${i}`, 200, 290, (c) => onePoster(c, g)));
+put("flyer_0", 150, 220, (c) => flyer(c, "ROOM", "TO LET NO FEE"));
+put("flyer_1", 150, 220, (c) => flyer(c, "GUITAR", "LESSONS ASK FOR AL"));
+put("flyer_2", 150, 220, (c) => flyer(c, "LOST CAT", "ANSWERS TO TONY"));
+put("flyer_3", 150, 220, (c) => flyer(c, "MOVERS", "CHEAP NO STAIRS"));
+put("nobills_0", 480, 120, (c) => stencilWords(c, ["POST NO BILLS"], "#17171a"));
+put("nobills_1", 320, 160, (c) => stencilWords(c, ["POST NO", "BILLS"], "#e8e4d8"));
+put("keepout_0", 320, 160, (c) => stencilWords(c, ["DANGER", "KEEP OUT"], "#c02a22"));
+put("roller_0", 620, 170, (c) => rollerWord(c, "GRIEF", "#e8e4d8"));
+put("roller_1", 620, 170, (c) => rollerWord(c, "ROOF", "#d0342a"));
+put("roller_2", 620, 170, (c) => rollerWord(c, "OZZ", "#17171a"));
+put("rat_0", 200, 150, (c) => ratStencil(c, "#17151a"));
+put("rat_1", 200, 150, (c) => ratStencil(c, "#efe8d6"));
+put("tree_0", 180, 220, (c) => treeStencil(c, "#17151a"));
+put("tree_1", 180, 220, (c) => treeStencil(c, "#efe8d6"));
+for (let i = 0; i < 6; i++) put(`marker_${i}`, 220, 70, (c) => tag(c, ["TEDDY", "L8R", "NOPE", "ACE 7", "FLOW", "GUS"][i], ["#17171a", "#1e3fa8", "#17171a", "#a31e2c", "#17171a", "#205a30"][i], { width: 0.05, under: false }));
+
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}">${defs}${esc(art)}</svg>`;
 
 fs.mkdirSync(OUT, { recursive: true });

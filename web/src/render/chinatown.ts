@@ -15,7 +15,7 @@
 //   scene.add(ct.root); ct.load();          // the old festival curtains stay until the gates are in
 //   ct.update(camPos, t);                    // every frame: lanterns sway, culling by distance, nothing allocated
 //
-// Pure decoration: the gameplay collider is still the festival barrier rectangle (world/blockers.ts),
+// Mostly decoration: the gameplay collider is the festival barrier rectangle (world/blockers.ts) and the kit's SOLID_KIT,
 // which the lantern curtain under each gate fills. The lantern strings over the streets don't collide.
 // chinatownLayout() is the placement step (no three.js objects), so tools can check it headless.
 
@@ -24,6 +24,9 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { CityData } from "../world/data";
 import type { Barrier, Blockers } from "../world/blockers";
 import { ChinatownDistrict, type DistrictMeta } from "./chinatownDistrict";
+import { facadeRegistry } from "./facadeProps";
+
+const SOLID_KIT = /^(stall|lion|sign_closed|barricade|neon|lantern)/;
 
 // ================================================================== layout (pure data)
 
@@ -317,6 +320,18 @@ export class Chinatown {
         im.receiveShadow = !low;
         im.name = "ct_" + name;
         kitGroup.add(im);
+      }
+      // what stands in the street and hangs over it is solid. The gates stay out: they have to be flown through,
+      // and their pillars are in the festival barrier
+      const facades = facadeRegistry.facades;
+      if (facades && SOLID_KIT.test(name)) {
+        const box = new THREE.Box3();
+        for (const p of parts(name)) { p.geo.computeBoundingBox(); box.union(p.geo.boundingBox!); }
+        const c = box.getCenter(new THREE.Vector3()), half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+        for (const q of list) {
+          const co = Math.cos(q.yaw), si = Math.sin(q.yaw), lx = c.x * q.sx, lz = c.z * q.sz;
+          facades.addSolid(q.x + co * lx + si * lz, q.y + c.y * q.sy, q.z - si * lx + co * lz, co, -si, half.x * q.sx, half.y * q.sy, half.z * q.sz, `the ${name.replace(/_/g, " ")}`);
+        }
       }
     };
     const L = this.layout;

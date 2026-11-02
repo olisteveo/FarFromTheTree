@@ -90,10 +90,13 @@ The wind is the level design (`src/world/airflow.ts`, `src/world/windFeatures.ts
     its edge.
 - **False leads:** 28 currents peel off the ways and look just as good (streams and gales). They run
   back downtown, toward the edge of the map, or up blind streets.
-- **Crosswinds:** cross streets gust across in pulses. At junctions they throw bursts out across the
-  avenue (`AIR.crossBurst`, 8 m/s at the peak, growing uptown, below about 11 m). Each burst lives only
-  in the junction box: once it has shoved you into the side street it lets go, so it costs you the line
-  but never carries you away down the side street.
+- **Crosswinds:** cross streets gust across in pulses.
+- **Junction blasts** (`src/world/junctionBlasts.ts`, `AIR.crossBlast`): where a side street meets the way uptown, its air
+  comes through in hard gusts, about six seconds in every sixteen, from the pavement up to the roofline, and blows on
+  down that street for most of a block before it lets go. The way's own current gives way while it blows. Each junction
+  keeps its own beat and its own side street, so a run can be learned. Flying straight through a gust puts you down a
+  street you didn't choose; spread catches it worst, and curling through mostly punches past it. Stronger uptown, none
+  in Battery Park or beside closures.
 - **No dead spots:** street air never goes dead calm. Where street flows meet head-on, the air rises
   (`AIR.convLift`, from the steady street air only, not the subway's streams). Off the ways, the
   wrong-way draught is weak enough to fly back against. A stream grips a leaf only as firmly as it
@@ -203,3 +206,11 @@ PS2 Spider-Man 2 as the floor, with modern light on top:
   winnable; the Rooftops way should plant at least 1 run in 3.
 - The s&box port: `docs/SBOX_MIGRATION.md` at the repo root. `npm run build` enforces that
   `src/world`, `src/sim` and `src/core` stay portable.
+
+## The buildings on the postcards
+
+Eight buildings have their real massing instead of a data extrusion (`world/iconic.ts`, drawn by `render/iconicTowers.ts`): Trinity Church, the Stock Exchange, the Woolworth, the Municipal Building, the Met Life Tower, the Empire State, One Times Square and the Hearst Tower. The Flatiron is modelled over its own data footprint; the Chrysler and One World Trade stand on the skyline, outside the corridor. Their tiers are what the leaf hits and lands on. Each tower but the two low ones has a draught up its walls (`AIR.iconDraught`), with still air just above every ledge so it can be landed on. Landing on the top tiers earns its polaroid; all eight earn "Wish You Were Here". `tools/achievement-landings.ts` checks every one can be landed; `tools/collision-audit.ts` (run in the page) samples what's drawn against what's solid.
+
+## Rooftops
+
+About a third of the roofs have been turned into something by whoever lives under them (`render/roofScenes.ts`): tar beaches, vegetable beds, greenhouses, bars under strung bulbs, caged courts, pigeon lofts, helipads, pools, shacks, old neon on steel frames, aerial farms, green roofs and throw-ups the size of the roof. Which ones depends on the building's style and the neighbourhood. All of it is solid; the same recipe runs once for its colliders and again, near the camera, for its geometry.

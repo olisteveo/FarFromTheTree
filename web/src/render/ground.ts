@@ -5,8 +5,11 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import type { CityData, Poly } from "../world/data";
-import { ringArea } from "../world/data";
 import { cutRects, type Rect } from "./subwayEntrances";
+import { Grid } from "../world/data";
+import { StreetTrees, type TreeSpot } from "./streetTrees";
+import { treeSpots } from "../world/treeForms";
+import { CROSSWALK_DEPTH, Crossings, STOP_LINE_BACK } from "../world/crossings";
 import { atlasMaterial, CELL, ChunkedQuads, loadGroundTextures, PolyIndex, ringNormals, ROW, rowV, STRIP_M, surfaceMaterial, type CellName } from "./groundArt";
 
 // ------------------------------------------------------------------ canvas textures
@@ -22,8 +25,6 @@ function canvasTex(size: number, draw: (c: CanvasRenderingContext2D, s: number) 
   t.anisotropy = 16;
   return t;
 }
-let sd = 7;
-const rnd = () => ((sd = (sd * 16807) % 2147483647) / 2147483647);
 
 
 // ------------------------------------------------------------------ geometry helpers
@@ -76,34 +77,6 @@ function wallRing(r: number[], y0: number, y1: number, flip = false): THREE.Buff
 function merge(list: (THREE.BufferGeometry | null)[]): THREE.BufferGeometry {
   const ok = list.filter((g): g is THREE.BufferGeometry => !!g).map((g) => (g.index ? g.toNonIndexed() : g));
   return mergeGeometries(ok)!;
-}
-
-// ------------------------------------------------------------------ bare winter trees
-
-function bareTree(seed: number): THREE.BufferGeometry {
-  sd = seed;
-  const parts: THREE.BufferGeometry[] = [];
-  const branch = (from: THREE.Vector3, dir: THREE.Vector3, len: number, rad: number, depth: number) => {
-    const to = from.clone().addScaledVector(dir, len);
-    const g = new THREE.CylinderGeometry(rad * 0.68, rad, len, depth > 3 ? 5 : 3, 1, true);
-    g.translate(0, len / 2, 0);
-    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir));
-    g.translate(from.x, from.y, from.z);
-    parts.push(g);
-    if (depth === 0 || rad < 0.025) return;
-    const kids = depth > 1 ? 2 : 3;
-    for (let i = 0; i < kids; i++) {
-      const d = dir.clone();
-      const ang = 0.45 + rnd() * 0.5;
-      const axis = new THREE.Vector3(rnd() - 0.5, 0, rnd() - 0.5).normalize();
-      d.applyAxisAngle(axis, ang).applyAxisAngle(new THREE.Vector3(0, 1, 0), (i / kids) * Math.PI * 2 + rnd());
-      d.y = Math.max(d.y, 0.15);
-      d.normalize();
-      branch(to, d, len * (0.62 + rnd() * 0.18), rad * 0.62, depth - 1);
-    }
-  };
-  branch(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0), 3.2, 0.22, 4);
-  return mergeGeometries(parts.map((p) => p.toNonIndexed()))!;
 }
 
 // (the building sites' tower cranes are kit pieces now: render/architectureLots.ts)
@@ -219,6 +192,12 @@ export class GroundMesh {
     const decals = new ChunkedQuads(true, 300), text = new ChunkedQuads(true, 300);
     const h = (a: number, b: number) => { let n = (Math.imul(a | 0, 0x9e3779b1) ^ Math.imul(b | 0, 0x85ebca77)) >>> 0; n ^= n >>> 15; n = Math.imul(n, 0x2c1b3c6d); n ^= n >>> 12; return (n >>> 0) / 4294967296; };
     const cell = (c: CellName) => CELL[c];
+    const crossings = new Crossings(city);
+    const crosswalksDone = new Grid<{ x: number; z: number; tx: number; tz: number; half: number }>(24);
+    const paintedOver = (x: number, z: number) => crosswalksDone.at(x, z).some((c) => {
+      const rx = x - c.x, rz = z - c.z;
+      return Math.abs(rx * c.tx + rz * c.tz) < CROSSWALK_DEPTH + 0.5 && Math.abs(-rx * c.tz + rz * c.tx) < c.half + 0.3;
+    });
 
     const WHITE = [0.86, 0.85, 0.81, 1], YELLOW = [0.88, 0.62, 0.16, 1], BUSRED = [0.64, 0.25, 0.17, 0.95];
     const stripe = (q: ChunkedQuads, ax: number, az: number, bx: number, bz: number, w: number, y: number, col: number[], u0 = 0, uLen = 3) => {
@@ -394,15 +373,19 @@ export class GroundMesh {
       for (const end of [0, 1]) {
         const [ax, az, bx, bz] = end === 0 ? segs[0] : segs[segs.length - 1];
         const L = Math.hypot(bx - ax, bz - az) || 1, tx = (bx - ax) / L, tz = (bz - az) / L, nx = -tz, nz = tx;
-        const ox = end === 0 ? ax + tx * 7.5 : bx - tx * 7.5, oz = end === 0 ? az + tz * 7.5 : bz - tz * 7.5;
+        const jx = end === 0 ? ax : bx, jz = end === 0 ? az : bz;
+        const back = crossings.setback(jx, jz, st.n, end === 0 ? tx : -tx, end === 0 ? tz : -tz);
+        const ox = end === 0 ? ax + tx * back : bx - tx * back, oz = end === 0 ? az + tz * back : bz - tz * back;
         const half = st.w / 2 - 0.4;
-        for (let o = -half; o < half; o += 1.1) stripe(paint, ox + nx * o - tx * 1.6, oz + nz * o - tz * 1.6, ox + nx * o + tx * 1.6, oz + nz * o + tz * 1.6, 0.55, y + 0.005, WHITE, h(si, end * 7 + Math.round(o)) * 3);
+        // no bar on top of a crosswalk already painted at this corner: where the data's geometry still brings two together
+        for (let o = -half; o < half; o += 1.1) if (!paintedOver(ox + nx * o, oz + nz * o)) stripe(paint, ox + nx * o - tx * CROSSWALK_DEPTH, oz + nz * o - tz * CROSSWALK_DEPTH, ox + nx * o + tx * CROSSWALK_DEPTH, oz + nz * o + tz * CROSSWALK_DEPTH, 0.55, y + 0.005, WHITE, h(si, end * 7 + Math.round(o)) * 3);
         // traffic arriving at this end: end 1 is reached moving +t (lanes on +n), end 0 moving -t (lanes on -n)
         const arrive = st.d === 0 || (st.d > 0) === (end === 1);
         const up = end === 1 ? -1 : 1;
+        crosswalksDone.add({ x: ox, z: oz, tx, tz, half }, ox - half - 4, oz - half - 4, ox + half + 4, oz + half + 4);
         if (arrive) {
           const lo = st.d === 0 ? (end === 1 ? 0 : -half) : -half, hi = st.d === 0 ? (end === 1 ? half : 0) : half;
-          const cx = ox + tx * up * 2.6, cz = oz + tz * up * 2.6;
+          const cx = ox + tx * up * STOP_LINE_BACK, cz = oz + tz * up * STOP_LINE_BACK;
           stripe(paint, cx + nx * lo, cz + nz * lo, cx + nx * hi, cz + nz * hi, 0.6, y + 0.005, WHITE, h(si, end + 40));
           if (!park) {
             // cars wait here: drips
@@ -454,44 +437,15 @@ export class GroundMesh {
   }
 
   private trees(city: CityData, skip?: (x: number, z: number) => boolean) {
-    const variants = [11, 23, 37, 51].map((s) => bareTree(s));
-    const bark = new THREE.MeshStandardMaterial({ color: 0x3e342c, roughness: 1 });
-    const spots: [number, number, number][] = [];
-    const t = city.raw.trees;
-    for (let i = 0; i < t.length; i += 3) spots.push([t[i], t[i + 1], 0.75 + Math.min(1.1, t[i + 2] / 20)]);
-    // park trees: scattered through Battery Park and Central Park, but never on the lawns' open middles
-    sd = 99;
-    for (const p of city.raw.parks) {
-      const r = p.p[0];
-      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-      for (let k = 0; k < r.length; k += 2) { x0 = Math.min(x0, r[k]); x1 = Math.max(x1, r[k]); z0 = Math.min(z0, r[k + 1]); z1 = Math.max(z1, r[k + 1]); }
-      if (/Sheep Meadow/.test(p.n)) continue; // the open meadow: the place to plant
-      const n = Math.min(900, Math.abs(ringArea(r)) / 260);
-      for (let k = 0; k < n; k++) {
-        const x = x0 + (x1 - x0) * rnd(), z = z0 + (z1 - z0) * rnd();
-        if (!city.raw.parks.some((q) => /Sheep Meadow/.test(q.n) && inRingFlat(q.p[0], x, z)) && inRingFlat(r, x, z)) spots.push([x, z, 0.9 + rnd() * 0.9]);
-      }
-    }
+    const grower = new StreetTrees();
     // instanced per 300 m chunk, so only trees near the player are drawn
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-    const chunks = new Map<string, [number, number, number][]>();
-    for (const sp of spots) {
-      if (skip?.(sp[0], sp[1])) continue;
-      const k = `${Math.floor(sp[0] / 300)},${Math.floor(sp[1] / 300)}`;
+    const chunks = new Map<string, TreeSpot[]>();
+    for (const sp of treeSpots(city, skip)) {
+      const k = `${Math.floor(sp.x / 300)},${Math.floor(sp.z / 300)}`;
       (chunks.get(k) ?? chunks.set(k, []).get(k)!).push(sp);
     }
     for (const [k, list] of chunks) {
-      const g = new THREE.Group();
-      variants.forEach((geo, vi) => {
-        const mine = list.filter((_, i) => i % variants.length === vi);
-        if (!mine.length) return;
-        const im = new THREE.InstancedMesh(geo, bark, mine.length);
-        mine.forEach(([x, z, sc], i) => im.setMatrixAt(i, m.compose(p.set(x, 0, z), q.setFromAxisAngle(Y, (x * 13.7 + z) % 6.28), s.set(sc, sc, sc))));
-        im.castShadow = true;
-        im.receiveShadow = true;
-        im.computeBoundingSphere();
-        g.add(im);
-      });
+      const g = grower.chunk(list);
       const [cx, cz] = k.split(",").map(Number);
       this.treeChunks.push({ g, cx: (cx + 0.5) * 300, cz: (cz + 0.5) * 300 });
       this.root.add(g);
@@ -509,11 +463,3 @@ export class GroundMesh {
   }
 }
 
-function inRingFlat(r: number[], x: number, z: number) {
-  let c = false;
-  for (let i = 0, j = r.length - 2; i < r.length; j = i, i += 2) {
-    const xi = r[i], zi = r[i + 1], xj = r[j], zj = r[j + 1];
-    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) c = !c;
-  }
-  return c;
-}

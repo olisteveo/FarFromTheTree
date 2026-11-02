@@ -22,8 +22,13 @@ import { Facades } from "../world/facades";
 import { BARRIER_NAME, CAP, craneAt, inGap } from "../world/blockers";
 import { PARK } from "../world/park";
 import { collideParkColliders, type ParkCollider } from "../render/centralPark";
+import { collideTrees } from "../world/treeForms";
+import { replacedByIcon } from "../world/iconic";
+import { VEHICLE_SIZE } from "../world/traffic";
 import { RAIN, rainField, rainHash, type RainField } from "../world/rain";
 
+/** how far the walls stand above the roof line (render/buildings.ts draws 0.9 to 1.1) */
+const PARAPET = 0.9;
 const PROP_NAME: Record<string, string> = { ac: "an AC unit", balcony: "a balcony", solid: "a monument", cat: "a cat", line: "a washing line" };
 
 export const FLIGHT = {
@@ -309,7 +314,6 @@ export class Glider {
     }
     this.pos.addScaledVector(this.vel, dt);
     this.collide();
-    if (this.air.vehicle) this.hitBy("a cab", 0.14);
     // brushing past people on the sidewalk knocks you about
     if (this.pos.y < 2.1 && this.pos.y > 0 && this.clock - this.lastBump > 0.8) {
       const who = this.flow.crowd.hit(this.pos.x, this.pos.y, this.pos.z);
@@ -486,6 +490,12 @@ export class Glider {
     // buildings: push out through the nearest wall, or up onto the roof
     for (const b of this.city.bgrid.around(p.x, p.z, 1, this.bl)) {
       if (p.y < 0) break; // buildings stand on the street; the tunnels run beneath them
+      if (replacedByIcon(b.cx, b.cz)) continue; // solid as its real massing instead (world/iconic.ts, in the facades)
+      // the parapet stands proud of the roof: a low wall round the edge, from either side
+      if (p.y > b.h && p.y < b.h + PARAPET + r && p.x >= b.x0 - r && p.x <= b.x1 + r && p.z >= b.z0 - r && p.z <= b.z1 + r) {
+        const ed = nearestEdge(b.poly, p.x, p.z), inside = inPoly(b.poly, p.x, p.z);
+        if (ed.d < r) this.contact(inside ? -ed.nx : ed.nx, 0, inside ? -ed.nz : ed.nz, r - ed.d, "a parapet");
+      }
       if (p.y > b.h + r || p.x < b.x0 - r || p.x > b.x1 + r || p.z < b.z0 - r || p.z > b.z1 + r) continue;
       const inside = inPoly(b.poly, p.x, p.z);
       const ed = nearestEdge(b.poly, p.x, p.z);
@@ -503,10 +513,11 @@ export class Glider {
     }
     // facade clutter: AC units and balconies are solid; cats swat; washing lines snag
     // (and the rooftop clutter: water towers, bulkheads, chimneys, condensers, up to the tallest roofs)
-    if (p.y > 1.5 && p.y < 330) {
+    if (p.y > 0 && p.y < 450) {
       for (const f of this.flow.facades.grid.at(p.x, p.z)) {
         if (f.kind === "line") {
-          if (Facades.lineDistance(f, p.x, p.y, p.z) < r + 0.06 && this.clock - this.lastSnag > 1.2) {
+          // (the clothes hang a metre below the line, and catch you just the same)
+          if (Math.min(Facades.lineDistance(f, p.x, p.y, p.z), Facades.lineDistance(f, p.x, p.y + 0.4, p.z), Facades.lineDistance(f, p.x, p.y + 0.8, p.z)) < r + 0.14 && this.clock - this.lastSnag > 1.2) {
             this.lastSnag = this.clock;
             this.vel.multiplyScalar(0.15);
             this.hitBy("a washing line", 0.12);
@@ -583,7 +594,34 @@ export class Glider {
     if (p.y < 30) collideParkColliders(this.flow.parkSolids, p.x, p.y, p.z, r, (nx, ny, nz, d, name) => this.contact(nx, ny, nz, d, name), this.parkScratch);
     // street furniture: lamp posts, signals, hydrants, sheds, shelters, parked cars
     if (p.y < 12 && p.y > -0.5) collideParkColliders(this.flow.streetSolids, p.x, p.y, p.z, r, (nx, ny, nz, d, name) => this.contact(nx, ny, nz, d, name), this.parkScratch);
+    // the street trees: trunks and the bigger limbs (the twigs give way)
+    if (p.y < 32 && p.y > 0) collideTrees(this.flow.trees, p.x, p.y, p.z, r, (nx, ny, nz, d, name) => this.contact(nx, ny, nz, d, name));
     this.soft = false;
+    // moving traffic: land on a roof and ride it, get in front of one and you're shoved along and hurt
+    if (p.y < 6 && p.y > -0.2) {
+      for (const s of this.flow.traffic.grid.at(p.x, p.z)) {
+        const size = VEHICLE_SIZE[s.v.kind], rx = p.x - s.x, rz = p.z - s.z;
+        const along = rx * s.tx + rz * s.tz, side = rx * s.tz - rz * s.tx;
+        const dl = size.l / 2 + r - Math.abs(along), dw = size.w / 2 + r - Math.abs(side), dh = size.h + r - p.y;
+        if (dl <= 0 || dw <= 0 || dh <= 0) continue;
+        const vx = s.tx * s.speed, vz = s.tz * s.speed;
+        if (dh < dl && dh < dw) {
+          this.contact(0, 1, 0, dh, "a roof");
+          const k = 1 - Math.exp(-6 * this.dtNow);
+          this.vel.x += (vx - this.vel.x) * k; this.vel.z += (vz - this.vel.z) * k;
+          continue;
+        }
+        let nx: number, nz: number, depth: number;
+        if (dl < dw) { const o = Math.sign(along) || 1; nx = s.tx * o; nz = s.tz * o; depth = dl; }
+        else { const o = Math.sign(side) || 1; nx = s.tz * o; nz = -s.tx * o; depth = dw; }
+        // how fast it closes, whichever of you is moving: a parked-up cab you drift against doesn't hurt
+        const closing = (vx - this.vel.x) * nx + (vz - this.vel.z) * nz;
+        this.contact(nx, 0, nz, depth, "a vehicle");
+        const carried = vx * nx + vz * nz, vn = this.vel.x * nx + this.vel.z * nz;
+        if (carried > vn) { this.vel.x += nx * (carried - vn); this.vel.z += nz * (carried - vn); }
+        if (closing > 2) this.hitBy(s.v.kind === "cab" ? "a cab" : "a vehicle", 0.14);
+      }
+    }
     // parade balloons: soft and bouncy, they don't hurt, they boing
     for (const b of this.flow.blockers.balloons) {
       const dx = p.x - b.x, dy = p.y - b.y, dz = p.z - b.z, d = Math.hypot(dx, dy, dz);

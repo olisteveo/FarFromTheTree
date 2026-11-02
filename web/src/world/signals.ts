@@ -5,13 +5,13 @@
 export const SIGNAL = {
   cycle: 64,
   /** green seconds for each group */
-  green: [36, 18] as const,
+  green: [40, 14] as const,
   amber: 3,
   allRed: 2,
   /** WALK seconds while each group has its green: the people cross the *other* street */
-  walk: [24, 9] as const,
+  walk: [26, 7] as const,
   /** how long a driver at the front of the queue takes to get going */
-  reaction: 1,
+  reaction: 0.7,
 };
 /** when in the cycle each group's green starts */
 export const GREEN_AT = [0, SIGNAL.green[0] + SIGNAL.amber + SIGNAL.allRed] as const;

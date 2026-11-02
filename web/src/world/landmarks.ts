@@ -2,6 +2,7 @@
 // when the leaf lands on them. Real buildings from the data (the Flatiron, the Empire
 // State, City Hall) are found by footprint; the sculptures and structures are added here.
 
+import { ICONS } from "./iconic";
 import { inPoly, type Building, type CityData } from "./data";
 
 /** Same projection as tools/build-city.ts: lat/lon to grid-aligned metres (east is -x). */
@@ -78,8 +79,14 @@ export class Landmarks {
     add("steps", "the red steps in Times Square", this.steps, box3(this.steps, 5.8, 5.2, 0.5, 10.5, -1), [this.steps[0], 7.6, this.steps[1] + 1.4]);
     // the column: its capital is 2.6 m square at 22 m, the figure above it
     add("column", "the Columbus Circle column", this.column, near3(this.column, 3, 21.5, 27), [this.column[0], 22.4, this.column[1]]);
-    // the Empire State: its whole roof (the data has it as one block; the tiers and mast are drawn on top)
-    add("empire", "the top of the Empire State", L.heraldSquare, onRoof(this.empire, 8), roofSpot(this.empire, L.heraldSquare), this.empire);
+    // the buildings you'd know anywhere: the top of each, its last tiers (a roof or a ledge just under the spire)
+    for (const ic of ICONS) {
+      const tops = ic.tiers.slice(-ic.land);
+      const t0 = tops[0];
+      add(ic.id, ic.name, [(t0.x0 + t0.x1) / 2, (t0.z0 + t0.z1) / 2],
+        (x, y, z) => tops.some((t) => x > t.x0 - 0.5 && x < t.x1 + 0.5 && z > t.z0 - 0.5 && z < t.z1 + 0.5 && y > t.y1 - 0.5 && y < t.y1 + 3),
+        [(t0.x0 + t0.x1) / 2, t0.y1 + 0.5, (t0.z0 + t0.z1) / 2]);
+    }
     // the Maine monument at Merchants' Gate (its place is fixed in render/centralPark.ts parkLayout; copied
     // here): its pylon tops out at 14.6 m, the gilded group above it to 18.7 m. (Gapstow Bridge and Wollman
     // Rink were tried too, but the park's stream toward the meadow runs at 25+ m/s over them and nothing

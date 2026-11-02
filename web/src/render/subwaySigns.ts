@@ -30,6 +30,8 @@ function signTexture(lines: [string, number][], bg: string, fg: string, w = 512,
 }
 
 export class SubwaySigns {
+  /** the posts and sign boards, for the leaf to hit (main.ts hands them to the facade solids) */
+  readonly solids: { x: number; z: number; y: number; h: number; w: number; yaw: number }[] = [];
   readonly root = new THREE.Group();
   /** the ways in, for finding the next one ahead */
   readonly ins: Shaft[] = [];
@@ -65,6 +67,7 @@ export class SubwaySigns {
         const px = s.x + ax * (s.r + 0.45), pz = s.z + az * (s.r + 0.45);
         const yaw = Math.atan2(ax, az) + Math.PI / 2;
         posts.setMatrixAt(i, m.compose(p.set(px, 0, pz), q.identity(), one));
+        this.solids.push({ x: px, z: pz, y, h, w, yaw });
         front.setMatrixAt(i, m.compose(p.set(px, y + h / 2, pz), q.setFromEuler(e.set(0, yaw, 0)), one));
         back.setMatrixAt(i, m.compose(p.set(px, y + h / 2, pz), q.setFromEuler(e.set(0, yaw + Math.PI, 0)), one));
       });

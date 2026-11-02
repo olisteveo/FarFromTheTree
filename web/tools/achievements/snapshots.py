@@ -1401,7 +1401,202 @@ def s_quick(rnd):
     return cv
 
 
+
+# ---------------------------------------------------------------- the buildings on the postcards
+class Wide:
+    """These scenes are drawn on a 160-wide sketch: squeezes it onto the photo's 120."""
+    def __init__(self):
+        self.cv = Canvas()
+    def rect(self, x, y, w, h, c):
+        self.cv.rect(int(x * 0.75), y, max(1, round(w * 0.75)), h, c)
+    def put(self, x, y, c):
+        self.cv.put(int(x * 0.75), y, c)
+    def poly(self, pts, c):
+        self.cv.poly([(int(x * 0.75), y) for x, y in pts], c)
+    def blend(self, x, y, c, a):
+        self.cv.blend(int(x * 0.75), y, c, a)
+
+
+def _city_below(cv, rnd, y, c=(96, 100, 120)):
+    x = -3
+    while x < 160:
+        w, h = rnd.randrange(8, 18), rnd.randrange(6, 22)
+        cv.rect(x, y - h, w, H - y + h, mix(c, (70, 72, 92), rnd.random()))
+        for yy in range(y - h + 2, H, 4):
+            for xx in range(x + 2, x + w - 1, 3):
+                if rnd.random() < 0.35:
+                    cv.put(xx, yy, (225, 205, 150))
+        x += w
+
+
+def s_trinity(rnd):
+    """Leaf of Faith: Trinity's soot-black steeple against bright office glass, the leaf at the top of the tower"""
+    cv = Wide()
+    sky(cv.cv, DUSK, 0, H, bands=7)
+    for x, w, h in ((0, 34, 70), (116, 44, 80), (30, 22, 40), (94, 24, 46)):
+        cv.rect(x, H - h - 10, w, h + 10, (116, 124, 150))
+        for yy in range(H - h - 7, H, 4):
+            for xx in range(x + 2, x + w - 1, 3):
+                cv.put(xx, yy, (232, 212, 160) if rnd.random() < 0.3 else (84, 92, 118))
+    st = (62, 44, 40); hi = (92, 68, 60)
+    cv.rect(62, 44, 34, 60, st); cv.rect(62, 44, 3, 60, hi)
+    cv.poly([(66, 44), (92, 44), (79, 2)], st); cv.poly([(66, 44), (72, 44), (79, 2)], hi)
+    for x in (60, 94):
+        cv.poly([(x, 44), (x + 6, 44), (x + 3, 30)], st)
+    cv.rect(78, 0, 2, 5, (226, 186, 90))
+    for x in (70, 84):
+        cv.poly([(x, 80), (x + 6, 80), (x + 6, 62), (x + 3, 56), (x, 62)], (30, 22, 24))
+    leaf(cv.cv, 71, 41, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
+def s_nyse(rnd):
+    """Falling Market: the Exchange's columns and the great flag, the leaf on the pediment, the ticker going down"""
+    cv = Wide()
+    sky(cv.cv, DUSK, 0, H, bands=7)
+    cv.rect(0, 0, 160, 30, (108, 112, 138)); _city_below(cv, rnd, 30, (84, 88, 112))
+    mar = (226, 220, 204); sh = (168, 162, 150)
+    cv.poly([(22, 26), (138, 26), (80, 8)], mar); cv.poly([(34, 24), (126, 24), (80, 12)], sh)
+    cv.rect(22, 26, 116, 8, mar); cv.rect(22, 34, 116, 2, sh)
+    for i in range(13):
+        cv.rect(38, 36 + i * 3, 84, 3, (178, 34, 52) if i % 2 == 0 else (244, 242, 236))
+    cv.rect(38, 36, 34, 21, (60, 59, 110))
+    for x in (26, 44, 62, 80, 98, 116, 132):
+        cv.rect(x, 36, 5, 44, mar); cv.rect(x + 3, 36, 2, 44, sh)
+    cv.rect(16, 80, 128, 10, (196, 190, 174))
+    for i, x in enumerate(range(4, 160, 12)):
+        cv.rect(x, 84 + i // 2, 8, 2, (216, 60, 50))
+    leaf(cv.cv, 60, 7, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
+def s_woolworth(rnd):
+    """Five and Dime: the Woolworth's cream gothic crown and green copper cap, a nickel gleaming on the ledge"""
+    cv = Wide()
+    sky(cv.cv, DUSK, 0, H, bands=7)
+    _city_below(cv, rnd, 78)
+    cr = (232, 220, 190); sh = (178, 166, 138); cu = (92, 156, 134)
+    cv.rect(50, 42, 60, 50, cr); cv.rect(96, 42, 14, 50, sh)
+    for x in range(54, 108, 6):
+        cv.rect(x, 44, 2, 48, (80, 80, 94))
+    cv.rect(58, 24, 44, 18, cr); cv.rect(92, 24, 10, 18, sh)
+    for x in range(62, 100, 5):
+        cv.rect(x, 26, 2, 15, (80, 80, 94))
+    cv.poly([(62, 24), (98, 24), (80, 2)], cu); cv.poly([(84, 24), (98, 24), (80, 2)], (66, 122, 104))
+    for x in (46, 106, 54, 98):
+        cv.poly([(x, 42 if x in (46, 106) else 24), (x + 8, 42 if x in (46, 106) else 24), (x + 4, 28 if x in (46, 106) else 12)], cr)
+    cv.rect(79, 0, 2, 3, (226, 186, 90))
+    disc(cv, 62, 40, 2, (214, 216, 220))
+    leaf(cv.cv, 54, 22, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
+def s_municipal(rnd):
+    """Wedding Crasher: the Municipal Building's tiers like a cake, gold Civic Fame on top, the leaf on the top tier"""
+    cv = Wide()
+    sky(cv.cv, DUSK, 0, H, bands=7)
+    pale = (228, 222, 204); sh = (176, 170, 152); gold = (226, 186, 90)
+    _city_below(cv, rnd, 70)
+    for x, w, y, h in ((24, 112, 62, 30), (44, 72, 44, 18), (58, 44, 30, 14), (68, 24, 20, 10)):
+        cv.rect(x, y, w, h, pale); cv.rect(x + w - w // 6, y, w // 6, h, sh)
+        cv.rect(x - 2, y - 1, w + 4, 2, (246, 242, 226))
+        for xx in range(x + 3, x + w - 2, 4):
+            cv.rect(xx, y + 3, 2, h - 4, (92, 92, 106))
+    for x in (40, 118, 54, 104):
+        cv.poly([(x - 1, 44 if x in (40, 118) else 30), (x + 5, 44 if x in (40, 118) else 30), (x + 2, 36 if x in (40, 118) else 22)], gold)
+    cv.poly([(72, 20), (88, 20), (80, 14)], gold)
+    cv.rect(79, 4, 3, 10, gold); cv.rect(76, 7, 9, 1, gold); cv.rect(84, 3, 1, 4, gold)
+    leaf(cv.cv, 67, 17, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
+def s_metlife(rnd):
+    """Right on Time: the Met Life clock, huge, its hands at leaf o'clock, the leaf perched above the dial"""
+    cv = Wide()
+    sky(cv.cv, DUSK, 0, H, bands=7)
+    st = (222, 216, 200); sh = (172, 166, 150); gold = (226, 186, 90)
+    cv.rect(44, 28, 72, 64, st); cv.rect(104, 28, 12, 64, sh)
+    disc(cv, 78, 58, 25, (46, 42, 38)); disc(cv, 78, 58, 23, (250, 244, 222))
+    for i in range(12):
+        a = i / 12 * math.tau
+        cv.rect(78 + int(math.sin(a) * 20), 58 - int(math.cos(a) * 20), 2, 2, (40, 36, 32))
+    for k in range(18):
+        cv.put(78 + int(k * 0.7), 58 - int(k * 0.5), (26, 22, 18))
+    for k in range(13):
+        cv.put(78 - int(k * 0.8), 58 - int(k * 0.2), (26, 22, 18))
+    cv.poly([(50, 28), (110, 28), (80, 4)], gold); cv.poly([(84, 28), (110, 28), (80, 4)], (182, 146, 62))
+    for x in range(46, 116, 7):
+        cv.rect(x, 22, 2, 7, st)
+    leaf(cv.cv, 45, 24, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
+def s_onetimes(rnd):
+    """Drop Everything: up on One Times Square, the ball blazing on its mast, the screens going off down below"""
+    cv = Wide()
+    sky(cv.cv, [(0, (14, 16, 40)), (0.6, (34, 28, 70)), (1, (80, 44, 96))], 0, H, bands=6)
+    for _ in range(20):
+        cv.put(rnd.randrange(160), rnd.randrange(0, 40), (230, 230, 250))
+    cv.rect(48, 56, 64, 36, (90, 90, 104))
+    cols = [(232, 32, 58), (255, 210, 58), (60, 170, 240), (240, 240, 240), (255, 138, 42), (110, 60, 210)]
+    for i, y in enumerate(range(60, H, 9)):
+        cv.rect(52, y, 56, 8, cols[i % len(cols)])
+    cv.rect(79, 18, 3, 40, (160, 164, 174))
+    glow(cv.cv, 60, 20, 22, (190, 220, 255), 0.5)
+    disc(cv, 80, 20, 13, (214, 230, 250))
+    for i in range(36):
+        a, r = rnd.random() * math.tau, rnd.random() * 11
+        cv.rect(80 + int(math.cos(a) * r), 20 + int(math.sin(a) * r), 2, 2, rnd.choice(cols))
+    leaf(cv.cv, 75, 53, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
+def s_hearst(rnd):
+    """Read All About It: the Hearst's glass triangles rising from its old stone base; the leaf makes the front page"""
+    cv = Wide()
+    sky(cv.cv, DUSK, 0, H, bands=7)
+    gl = (110, 148, 176); st = (230, 234, 238)
+    cv.rect(44, 8, 72, 62, gl)
+    for k in range(-12, 16):
+        for t in range(62):
+            for x in (44 + k * 12 + t // 1, 44 + k * 12 + 62 - t):
+                if 44 <= x < 116:
+                    cv.put(x, 8 + t, st)
+    cv.rect(44, 7, 72, 2, (70, 74, 84))
+    cv.rect(28, 66, 104, 26, (190, 178, 150))
+    for x in range(34, 128, 16):
+        cv.rect(x, 72, 8, 16, (60, 66, 84)); cv.poly([(x, 72), (x + 8, 72), (x + 4, 68)], (60, 66, 84))
+    cv.rect(26, 64, 108, 3, (214, 204, 178))
+    leaf(cv.cv, 58, 5, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
+def s_postcards(rnd):
+    """Wish You Were Here: every one of them on a rack of postcards, in the leaf's own album"""
+    cv = Wide()
+    cv.rect(0, 0, 160, H, (214, 188, 140))
+    cards = [(26, (96, 66, 60)), (60, (232, 220, 190)), (94, (222, 216, 200)), (128, (200, 200, 210))]
+    for row, y in enumerate((8, 50)):
+        for i, (x, c) in enumerate(cards):
+            cv.rect(x - 16, y, 30, 36, (250, 246, 236)); cv.rect(x - 14, y + 2, 26, 28, (150, 180, 214))
+            h = 10 + ((i + row) * 5) % 16
+            cv.rect(x - 5, y + 30 - h, 10, h, c)
+            cv.poly([(x - 5, y + 30 - h), (x + 5, y + 30 - h), (x, y + 30 - h - 8)], c)
+    leaf(cv.cv, 58, 44, big=True)
+    finish(cv.cv, rnd, vig=0.3, grain=0.08, bloom=(60, 52, 34, 0.1))
+    return cv.cv
+
+
 SCENES = {
+    "trinity": (s_trinity, "Leaf of Faith"), "nyse": (s_nyse, "Falling Market"), "woolworth": (s_woolworth, "Five and Dime"), "municipal": (s_municipal, "Wedding Crasher"), "metlife": (s_metlife, "Right on Time"), "onetimes": (s_onetimes, "Drop Everything"), "hearst": (s_hearst, "Read All About It"), "postcards": (s_postcards, "Wish You Were Here"),
+    "trinity": (s_trinity, "Leaf of Faith"), "nyse": (s_nyse, "Falling Market"), "woolworth": (s_woolworth, "Five and Dime"), "municipal": (s_municipal, "Wedding Crasher"), "metlife": (s_metlife, "Right on Time"), "onetimes": (s_onetimes, "Drop Everything"), "hearst": (s_hearst, "Read All About It"), "postcards": (s_postcards, "Wish You Were Here"),
     "empire": (s_empire, "Don't Leave Me Waiting"), "bull": (s_bull, "Seeing Red"), "cityhall": (s_cityhall, "Leaf of Absence"),
     "arch": (s_arch, "Arch Nemesis"), "flatiron": (s_flatiron, "Pressing Matters"), "steps": (s_steps, "Stair Struck"),
     "column": (s_column, "Leaf Erikson"), "maine": (s_maine, "Main Character"),
