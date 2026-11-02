@@ -3,6 +3,7 @@
 // snapshot card (game/snapshotCard.ts), the rest with a toast; all with a chime. game/achievementGallery.ts
 // lists them. tools/achievement-landings.ts checks every landmark one can be landed.
 
+import { ICONS } from "../world/iconic";
 import type { Glider } from "../sim/glider";
 import type { Landmarks } from "../world/landmarks";
 
@@ -29,7 +30,15 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "steps", snap: true, icon: "🌟", name: "Stair Struck", desc: "Settle on the red steps in Times Square. Your name in lights, sort of.", hint: "Every star needs a staircase. A red one." },
   { id: "column", snap: true, icon: "🚩", name: "Leaf Erikson", desc: "Land on top of the Columbus Circle column. Got there first, like Leif did.", hint: "Beat a famous explorer to the top of his own column." },
   { id: "empire", snap: true, icon: "💐", name: "Don't Leave Me Waiting", desc: "Land on top of the Empire State. Someone's been waiting up there for ages.", hint: "A rendezvous at the top of the tallest one." },
+  { id: "trinity", snap: true, icon: "⛪", name: "Leaf of Faith", desc: "Land on Trinity Church's tower. Wall Street's oldest neighbour has seen plenty fall.", hint: "Look up at the head of Wall Street. Higher." },
+  { id: "nyse", snap: true, icon: "📉", name: "Falling Market", desc: "Land on the roof of the Stock Exchange. Leaves can go down as well as up.", hint: "Buy low. Settle lower. Six columns on Broad Street." },
+  { id: "woolworth", snap: true, icon: "🪙", name: "Five and Dime", desc: "Land on the Woolworth's crown. The Cathedral of Commerce, paid for in nickels.", hint: "A cathedral built on small change." },
+  { id: "municipal", snap: true, icon: "🎂", name: "Wedding Crasher", desc: "Land on the top tier of the Municipal Building, the cake that marries New York.", hint: "New York gets married under this cake. Find the top tier." },
+  { id: "metlife", snap: true, icon: "🕰️", name: "Right on Time", desc: "Land above the clock on the Met Life Tower.", hint: "Madison Square's clock has somewhere for you to sit." },
+  { id: "onetimes", snap: true, icon: "🎆", name: "Drop Everything", desc: "Land up by the ball on One Times Square. It only comes down once a year; you came up.", hint: "Everyone counts down to this roof." },
+  { id: "hearst", snap: true, icon: "🗞️", name: "Read All About It", desc: "Land on the Hearst Tower, all glass triangles on an old stone base. Leaf makes front page.", hint: "Triangles at the top of the map. Make the front page." },
   { id: "maine", snap: true, icon: "✨", name: "Main Character", desc: "Strike a pose on the gilded figure atop the Maine monument.", hint: "Upstage the golden lady at the park's corner gate." },
+  { id: "postcards", icon: "🗽", name: "Wish You Were Here", desc: "Land on every building on the postcards: Trinity, the Exchange, the Woolworth, the Municipal, the Met Life, the Empire State, One Times Square and the Hearst.", hint: "Eight rooftops you already know by heart." },
   // ---- the city
   { id: "cat", icon: "🐈", name: "Catnap", desc: "Get swatted by a cat. Curiosity didn't kill this one.", hint: "Curiosity, meet the leaf." },
   { id: "laundry", icon: "🧺", name: "Laundry Day", desc: "Get caught on a washing line.", hint: "Hang out to dry." },
@@ -86,6 +95,7 @@ export class Achievements {
     try { localStorage.setItem("fftt.ach", JSON.stringify([...this.got])); } catch { /* ignore */ }
     const a = ACHIEVEMENTS.find((x) => x.id === id);
     if (a) this.onUnlock(a);
+    if (ICONS.every((i) => this.got.has(i.id))) this.unlock("postcards");
   }
 
   reset() { this.cab = 0; this.under = 0; this.lastEvents = 0; this.lastLane = ""; this.lastState = ""; }

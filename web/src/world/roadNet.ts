@@ -5,6 +5,7 @@
 
 import type { CityData } from "./data";
 import type { SignalNode } from "./signals";
+import { Crossings, STOP_LINE_BACK } from "./crossings";
 
 export interface Lane {
   id: number;
@@ -29,8 +30,6 @@ export interface NetNode { x: number; z: number; r: number; signal: number; arms
 export interface RoadNet { lanes: Lane[]; nodes: NetNode[]; blockLanes: number[] }
 
 interface Directed { node0: number; node1: number; px: number[]; pz: number[]; name: string; lanes: number[]; offsets: number[]; tx0: number; tz0: number; tx1: number; tz1: number }
-
-const STOP_LINE = 10.6;
 
 function polyLane(id: number, xs: number[], zs: number[], node: number, bend = 1, turn = 0): Lane {
   const n = xs.length, x = new Float32Array(xs), z = new Float32Array(zs), cum = new Float32Array(n);
@@ -66,6 +65,7 @@ function offsetTrim(px: number[], pz: number[], off: number, trimA: number, trim
 }
 
 export function buildRoadNet(city: CityData, closed: { x: number; z: number; r: number }[], signals: SignalNode[]): RoadNet {
+  const crossings = new Crossings(city);
   const nodes: NetNode[] = [];
   const nodeMap = new Map<string, number>();
   const nodeAt = (x: number, z: number) => {
@@ -145,8 +145,11 @@ export function buildRoadNet(city: CityData, closed: { x: number; z: number; r: 
   for (const e of edges) {
     let total = 0;
     for (let i = 1; i < e.px.length; i++) total += Math.hypot(e.px[i] - e.px[i - 1], e.pz[i] - e.pz[i - 1]);
-    // arriving, wait at the painted stop line (render/ground.ts paints it 10.1 m back from the junction's centre, behind the crosswalk)
-    const ra = nodes[e.node0].r, rb = nodes[e.node1].r > 0 ? Math.max(nodes[e.node1].r, STOP_LINE) : 0, k = ra + rb > total * 0.8 ? (total * 0.8) / (ra + rb) : 1;
+    // arriving, wait at the painted stop line, behind the crosswalk (world/crossings.ts); leaving, join past the one on the far side
+    const na = nodes[e.node0], nb = nodes[e.node1];
+    const ra = na.r > 0 ? Math.max(na.r, crossings.setback(na.x, na.z, e.name, e.tx0, e.tz0)) : 0;
+    const rb = nb.r > 0 ? Math.max(nb.r, crossings.setback(nb.x, nb.z, e.name, -e.tx1, -e.tz1) + STOP_LINE_BACK + 0.4) : 0;
+    const k = ra + rb > total * 0.8 ? (total * 0.8) / (ra + rb) : 1;
     e.offsets.forEach((off, idx) => {
       const p = offsetTrim(e.px, e.pz, off, ra * k, rb * k);
       const l = polyLane(lanes.length, p.x, p.z, -1);

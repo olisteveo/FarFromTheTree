@@ -25,7 +25,9 @@ import { PeopleView, type PeopleWalker } from "./render/people";
 import { CityData } from "./world/data";
 import { makeCourse } from "./world/course";
 import { Landmarks } from "./world/landmarks";
-import { landmarkMeshes, landmarkSolids } from "./render/landmarks";
+import { adTexture, landmarkMeshes, landmarkSolids } from "./render/landmarks";
+import { IconicTowers } from "./render/iconicTowers";
+import { SKYLINE } from "./world/iconic";
 import { Achievements } from "./game/achievements";
 import { Airflow, AIR } from "./world/airflow";
 import { TUNNEL } from "./world/underground";
@@ -37,10 +39,13 @@ import { addInfill } from "./render/architectureInfill"; // architecture: gap in
 import { GroundMesh } from "./render/ground";
 import { FarCity } from "./render/farCity"; // far city
 import { SubwayMesh } from "./render/subway";
-import { SubwayEntrances, deepOpenings, streetOpenings } from "./render/subwayEntrances";
+import { SubwayEntrances, deepOpenings, entranceStyle, streetOpenings } from "./render/subwayEntrances";
 import { LeafView } from "./render/leaf";
 import { FacadePropsView } from "./render/facadeProps";
 import { WallArtView } from "./render/wallArt";
+import { BlastDust } from "./render/blastDust";
+import { CityArtView } from "./render/cityArt";
+import { StationDressing } from "./render/stationDressing";
 import { FILL } from "./render/stage";
 import { STREET_WEAR } from "./render/groundArt";
 import { SkateSpotView } from "./render/skateSpot";
@@ -49,7 +54,7 @@ import { blockerMeshes } from "./render/blockers";
 import { Chinatown } from "./render/chinatown";
 import { EdgeWall } from "./render/edgeWall";
 import { PauseMenu } from "./game/pauseMenu";
-import { CrowdView, SteamView, TrafficView, TrainsView, WindStreaks, lastTree, streetHazards } from "./render/life";
+import { CrowdView, SteamView, TrafficView, TrainsView, WindStreaks, lastTree, softDot, streetHazards } from "./render/life";
 import { Input } from "./game/input";
 import { Hud } from "./game/hud";
 import { Audio } from "./game/audio";
@@ -106,7 +111,7 @@ const ground = new GroundMesh(city, { detail: !LOW, skipTree: (x, z) => x > park
 // ---- the far city (render/farCity.ts): the rest of Manhattan, the waterfronts across the rivers, the bridges
 // and the harbour to the horizon. It loads public/far.dat in a worker after start and updates itself each
 // frame; the detailed buildings stop at the detail distance and the far versions take over beyond it.
-const farCity = new FarCity(city, stage.sun, stage.hemi, { quality: stage.quality, waterMaterial: ground.water.material as THREE.Material, clear: flow.streetLayout.courts.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hd: c.hd, yaw: c.yaw })) });
+const farCity = new FarCity(city, stage.sun, stage.hemi, { quality: stage.quality, waterMaterial: ground.water.material as THREE.Material, clear: [{ x: SKYLINE.chrysler.x, z: SKYLINE.chrysler.z, hw: 60, hd: 60, yaw: 0 }, { x: SKYLINE.oneWtc.x, z: SKYLINE.oneWtc.z, hw: 40, hd: 40, yaw: 0 }, ...flow.streetLayout.courts.map((c) => ({ x: c.x, z: c.z, hw: c.hw, hd: c.hd, yaw: c.yaw }))] });
 {
   // phones (low) skip the far city: decoding ~92k buildings is a big memory spike an iPhone tab can't
   // take; they get a foggy November horizon instead (the view and the haze close in, stage.ts)
@@ -153,7 +158,10 @@ const steam = new SteamView(flow);
 const streaks = new WindStreaks(flow, stage.quality === "low" ? 220 : 560);
 const facadeProps = new FacadePropsView(flow.facades);
 const wallArt = new WallArtView(city);
+const cityArt = new CityArtView(city, () => buildings.fronts, () => buildings.lots.hoardings, flow.blockers, flow.under);
+const stationDressing = new StationDressing(flow.under, city, flow.facades);
 const skateSpot = new SkateSpotView();
+const blastDust = new BlastDust(flow, softDot());
 // fire-escape landings, awnings, canopies, shed roofs, lot fences and hoardings, cranes: solid
 buildings.attachFacades(flow.facades, true);
 const crowdView = new CrowdView(flow);
@@ -183,7 +191,11 @@ stage.scene.add(chinatown.root);
 const edgeWall = new EdgeWall(city);
 stage.scene.add(edgeWall.root);
 // ----
-stage.scene.add(blockerView, pigeons.mesh, landmarkMeshes(landmarks, city), crowdView.root, people.root, facadeProps.root, wallArt.root, skateSpot.root, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
+const landmarkView = landmarkMeshes(landmarks, city);
+const iconic = new IconicTowers(city, { screen: (i) => adTexture(i % 9) });
+stage.scene.add(iconic.root, buildings.roofScenes.root);
+for (const k of landmarkView.userData.solids ?? []) flow.facades.addSolid(k.x, k.y, k.z, k.tx, k.tz, k.hw, k.hh, k.hd, "a giant screen");
+stage.scene.add(blockerView, pigeons.mesh, landmarkView, crowdView.root, people.root, facadeProps.root, wallArt.root, cityArt.root, stationDressing.root, skateSpot.root, blastDust.points, buildings.root, ground.root, subway.root, subwayArt.root, centralPark.root, leafView.root, traffic.root, trains.root, steam.points, streaks.mesh, streetHazards(flow));
 // ---- street furniture (render/streetFurniture.ts): lamps, live signals, street name blades, hydrants,
 // mailboxes, baskets, newsstands, carts, bike docks, bus stops, kiosks, sheds, plaza bollards, steam
 // stacks, parked cars. Its colliders are streetFurniture.layout.colliders (not wired into the sim here).
@@ -238,6 +250,17 @@ const discoveries = new Discoveries(flow.features);
 minimap.features = flow.features;
 minimap.found = discoveries.found;
 stage.scene.add(subwaySigns.root);
+// the plain green railings round a stair opening (the other styles carry their own walls): open at the top of the
+// steps, -a, and waist high on the other three sides
+for (const s of flow.under.shafts) {
+  if (s.kind !== "stairs" || entranceStyle(s, flow.under) !== "railing") continue;
+  for (const o of [-1, 1]) flow.facades.addSolid(s.x + s.uz * o * 2.15, 0.68, s.z - s.ux * o * 2.15, s.ux, s.uz, 2.25, 0.55, 0.12, "a subway railing");
+  flow.facades.addSolid(s.x + s.ux * 2.15, 0.68, s.z + s.uz * 2.15, s.uz, -s.ux, 2.25, 0.55, 0.12, "a subway railing");
+}
+for (const k of subwaySigns.solids) {
+  flow.facades.addSolid(k.x, k.y / 2, k.z, 1, 0, 0.11, k.y / 2, 0.11, "a subway sign");
+  flow.facades.addSolid(k.x, k.y + k.h / 2, k.z, Math.cos(k.yaw), -Math.sin(k.yaw), k.w / 2, k.h / 2, 0.08, "a subway sign");
+}
 const audio = new Audio(city);
 audio.lowMusic = LOW;
 // phones only allow sound to start inside a gesture: unlock it on every tap/click/key until it runs
@@ -519,10 +542,13 @@ function tick(dt: number, render: boolean) {
     if (flow.gustEta(s, leaf.clock) < 1.4 && id !== lastGust) { lastGust = id; audio.play("gust_blast", { vol: 0.8 }); }
   }
   steam.update(dt, focus, leaf.clock, window.innerHeight);
+  blastDust.update(dt, focus, viewing() ? leaf.clock + wall : leaf.clock, window.innerHeight);
   traffic.update(focus);
   if (!subwayArtReady) trains.update(leaf.clock, focus);
   buildings.update(focus);
   facadeProps.update(focus, flow, leaf.clock + wall);
+  cityArt.update(focus);
+  iconic.update();
   if (viewing()) { flow.crowd.update(leaf.clock + wall, focus.x, focus.z); flow.traffic.update(leaf.clock + wall, focus.x, focus.z, LOW ? 260 : 400); }
   if (peopleReady) {
     // the people near the camera; anyone the leaf whooshes past flinches and looks up

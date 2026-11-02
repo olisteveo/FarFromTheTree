@@ -11,6 +11,7 @@
 
 import type { Glider } from "../sim/glider";
 import type { CityData } from "../world/data";
+import { blastGust, type Blast } from "../world/junctionBlasts";
 import { TRAIN } from "../world/underground";
 
 interface Entry { file: string; loop: boolean; gain: number; category: string; duration: number }
@@ -56,6 +57,7 @@ export class Audio {
   private nextCritter = 2;
   private nextSiren = 25;
   private steamPhase = new Map<object, number>();
+  private blastOn = new Set<Blast>();
   private wasInVent = false;
   private t = 0;
   private loading: Promise<void> | null = null;
@@ -465,6 +467,14 @@ export class Audio {
         this.steamPhase.set(st, ph);
         if (prev < 0.2 && ph >= 0.2 && Math.hypot(st.x - lp.x, st.z - lp.z) < 40) this.play("steam_hiss", { at: [st.x, 1, st.z], vol: 0.8, world: true, rate: 0.9 + Math.random() * 0.2 });
       }
+    }
+
+    // a junction blast winding up: heard about a second before it arrives, from the road it comes down
+    for (const b of flow.blasts.grid.at(lp.x, lp.z)) {
+      const on = blastGust(b, leaf.clock + 1.1) > 0.15, was = this.blastOn.has(b);
+      if (on === was) continue;
+      if (on) { this.blastOn.add(b); if (Math.hypot(b.x - lp.x, b.z - lp.z) < 90) this.play("gust_blast", { at: [b.x - b.dx * 10, 2, b.z - b.dz * 10], vol: 0.75, world: true, rate: 0.9 + Math.random() * 0.2 }); }
+      else this.blastOn.delete(b);
     }
 
     // ---------------------------------------------------------------- what the leaf does

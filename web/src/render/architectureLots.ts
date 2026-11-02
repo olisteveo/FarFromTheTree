@@ -10,6 +10,7 @@ import * as THREE from "three";
 import type { CityData, Poly } from "../world/data";
 import { inPoly, ringArea } from "../world/data";
 import type { FacadeProp } from "../world/facades";
+import type { HoardingRun } from "./cityArt";
 import type { ArchitectureKit } from "./architectureKit";
 import type { FacadeQuality } from "./facades";
 import { isSkateLot } from "../world/heroBlock";
@@ -37,6 +38,7 @@ function edges(ring: number[], front: Set<number> | null): Edge[] {
 }
 
 export class LotsView {
+  readonly hoardings: HoardingRun[] = [];
   readonly root = new THREE.Group();
   private surfaces: THREE.Mesh[] = [];
   ready: Promise<void>;
@@ -201,6 +203,9 @@ export class LotsView {
     // plywood hoardings round the street fronts (a truck gate on the longest), sidewalk sheds outside
     for (const e of fronts) {
       const v0 = Math.floor(r(Math.round(e.ax)) * 4);
+      // (for the paper and paint: render/cityArt.ts. Facing away from the site's middle)
+      const away = (e.ax + e.tx * e.L / 2 - cx) * e.nx + (e.az + e.tz * e.L / 2 - cz) * e.nz > 0 ? 1 : -1;
+      this.hoardings.push({ ax: e.ax, az: e.az, tx: e.tx, tz: e.tz, L: e.L, nx: e.nx * away, nz: e.nz * away });
       this.fence(e, (i) => `hoarding_${(v0 + i) % 4}`, 2.4, e === main && e.L > 14 ? 8 : 0, 0.3 + 0.4 * r(2));
       if (sheds && e.L > 6 && r(Math.round(e.az)) < 0.75) {
         const n = Math.max(1, Math.round(e.L / 3));

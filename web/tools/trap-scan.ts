@@ -6,15 +6,18 @@
 //   npx tsx tools/trap-scan.ts --merge [shards]
 import fs from "node:fs";
 import os from "node:os";
-import { CityData } from "../src/world/data";
+import { CityData, streetHit } from "../src/world/data";
 import { AIR, Airflow } from "../src/world/airflow";
 import { Glider, type LeafInput } from "../src/sim/glider";
 import { makeCourse } from "../src/world/course";
 import { Pilot, PROFILES } from "../src/sim/pilot";
 
-const STEP = 80, TIME = 30, GAIN = 60;
-// "escape" (default): what a stuck player does: climb (over the roofs where they're low, to canyon height
-// between towers), head for the way through, and if it isn't getting anywhere, fight straight up.
+const STEP = 80, TIME = Number(process.env.TRAP_TIME ?? 30), GAIN = 60;
+if (process.env.SIDE_RETURN) AIR.sideReturn = Number(process.env.SIDE_RETURN);
+// "escape" (default): what a stuck player does: climb (over the roofs where they're low), head for the way through,
+// and if it isn't getting anywhere: up and over where that can be done, or down and along the street to the avenue
+// between towers, turning round if that's no good either. (Fighting straight up under a 200 m canopy counted calm air
+// as a trap: there's nothing holding the leaf, only a bot that wouldn't leave.)
 // "pilot": the in-game autopilot's speedrunner (it keeps to the street, so it dives back down).
 const MODE = process.env.SCAN_PILOT ? "pilot" : "escape";
 if (process.env.CONVLIFT) AIR.convLift = Number(process.env.CONVLIFT); // (A/B the converging-air lift)
@@ -69,6 +72,7 @@ for (const st of city.raw.streets) {
 }
 const course = makeCourse(city);
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+const stHit = streetHit();
 function escape(g: Glider, _best: number, stuckFor: number): LeafInput {
   const p = g.pos, pn = course.path.nearest(p.x, p.z);
   const a = course.path.at(Math.min(course.path.length, pn.s + (pn.d > 12 ? 8 : 50)));
@@ -76,7 +80,14 @@ function escape(g: Glider, _best: number, stuckFor: number): LeafInput {
   let want = H > 40 ? 18 : H + 9;
   if (stuckFor > 6) want = Math.max(want, H + 9); // getting nowhere: up and over
   let tx = a.x, tz = a.z;
-  if (stuckFor > 6 && p.y < H) { tx = p.x + Math.sin(g.heading) * 5; tz = p.z + Math.cos(g.heading) * 5; } // (just climb)
+  if (stuckFor > 6 && p.y < H) {
+    if (H > 40 && pn.d > 14) {
+      const s = city.street(p.x, p.z, stHit);
+      let o = s.tx * (a.x - p.x) + s.tz * (a.z - p.z) > 0 ? 1 : -1;
+      if (Math.floor(stuckFor / 14) % 2 === 1) o = -o;
+      tx = p.x + s.tx * o * 20; tz = p.z + s.tz * o * 20; want = 9;
+    } else { tx = p.x + Math.sin(g.heading) * 5; tz = p.z + Math.cos(g.heading) * 5; } // (just climb)
+  }
   let d = Math.atan2(tx - p.x, tz - p.z) - g.heading; d = Math.atan2(Math.sin(d), Math.cos(d));
   const pitch = g.grounded ? -1 : clamp((p.y - want) * 0.15 - g.vel.y * 0.12, -1, 1);
   return { pitch, roll: clamp(-d * 2, -1, 1), spread: p.y < want - 3, curl: false, corkscrew: 0, loop: false };

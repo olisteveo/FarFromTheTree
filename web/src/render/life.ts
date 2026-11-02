@@ -248,7 +248,7 @@ export class TrainsView {
 
 // ------------------------------------------------------------------ steam, puddles, manholes
 
-function softDot(): THREE.Texture {
+export function softDot(): THREE.Texture {
   const c = document.createElement("canvas");
   c.width = c.height = 64;
   const x = c.getContext("2d")!;
@@ -364,6 +364,7 @@ export function streetHazards(flow: Airflow): THREE.Group {
     for (let k = 0; k < 4; k++) {
       const a = (k * Math.PI) / 2;
       barrier.setMatrixAt(i * 4 + k, m.compose(p.set(mh.x + Math.sin(a) * 1.1, 0, mh.z + Math.cos(a) * 1.1), q.setFromAxisAngle(Y, a), s.set(1, 1, 1)));
+      flow.facades.addSolid(mh.x + Math.sin(a) * 1.1, 0.45, mh.z + Math.cos(a) * 1.1, Math.cos(a), -Math.sin(a), 0.7, 0.47, 0.06, "a manhole barrier");
     }
   });
   g.add(hole, barrier);

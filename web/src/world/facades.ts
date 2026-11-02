@@ -5,6 +5,7 @@
 
 import { Grid, type Building, type CityData } from "./data";
 import { TILES } from "../render/facades";
+import { ICONS } from "./iconic";
 import { isModelled } from "./modelled";
 import { SKATE_SOLIDS, householdOf, inHeroBlock, pick, type BalconyVariant, type HouseholdRule } from "./heroBlock";
 
@@ -52,6 +53,7 @@ export class Facades {
   constructor(city: CityData) {
     for (const b of city.buildings) if (!isModelled(b.cx, b.cz)) this.decorate(b, city);
     this.washingLines(city);
+    for (const ic of ICONS) for (const t of ic.tiers) this.props.push({ kind: "solid", x: (t.x0 + t.x1) / 2, y: (t.y0 + t.y1) / 2, z: (t.z0 + t.z1) / 2, tx: 1, tz: 0, nx: 0, nz: 1, hw: (t.x1 - t.x0) / 2, hh: (t.y1 - t.y0) / 2, hd: (t.z1 - t.z0) / 2, seed: 0, label: t.what ?? ic.name.replace("the top of ", "") });
     for (const k of SKATE_SOLIDS) this.props.push({ kind: "solid", x: k.x, y: k.y, z: k.z, tx: 1, tz: 0, nx: 0, nz: -1, hw: k.hw, hh: k.hh, hd: k.hd, seed: 0, label: k.label });
     for (const p of this.props) {
       const r = Math.max(p.hw, p.hd) + 1;
@@ -93,7 +95,7 @@ export class Facades {
           const seed = (b.seed + bay * 7 + f) >>> 0;
           if (household) { this.dressFloor(household, hasBalconies, along < 1.7 * t.bayW || along > L - 1.7 * t.bayW, f, along, L, wx, wz, yWin, tx, tz, nx, nz, r, seed); continue; }
           if (balconies && f > 0 && along > 2 && along < L - 2 && (bay - phase) % stride === 0) {
-            this.props.push({ kind: "balcony", x: wx + nx * 0.75, y: yWin, z: wz + nz * 0.75, tx, tz, nx, nz, hw: 1.4, hh: 0.55, hd: 0.75, seed });
+            this.props.push({ kind: "balcony", x: wx + nx * 0.75, y: yWin, z: wz + nz * 0.75, tx, tz, nx, nz, hw: 1.4, hh: 0.85, hd: 0.75, seed });
           } else if (r < rate.ac) {
             this.props.push({ kind: "ac", x: wx + nx * 0.32, y: yWin + 0.55, z: wz + nz * 0.32, tx, tz, nx, nz, hw: 0.38, hh: 0.24, hd: 0.3, seed, blows: h01(seed, 3) < 0.35 });
           } else if (r < rate.ac + rate.cat) {
@@ -112,7 +114,7 @@ export class Facades {
     if (hasBalconies && wallEnd && f > 0 && along > 1.5 && along < L - 1.5 && roll < rule.balcony * 1.6) {
       const variant = pick(rule.variants, h01(seed, 4412));
       const hd = variant === "juliet" ? 0.25 : 0.75, hw = variant === "juliet" ? 0.75 : 1.4;
-      this.props.push({ kind: "balcony", x: wx + nx * hd, y: yWin, z: wz + nz * hd, tx, tz, nx, nz, hw, hh: 0.55, hd, seed, variant });
+      this.props.push({ kind: "balcony", x: wx + nx * hd, y: yWin, z: wz + nz * hd, tx, tz, nx, nz, hw, hh: 0.85, hd, seed, variant });
     } else if (f > 0 && r < rule.windowbox) {
       const dress = h01(seed, 4413) < rule.deadBox ? "windowbox_dead" : "windowbox";
       this.props.push({ kind: "solid", x: wx + nx * 0.2, y: yWin + 0.62, z: wz + nz * 0.2, tx, tz, nx, nz, hw: 0.48, hh: 0.12, hd: 0.15, seed, dress, label: "a flower box" });
@@ -159,6 +161,14 @@ export class Facades {
   }
 
   /** Distance from a point to a washing line (with a little sag in the middle). */
+  /** Something the renderer knows the size of and the leaf should hit: an oriented box, centre (x, y, z). */
+  addSolid(x: number, y: number, z: number, tx: number, tz: number, hw: number, hh: number, hd: number, label?: string) {
+    const p: FacadeProp = { kind: "solid", x, y, z, tx, tz, nx: -tz, nz: tx, hw, hh, hd, seed: 0, label };
+    const r = Math.hypot(hw, hd) + 1;
+    this.props.push(p);
+    this.grid.add(p, x - r, z - r, x + r, z + r);
+  }
+
   static lineDistance(p: FacadeProp, x: number, y: number, z: number): number {
     const dx = p.x2! - p.x, dy = p.y2! - p.y, dz = p.z2! - p.z;
     const L2 = dx * dx + dy * dy + dz * dz || 1e-9;

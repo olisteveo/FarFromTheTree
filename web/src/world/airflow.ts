@@ -23,6 +23,9 @@ import { Grid } from "./data";
 import { colliderGrid, parkLayout, type ParkCollider, type ParkLayout } from "../render/centralPark";
 import { streetLayout, type StreetLayout } from "../render/streetLayout";
 import { Traffic } from "./traffic";
+import { blastAt, buildBlasts } from "./junctionBlasts";
+import { treeSolids, treeSpots, type TreeSolid } from "./treeForms";
+import { ICONS, type Icon } from "./iconic";
 import { STAIRS, STAIRS_FOOT, TRAIN, trainsAt, TUNNEL, Underground, VENT, type Shaft, type Train } from "./underground";
 
 export type Lane = "subway" | "street" | "roof";
@@ -30,6 +33,11 @@ export type Lane = "subway" | "street" | "roof";
 export const AIR = {
   avenue: 9.5,        // street tailwind on route-aligned streets (m/s)
   cross: 4.5,         // cross-street gusts
+  crossBlast: 19,
+  /** between the blasts the side streets drain back to the avenues: how fast (m/s) */
+  sideReturn: 6,
+  /** the draught up the famous towers: how hard, and how far out from their walls */
+  iconDraught: 15, iconReach: 16,     // junction blasts (world/junctionBlasts.ts): how hard they blow down the side street at their peak, m/s
   crossBurst: 8,      // ...and the bursts they throw out across the avenue at a junction (m/s at their peak, uptown; only in the junction itself)
   channel: 0.35,      // how strongly an avenue canyon draws you back to its middle (1/s)
   roof: 6.5,          // the wind over the roofs (a quartering tailwind: see roofWind)
@@ -114,10 +122,15 @@ export class Airflow {
   /** street furniture (render/streetLayout.ts): signals, lamps, hydrants, sheds, parked cars... and their colliders */
   readonly streetLayout: StreetLayout;
   readonly streetSolids: Grid<ParkCollider>;
+  /** every tree outside Central Park, which has its own */
+  readonly trees: Grid<TreeSolid>;
+  private iconGrid = new Grid<Icon>(64);
   readonly blockers: Blockers;
   private trains: Train[] = [];
   private trainT = -1;
   private wk = { x: 0, y: 0, z: 0, hit: null as unknown };
+  /** the junction blasts: see world/junctionBlasts.ts */
+  blasts!: ReturnType<typeof buildBlasts>;
   private s1 = streetHit();
   private s2 = streetHit();
   private nr = { s: 0, off: 0, d: 0 };
@@ -162,7 +175,10 @@ export class Airflow {
     this.parkSolids = colliderGrid(this.parkLayout.colliders);
     this.streetLayout = streetLayout(city, { traffic: this.traffic, life: this.life, blockers: this.blockers, under: this.under });
     this.traffic.signals = this.streetLayout.signals;
+    this.blasts = buildBlasts(city, this.blockers.list);
     this.streetSolids = colliderGrid(this.streetLayout.colliders);
+    for (const ic of ICONS) if (ic.draught) { const t = ic.tiers[0], m = AIR.iconReach; this.iconGrid.add(ic, t.x0 - m, t.z0 - m, t.x1 + m, t.z1 + m); }
+    { const pb = this.parkLayout.bounds; this.trees = treeSolids(treeSpots(city, (x, z) => x > pb.x0 && x < pb.x1 && z > pb.z0 && z < pb.z1)); }
     // the sidewalk crowd (block loops, schedules, groups) needs the furniture to step round it
     // (people step round the subway stairs' openings too: they walked over the holes, in mid-air)
     const stairHoles = this.under.shafts.filter((sh) => sh.kind === "stairs").flatMap((sh) => [-1.1, 0.6].map((a) => ({ kind: "cyl", x: sh.x + sh.ux * a, z: sh.z + sh.uz * a, r: 1.75, y0: 0, y1: 1 })));
@@ -755,6 +771,24 @@ export class Airflow {
       }
     }
 
+    // ---------------------------------------------------------------- the draught up the famous towers
+    // the way up to the postcards: wind running into all that stone has nowhere to go but up its walls
+    if (y > 0.5 && y < 480) {
+      for (const ic of this.iconGrid.at(x, z)) {
+        // (still air just over a ledge or the roof, or nothing could ever land on them)
+        if (ic.tiers.some((q) => x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1 && y > q.y1 - 1 && y < q.y1 + 7)) continue;
+        const t = ic.tiers[0];
+        const d = Math.hypot(Math.max(t.x0 - x, 0, x - t.x1), Math.max(t.z0 - z, 0, z - t.z1));
+        if (d > AIR.iconReach) continue;
+        const k = (1 - d / AIR.iconReach) * smoothstep(0, 3, y) * (1 - smoothstep(ic.top - 4, ic.top + 10, y));
+        if (k <= 0) continue;
+        wy += AIR.iconDraught * k;
+        // a calmer column: the street and the sky's wind would carry you off before you got anywhere
+        const calm = 1 - 0.75 * k;
+        wx *= calm; wz *= calm;
+      }
+    }
+
     // ---------------------------------------------------------------- AC units blowing out of the walls
     if (y > 2 && y < 64) {
       for (const p of this.facades.grid.at(x, z)) {
@@ -863,6 +897,30 @@ export class Airflow {
     if (y > -0.4 && y < Math.min(H + 2, 30) && !this.inConv && !entry) {
       const c = this.convergence(x, z);
       if (c > 0.05) wy += Math.min(AIR.convLiftMax, c * AIR.convLift) * (1 - smoothstep(Math.min(H, 30) * 0.7, Math.min(H + 2, 30), y));
+    }
+
+    // ---------------------------------------------------------------- junction blasts
+    // up to the roofline and down the side street: the way's own current gives way to it while it blows, or you'd sail through
+    // the side streets drain back toward the way through, so a blast's detour is one you can get out of
+    if (y > 0.3 && y < 34 && n.d > 16 && !this.inConv && !entry) {
+      const st = this.city.street(x, z, this.s2);
+      const across = Math.abs(st.tx * rt0.tx + st.tz * rt0.tz);
+      if (st.dist < st.w / 2 + 2 && across < 0.5) {
+        const k = (1 - smoothstep(0.2, 0.5, across)) * smoothstep(16, 40, n.d) * (1 - smoothstep(22, 34, y));
+        const toRoute = st.tx * (rt.x - x) + st.tz * (rt.z - z) > 0 ? 1 : -1;
+        wx += st.tx * toRoute * AIR.sideReturn * k;
+        wz += st.tz * toRoute * AIR.sideReturn * k;
+      }
+    }
+    // (it's a street wind: climb out of it, whatever the height of the buildings, and you're free of it)
+    if (y > 0.3 && y < Math.min(30, H + 6) && !this.inConv && !entry) {
+      for (const b of this.blasts.grid.at(x, z)) {
+        const k = blastAt(b, x, z, t) * smoothstep(0.3, 2, y) * (1 - smoothstep(Math.min(18, Math.max(8, H * 0.85)), Math.min(30, H + 6), y));
+        if (k <= 0) continue;
+        const hold = 1 - 0.7 * k, push = AIR.crossBlast * (0.62 + 0.6 * b.prog) * k;
+        wx = wx * hold + b.dx * push;
+        wz = wz * hold + b.dz * push;
+      }
     }
 
     out.x = wx; out.y = wy; out.z = wz;

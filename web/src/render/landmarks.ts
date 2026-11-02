@@ -9,7 +9,7 @@ import type { Facades } from "../world/facades";
 import { nearestEdge, type CityData } from "../world/data";
 
 /** Made-up ads for the Times Square screens (never real brands): bold colour blocks and a word or two. */
-function adTexture(i: number): THREE.CanvasTexture {
+export function adTexture(i: number): THREE.CanvasTexture {
   const ADS: [string, string, string, string][] = [
     ["BROADWAY", "TONIGHT", "#e8203a", "#ffd23a"], ["THE LAST", "LEAF", "#1a1a2e", "#ff8a2a"], ["NYC", "♥", "#ffffff", "#e8203a"],
     ["FIZZ", "COLA", "#c81414", "#ffffff"], ["NOW", "SHOWING", "#2a1a6a", "#7af0ff"], ["SALE", "70% OFF", "#ffe02b", "#1a1a1a"],
@@ -128,6 +128,7 @@ export function landmarkMeshes(l: Landmarks, city?: CityData): THREE.Group {
         const w = 10 + ((i + k) % 3) * 4, h = w * 0.62;
         if (y + h / 2 > top) break;
         const s = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mats[k++ % mats.length]);
+        (g.userData.solids ??= []).push({ x: hit.px + hit.nx * 0.2, y: y + h / 2, z: hit.pz + hit.nz * 0.2, tx: hit.nz, tz: -hit.nx, hw: w / 2, hh: h / 2, hd: 0.25 });
         s.position.set(hit.px + hit.nx * 0.35, y + h / 2, hit.pz + hit.nz * 0.35);
         s.lookAt(s.position.x + hit.nx, s.position.y, s.position.z + hit.nz);
         screens.add(s);

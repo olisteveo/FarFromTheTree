@@ -60,8 +60,9 @@ export interface VehicleState {
 
 /** How the traffic drives. */
 export const DRIVE = {
-  tick: 0.1, spacing: 48, warmup: 45,
-  gapTime: 1.1, gapMin: 2.2, comfyBrake: 2.6, hardBrake: 4.5,
+  tick: 0.1, spacing: 20, warmup: 45,
+  // New York following distances
+  gapTime: 0.85, gapMin: 1.8, comfyBrake: 2.8, hardBrake: 4.5,
   /** a vehicle stuck this long with a green light in a gridlock gives up and leaves the map */
   giveUp: 150,
 };
@@ -157,7 +158,8 @@ export class Traffic {
       while (s < L.len - 7) {
         found.push({ lane: l, s, id });
         id++;
-        s += DRIVE.spacing * (0.55 + h01(id * 3) * 0.9);
+        // (never closer than the longest vehicle could fit)
+        s += Math.max(15, DRIVE.spacing * (0.55 + h01(id * 3) * 0.9));
       }
     }
     const n = (this.n = found.length);
@@ -173,8 +175,8 @@ export class Traffic {
       this.vehicles.push({ kind, colorSeed: f.id });
       this.pool.push({ x: 0, z: 0, tx: 0, tz: 1, speed: 0, v: this.vehicles[i], brake: 0, odo: 0, fade: 1 });
       this.laneOf[i] = f.lane; this.sAt[i] = f.s;
-      this.vMax[i] = (heavy ? 7.5 : 9) + h01(f.id * 17) * 3.5;
-      this.accel[i] = heavy ? 0.85 : 1.5 + h01(f.id * 19) * 0.7;
+      this.vMax[i] = (heavy ? 8.5 : 10.5) + h01(f.id * 17) * 3.5;
+      this.accel[i] = heavy ? 1.1 : 1.9 + h01(f.id * 19) * 0.8;
       this.bodyL[i] = VEHICLE_SIZE[kind].l;
       this.vel[i] = this.vMax[i] * 0.6;
       this.onLane[f.lane].push(i);
@@ -314,6 +316,12 @@ export class Traffic {
         this.odo[i] += Math.max(0, ds);
         this.brake[i] += ((acc[i] < -0.4 || v1 < 0.3 ? 1 : 0) - this.brake[i]) * 0.5;
         if (this.holding[i] >= 0 && lanes[li].node < 0 && this.sAt[i] > this.bodyL[i] * 0.5 + 1) { this.using[this.holding[i]]--; this.holding[i] = -1; }
+      }
+      // whatever the following model asked for, nobody drives through the vehicle in front (a shift across a junction
+      // can drop a car in tight behind another; it waits for the gap to open)
+      for (let k = 1; k < list.length; k++) {
+        const f = list[k - 1], i = list[k], most = this.sAt[f] - this.bodyL[f] / 2 - this.bodyL[i] / 2 - 0.5;
+        if (this.sAt[i] > most) { this.sAt[i] = Math.max(0, most); this.vel[i] = Math.min(this.vel[i], this.vel[f]); }
       }
       while (list.length && this.sAt[list[0]] >= lanes[li].len) leaving.push(list.shift()!);
     }

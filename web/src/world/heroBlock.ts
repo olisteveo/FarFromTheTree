@@ -75,5 +75,15 @@ export const SKATE = {
 /** The solid parts, in world/facades.ts' oriented-box terms (axis-aligned here: the wall direction is +x). */
 export const SKATE_SOLIDS: { x: number; y: number; z: number; hw: number; hh: number; hd: number; label: string }[] = [
   { x: (SKATE.wall.x0 + SKATE.wall.x1) / 2, y: SKATE.wall.h / 2, z: SKATE.wall.z, hw: (SKATE.wall.x1 - SKATE.wall.x0) / 2, hh: SKATE.wall.h / 2, hd: 0.2, label: "a graffiti wall" },
-  ...SKATE.quarters.map((q) => ({ x: q.x + q.dir * 1, y: q.h / 2, z: (q.z0 + q.z1) / 2, hw: 1, hh: q.h / 2, hd: (q.z1 - q.z0) / 2, label: "a quarter pipe" })),
+  // a quarter pipe's curve, in three steps up from the flat to the deck
+  ...SKATE.quarters.flatMap((q) => [[0, 0.45], [0.42, 0.95], [0.82, 1.1]].map(([u0, k]) => {
+    const R = q.h * 1.25 + 0.4, u = u0 * R, w = (u0 === 0 ? 0.42 : u0 === 0.42 ? 0.4 : 0.18) * R;
+    const tall = (u0 === 0 ? 1 : u0 === 0.42 ? 0.45 : 0.12) * q.h * k;
+    return { x: q.x + q.dir * (u + w / 2), y: tall / 2 + 0.1, z: (q.z0 + q.z1) / 2, hw: w / 2, hh: tall / 2, hd: (q.z1 - q.z0) / 2, label: "a quarter pipe" };
+  })),
+  { x: -533, y: 0.23, z: 2836, hw: 4, hh: 0.13, hd: 1.15, label: "a manual pad" },
+  { x: -520, y: 0.33, z: 2841.6, hw: 3.25, hh: 0.23, hd: 0.31, label: "a waxed ledge" },
+  { x: -543.5, y: 0.41, z: 2838.2, hw: 3, hh: 0.31, hd: 0.05, label: "a kinked rail" },
+  { x: -524, y: 0.5, z: 2836.4, hw: 2.1, hh: 0.4, hd: 1.8, label: "a funbox" },
+  { x: -540, y: 0.33, z: 2843.5, hw: 1.1, hh: 0.27, hd: 0.25, label: "a bench" },
 ];
